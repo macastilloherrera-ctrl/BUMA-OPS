@@ -10,6 +10,7 @@ import {
   insertTicketSchema,
   insertAttachmentSchema,
   type UserRole,
+  type UserProfile,
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -38,6 +39,54 @@ async function isManager(req: Request, res: Response, next: NextFunction) {
 function stripCostFields<T extends { cost?: string | null }>(items: T[], canSeeCosts: boolean): T[] {
   if (canSeeCosts) return items;
   return items.map((item) => ({ ...item, cost: null }));
+}
+
+// Helper to check if user is a manager role
+function isManagerRole(profile: UserProfile | null): boolean {
+  return !!profile && ["gerente_general", "gerente_operaciones"].includes(profile.role);
+}
+
+// Helper to check if user can access a building (based on buildingScope)
+async function canAccessBuilding(userId: string, buildingId: string, profile: UserProfile | null): Promise<boolean> {
+  if (isManagerRole(profile)) return true;
+  if (profile?.buildingScope === "all") return true;
+  
+  const building = await storage.getBuilding(buildingId);
+  return building?.assignedExecutiveId === userId;
+}
+
+// Helper to check if user can view/edit entity based on assignment
+async function canAccessEntity(
+  userId: string,
+  profile: UserProfile | null,
+  entity: { 
+    executiveId?: string; 
+    assignedExecutiveId?: string | null; 
+    createdBy?: string;
+    buildingId: string;
+  }
+): Promise<boolean> {
+  if (isManagerRole(profile)) return true;
+  
+  // User is directly assigned to the entity
+  if (entity.executiveId === userId) return true;
+  if (entity.assignedExecutiveId === userId) return true;
+  if (entity.createdBy === userId) return true;
+  
+  // User is assigned to the building
+  const building = await storage.getBuilding(entity.buildingId);
+  if (building?.assignedExecutiveId === userId) return true;
+  
+  return false;
+}
+
+// Helper to remove cost fields from request body for non-managers
+function sanitizeCostFields(body: any, isManager: boolean): any {
+  if (isManager) return body;
+  const sanitized = { ...body };
+  delete sanitized.cost;
+  delete sanitized.price;
+  return sanitized;
 }
 
 export async function registerRoutes(
@@ -392,6 +441,16 @@ export async function registerRoutes(
 
   app.post("/api/visits", isAuthenticated, async (req, res) => {
     try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      
+      // Enforce building scope for non-managers
+      if (!isManagerRole(profile)) {
+        const canAccess = await canAccessBuilding(req.user!.id, req.body.buildingId, profile);
+        if (!canAccess) {
+          return res.status(403).json({ error: "No tienes permiso para crear visitas en este edificio" });
+        }
+      }
+      
       const data = insertVisitSchema.parse({
         ...req.body,
         executiveId: req.user!.id,
@@ -611,16 +670,28 @@ export async function registerRoutes(
 
   app.post("/api/tickets", isAuthenticated, async (req, res) => {
     try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      const isManager = isManagerRole(profile);
+      
+      // Enforce building scope for non-managers
+      if (!isManager) {
+        const canAccess = await canAccessBuilding(req.user!.id, req.body.buildingId, profile);
+        if (!canAccess) {
+          return res.status(403).json({ error: "No tienes permiso para crear tickets en este edificio" });
+        }
+      }
+      
+      // Sanitize cost fields for non-managers
+      const sanitizedBody = sanitizeCostFields(req.body, isManager);
+      
       const data = insertTicketSchema.parse({
-        ...req.body,
+        ...sanitizedBody,
         createdBy: req.user!.id,
         assignedExecutiveId: req.body.assignedExecutiveId || req.user!.id,
       });
       
-      // Only managers can set cost
-      const profile = await storage.getUserProfile(req.user!.id);
-      const canSetCost = profile && ["gerente_general", "gerente_operaciones"].includes(profile.role);
-      if (!canSetCost) {
+      // Ensure cost is null for non-managers
+      if (!isManager) {
         (data as any).cost = null;
       }
       
@@ -712,15 +783,27 @@ export async function registerRoutes(
 
   app.post("/api/incidents", isAuthenticated, async (req, res) => {
     try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      const isManager = isManagerRole(profile);
+      
+      // Enforce building scope for non-managers
+      if (!isManager) {
+        const canAccess = await canAccessBuilding(req.user!.id, req.body.buildingId, profile);
+        if (!canAccess) {
+          return res.status(403).json({ error: "No tienes permiso para crear incidentes en este edificio" });
+        }
+      }
+      
+      // Sanitize cost fields for non-managers
+      const sanitizedBody = sanitizeCostFields(req.body, isManager);
+      
       const data = insertIncidentSchema.parse({
-        ...req.body,
+        ...sanitizedBody,
         createdBy: req.user!.id,
       });
       
-      // Only managers can set cost
-      const profile = await storage.getUserProfile(req.user!.id);
-      const canSetCost = profile && ["gerente_general", "gerente_operaciones"].includes(profile.role);
-      if (!canSetCost) {
+      // Ensure cost is null for non-managers
+      if (!isManager) {
         (data as any).cost = null;
       }
       
