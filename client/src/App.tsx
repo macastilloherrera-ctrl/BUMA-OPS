@@ -19,6 +19,7 @@ import NotFound from "@/pages/not-found";
 import Visits from "@/pages/Visits";
 import VisitDetail from "@/pages/VisitDetail";
 import VisitInProgress from "@/pages/VisitInProgress";
+import IncidentForm from "@/pages/IncidentForm";
 import ScheduleVisit from "@/pages/ScheduleVisit";
 import Tickets from "@/pages/Tickets";
 import CreateTicket from "@/pages/CreateTicket";
@@ -96,6 +97,7 @@ function AuthenticatedApp() {
               <Route path="/visitas/programar" component={ScheduleVisit} />
               <Route path="/visitas/:id" component={VisitDetail} />
               <Route path="/visitas/:id/en-curso" component={VisitInProgress} />
+              <Route path="/visitas/:id/incidente" component={IncidentForm} />
 
               <Route path="/tickets" component={Tickets} />
               <Route path="/tickets/nuevo" component={CreateTicket} />

@@ -19,12 +19,13 @@ import {
   Save,
   X,
 } from "lucide-react";
-import type { Visit, Building, VisitChecklistItem } from "@shared/schema";
+import type { Visit, Building, VisitChecklistItem, Incident } from "@shared/schema";
 import { Link } from "wouter";
 
 interface VisitInProgressData extends Visit {
   building?: Building;
   checklistItems?: VisitChecklistItem[];
+  incidents?: Incident[];
 }
 
 export default function VisitInProgress() {
@@ -38,6 +39,13 @@ export default function VisitInProgress() {
   const { data: visit, isLoading } = useQuery<VisitInProgressData>({
     queryKey: ["/api/visits", id],
   });
+
+  const { data: incidents } = useQuery<Incident[]>({
+    queryKey: ["/api/incidents", { visitId: id }],
+    enabled: !!id,
+  });
+
+  const visitIncident = incidents?.find((i) => i.visitId === id);
 
   const updateChecklistMutation = useMutation({
     mutationFn: async (itemId: string) => {
@@ -247,38 +255,76 @@ export default function VisitInProgress() {
         </Card>
 
         {visit.type === "urgente" && (
-          <Card className="border-amber-500/50 bg-amber-500/5">
+          <Card className={visitIncident ? "border-green-500/50 bg-green-500/5" : "border-amber-500/50 bg-amber-500/5"}>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2 text-amber-600 dark:text-amber-500">
+              <CardTitle className={`text-base flex items-center gap-2 ${visitIncident ? "text-green-600 dark:text-green-500" : "text-amber-600 dark:text-amber-500"}`}>
                 <AlertCircle className="h-4 w-4" />
-                Incidente / Falla
+                Incidente / Falla {visitIncident ? "(Registrado)" : "(Requerido)"}
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground mb-3">
-                Las visitas urgentes requieren registrar el incidente o falla.
-              </p>
-              <Button variant="outline" asChild data-testid="button-register-incident">
-                <Link href={`/visitas/${id}/incidente`}>
-                  Registrar Incidente
-                </Link>
-              </Button>
+              {visitIncident ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">{visitIncident.failureType}</p>
+                  <p className="text-sm text-muted-foreground">{visitIncident.reason}</p>
+                  <Badge variant={
+                    visitIncident.status === "reparada" ? "default" :
+                    visitIncident.status === "en_reparacion" ? "secondary" :
+                    "outline"
+                  }>
+                    {visitIncident.status === "pendiente" ? "Pendiente" :
+                     visitIncident.status === "en_reparacion" ? "En reparacion" :
+                     visitIncident.status === "reparada" ? "Reparada" : "Reprogramada"}
+                  </Badge>
+                  <Button variant="outline" size="sm" asChild className="mt-2" data-testid="button-edit-incident">
+                    <Link href={`/visitas/${id}/incidente`}>
+                      Editar Incidente
+                    </Link>
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Las visitas urgentes requieren registrar el incidente o falla antes de cerrar.
+                  </p>
+                  <Button variant="default" asChild data-testid="button-register-incident">
+                    <Link href={`/visitas/${id}/incidente`}>
+                      Registrar Incidente
+                    </Link>
+                  </Button>
+                </>
+              )}
             </CardContent>
           </Card>
         )}
       </div>
 
       <div className="fixed bottom-16 md:bottom-0 left-0 right-0 p-4 bg-background border-t border-border">
-        <Button
-          className="w-full"
-          size="lg"
-          onClick={() => completeVisitMutation.mutate()}
-          disabled={completeVisitMutation.isPending}
-          data-testid="button-complete-visit"
-        >
-          <CheckCircle2 className="h-5 w-5 mr-2" />
-          {completeVisitMutation.isPending ? "Finalizando..." : "Cerrar y Generar Informe"}
-        </Button>
+        {visit.type === "urgente" && !visitIncident ? (
+          <Button
+            className="w-full"
+            size="lg"
+            variant="secondary"
+            asChild
+            data-testid="button-complete-visit-blocked"
+          >
+            <Link href={`/visitas/${id}/incidente`}>
+              <AlertCircle className="h-5 w-5 mr-2" />
+              Registrar Incidente para Cerrar
+            </Link>
+          </Button>
+        ) : (
+          <Button
+            className="w-full"
+            size="lg"
+            onClick={() => completeVisitMutation.mutate()}
+            disabled={completeVisitMutation.isPending}
+            data-testid="button-complete-visit"
+          >
+            <CheckCircle2 className="h-5 w-5 mr-2" />
+            {completeVisitMutation.isPending ? "Finalizando..." : "Cerrar y Generar Informe"}
+          </Button>
+        )}
       </div>
     </div>
   );

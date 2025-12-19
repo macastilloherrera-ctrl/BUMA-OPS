@@ -582,6 +582,16 @@ export async function registerRoutes(
         });
       }
       
+      // For urgent visits, require at least one incident
+      if (existingVisit.type === "urgente") {
+        const incidents = await storage.getIncidents(req.params.id);
+        if (incidents.length === 0) {
+          return res.status(400).json({
+            error: "Las visitas urgentes requieren registrar un incidente antes de cerrar",
+          });
+        }
+      }
+      
       const visit = await storage.updateVisit(req.params.id, {
         status: "realizada",
         completedAt: new Date(),

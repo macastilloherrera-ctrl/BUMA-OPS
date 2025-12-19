@@ -1,0 +1,47 @@
+Continuemos con la UI del Módulo 1 en este orden:
+
+FASE UI-1 (mobile-first): Visita Urgente + Incidente/Falla
+1) En pantalla “Programar visita”, agregar toggle/selector para tipo: Rutina | Urgente/Emergencia.
+2) Si tipo = Urgente/Emergencia:
+   - Al iniciar/cerrar visita debe obligar a crear un “Incidente/Falla” con campos:
+     motivo, fecha/hora, tipo falla (dropdown), equipo crítico (select del catálogo del edificio),
+     proveedor llamado (texto), acciones a la comunidad (texto), estado (Pendiente/En reparación/Reparada/Reprogramada),
+     fecha/hora reparación (opcional).
+   - Campos cost/price deben estar ocultos para non-managers y no editables.
+3) En el flujo “Visita en curso”:
+   - Checklist debe cambiar según tipo:
+     Rutina → checklist rutina
+     Urgente → checklist emergencia + sección Incidente obligatoria
+4) Al cerrar visita urgente:
+   - Generar informe automático con:
+     resumen + incidente + fotos + hallazgos + tickets creados + tareas.
+
+FASE UI-2: Crear ticket desde hallazgo (en visita)
+1) En pantalla Hallazgos:
+   - Cada hallazgo debe permitir “Crear ticket” (toggle).
+2) Form mínimo ticket:
+   edificio (pre-set), descripción (auto desde hallazgo, editable), categoría, prioridad (R/A/V),
+   responsable (Ejecutivo/Proveedor/Conserjería/Comité), fecha compromiso.
+3) Adjuntar fotos del hallazgo al ticket automáticamente.
+
+FASE UI-3 (desktop-first): Dashboard Gerente Operaciones — Semáforo de Tickets
+1) Vista semáforo:
+   - 🔴 vencidos/críticos
+   - 🟠 por vencer (umbral configurable, default 3 días)
+   - 🟢 al día
+2) Tabla con columnas:
+   edificio, días atraso, descripción corta, responsable (persona/proveedor), ejecutivo a cargo, fecha compromiso, estado.
+3) Acciones:
+   - Reasignar responsable/ejecutivo (según permisos)
+   - Cambiar fecha compromiso
+   - Crear visita urgente desde ticket (pre-carga buildingId y motivo)
+
+REQUISITOS UX (NO NEGOCIABLES)
+- Mobile-first para ejecutivo: crear visita en <=20s, iniciar visita 1 tap.
+- No añadir módulos fuera de alcance.
+- Mantener consistencia con permisos ya implementados.
+- Documentar decisiones en DECISIONS.md si aparece ambigüedad.
+
+Al terminar cada fase:
+- entregar checklist de pantallas implementadas
+- y un video/guía breve en README: cómo probar el flujo end-to-end con seed data.
