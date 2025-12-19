@@ -47,13 +47,35 @@
 
 ### 4. Seguridad
 
+#### Matriz de Autorizacion (Roles vs Scopes)
+
+| Rol | buildingScope | Visibilidad | Puede Modificar | Ve Costos |
+|-----|---------------|-------------|-----------------|-----------|
+| gerente_general | N/A | Todo | Todo | Si |
+| gerente_operaciones | N/A | Todo | Todo | Si |
+| gerente_finanzas | N/A | Todo (solo lectura) | Nada | Si |
+| ejecutivo_operaciones | assigned | Solo edificios asignados | Solo sus entidades | No |
+| ejecutivo_operaciones | all | Todos los edificios | Todas las entidades | No |
+
+#### Control de Acceso por Entidad
+
+El sistema usa la funcion `canAccessEntity` para verificar acceso a visitas, tickets e incidentes:
+1. **Managers** (gerente_general, gerente_operaciones): Acceso total
+2. **buildingScope "all"**: Acceso global sin restriccion de edificio
+3. **Propietario**: Si el usuario es el ejecutivo asignado a la entidad
+4. **Edificio asignado**: Si el edificio de la entidad esta asignado al usuario
+
 #### Restriccion de Costos
 - Los campos `cost` en tickets e incidentes solo son retornados por el API si el usuario tiene rol gerente_general o gerente_operaciones
+- `sanitizeCostFields`: Elimina campos de costo del request body para non-managers
+- `stripCostFields`: Elimina campos de costo de respuestas para non-managers
 - El frontend nunca muestra campos de costo para ejecutivos
 
 #### Validacion de Permisos
 - Middleware `isAuthenticated` protege todas las rutas /api
 - Validacion de rol en endpoints especificos (ej: aprobar equipo)
+- `canAccessBuilding`: Valida acceso a edificio antes de crear entidades
+- `canAccessEntity`: Valida acceso a entidades antes de leer/modificar
 
 ### 5. Suposiciones
 
