@@ -1,0 +1,94 @@
+Actúa como un equipo senior de desarrollo (product + engineering) y construye SOLO el Módulo 1 de una plataforma interna llamada “BUMA OPS”.
+
+CONTEXTO (OBLIGATORIO)
+- BUMA OPS NO es una app pública SaaS.
+- NO reemplaza Edipro / ComunidadFeliz / Kastor.
+- NO hace contabilidad, NO hace prorrateo, NO calcula gastos comunes, NO factura.
+- Es una capa interna para ordenar operación: visitas a terreno + tickets + incidentes urgentes + equipos críticos + dashboards.
+- Mobile-first para ejecutivos en terreno.
+
+ALCANCE EXACTO (MÓDULO 1)
+Construir:
+1) Autenticación + Roles y Permisos
+   - Roles: Gerente General, Gerente Operaciones, Gerente Finanzas (solo lectura aquí), Ejecutivo Operaciones.
+2) Gestión mínima de Edificios
+   - Crear/editar edificios (nombre, dirección, estado, ejecutivo asignado).
+3) Catálogo de Equipos Críticos por Edificio
+   - Lista editable por edificio (ascensor, bombas, portón, CCTV, etc.).
+   - Ejecutivo puede “sugerir/agregar” (configurable), Gerente Operaciones valida/edita/elimina.
+4) Visitas a Terreno
+   - Programar visitas (rutina/urgente), autoasignación para Gerente Operaciones.
+   - Estados: Borrador, Programada, Atrasada, En curso, Realizada, Cancelada.
+   - Registro mobile-first: iniciar visita, checklist, fotos, notas, cierre y generación de informe automático.
+   - Checklist estándar: 2 tipos
+     A) Rutina
+     B) Emergencia/Falla (obliga crear “Incidente/Falla”).
+5) Incidente/Falla (solo para visitas urgentes)
+   Campos:
+   - Motivo, fecha/hora, tipo de falla, elemento que falla (equipo crítico), proveedor llamado, fecha/hora reparación (si aplica),
+     acciones tomadas para comunidad (texto), estado: Pendiente / En reparación / Reparada / Reprogramada.
+   - Precio/costo: SOLO gerencias (Gerente Operaciones + Gerente General). Ejecutivo NO ve ni edita costos.
+6) Tickets Operativos
+   - Crear ticket desde: visita (hallazgo) o edificio o manual.
+   - Campos obligatorios:
+     edificio, descripción/explicación, categoría, prioridad (rojo/amarillo/verde),
+     responsable (Ejecutivo / Proveedor / Conserjería / Comité), fecha compromiso, evidencia (opcional).
+   - Estados: Pendiente / En curso / Vencido / Resuelto / Reprogramado.
+   - Precio/costo SOLO gerencias (no ejecutivo).
+7) Dashboards
+   A) Dashboard Gerente Operaciones — Tickets Semáforo:
+      - Columnas/filtros: 🔴 vencidos/críticos, 🟠 por vencer (umbral configurable), 🟢 al día.
+      - Tabla con: edificio, días atraso, descripción, responsable (persona/proveedor), ejecutivo a cargo, fecha compromiso, estado.
+      - Acciones: reasignar, escalar, crear visita urgente, cambiar fecha compromiso.
+   B) Dashboard Gerente Operaciones — Visitas:
+      - % edificios visitados, visitas atrasadas, edificios sin visita reciente, carga por ejecutivo.
+   C) Ejecutivo:
+      - Mis visitas (hoy/semana/atrasadas) + “Iniciar”
+      - Mis tickets vencidos / por vencer
+
+REGLAS DE DISEÑO (NO NEGOCIABLES)
+- Enfoque en simplicidad y trazabilidad. Nada de “features lindas”.
+- No construir comunicación con residentes.
+- No construir módulo de mantenciones programadas completas (eso es Módulo 2 futuro).
+- Todo lo de costos/precios restringido a gerencias.
+- Informes post-visita se generan automáticamente (resumen + hallazgos + fotos + tickets + tareas).
+- No usar WhatsApp como dependencia. El sistema debe funcionar por sí mismo.
+
+WIREMAP DE PANTALLAS (IMPLEMENTAR TAL CUAL)
+EJECUTIVO (mobile-first):
+1) Visitas (lista: Hoy/Semana/Atrasadas/Todas + botón “+ Programar visita”)
+2) Programar visita
+3) Detalle visita (contexto: tickets críticos, mantenciones NO, última visita, equipos críticos) + “Iniciar visita”
+4) Visita en curso: checklist + fotos + notas + crear tickets desde hallazgos
+5) Cierre visita: resumen + tareas derivadas + “Cerrar y generar informe”
+6) Informe de visita: exportar PDF / ver link
+7) Tickets: lista + crear ticket manual (sin costos)
+8) Equipos críticos (solo lectura o sugerir agregar)
+
+GERENTE OPERACIONES (desktop-first):
+9) Panel Tickets (semáforo + tabla + acciones)
+10) Panel Visitas (cobertura + atrasos + reasignación + crear visita urgente)
+11) Gestión equipos críticos (por edificio)
+12) Gestión asignación ejecutivos-edificios
+
+ENTREGABLES TÉCNICOS (OBLIGATORIOS)
+1) Propuesta de arquitectura (simple) y stack sugerido.
+2) Modelos de datos (DB) para: Users, Roles, Buildings, CriticalAssets, Visits, VisitChecklists, Findings, Incidents, Tickets, Tasks, Attachments.
+3) Endpoints principales REST en /api/...
+4) UI funcional con navegación y formularios.
+5) Seed data para probar (2 edificios, 2 ejecutivos, 1 gerente, 1 visita rutina y 1 urgente, 3 tickets).
+6) Seguridad mínima: auth + autorización por rol.
+7) Logs básicos y manejo de errores.
+
+FORMA DE TRABAJO (PASO A PASO)
+- Paso 1: crea modelos de datos + endpoints.
+- Paso 2: implementa UI ejecutivos (visitas y registro).
+- Paso 3: implementa tickets y dashboard gerente.
+- Paso 4: informes post-visita (HTML->PDF o PDF simple).
+- Paso 5: pulir permisos y pruebas básicas.
+
+IMPORTANTE
+- No agregues módulos fuera del alcance.
+- Si detectas ambigüedad, toma decisiones conservadoras y documenta las suposiciones en un archivo DECISIONS.md.
+
+Comienza ahora proponiendo: (a) stack y arquitectura, (b) esquema de datos, (c) lista de endpoints, (d) mapa de pantallas con rutas.
