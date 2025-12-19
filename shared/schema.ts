@@ -72,11 +72,17 @@ export const assetStatusEnum = pgEnum("asset_status", [
   "rechazado"
 ]);
 
+export const buildingScopeEnum = pgEnum("building_scope", [
+  "assigned",
+  "all"
+]);
+
 // User profiles table (extends auth users with role info)
 export const userProfiles = pgTable("user_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().unique(),
   role: userRoleEnum("role").notNull().default("ejecutivo_operaciones"),
+  buildingScope: buildingScopeEnum("building_scope").notNull().default("assigned"),
   phone: varchar("phone"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
