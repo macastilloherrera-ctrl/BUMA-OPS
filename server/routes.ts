@@ -68,6 +68,9 @@ async function canAccessEntity(
 ): Promise<boolean> {
   if (isManagerRole(profile)) return true;
   
+  // User with "all" scope can access any entity
+  if (profile?.buildingScope === "all") return true;
+  
   // User is directly assigned to the entity
   if (entity.executiveId === userId) return true;
   if (entity.assignedExecutiveId === userId) return true;
@@ -378,7 +381,8 @@ export async function registerRoutes(
       // Get all visits for managers, or filter for executives
       let visits = await storage.getVisits();
       
-      if (!isManager) {
+      // For non-managers with "assigned" scope, filter by assignment
+      if (!isManager && profile?.buildingScope !== "all") {
         // Executives see visits they created OR visits for their assigned buildings
         const buildings = await storage.getBuildings();
         const userBuildingIds = new Set(
@@ -433,20 +437,21 @@ export async function registerRoutes(
       let relatedTickets = await storage.getTickets({ buildingId: visit.buildingId });
       relatedTickets = relatedTickets.filter((t) => ["pendiente", "en_curso", "vencido"].includes(t.status));
       
-      // Filter tickets by access for non-managers and strip cost
+      // Filter tickets by access for non-managers with "assigned" scope and strip cost
       if (!isManager) {
-        const buildings = await storage.getBuildings();
-        const userBuildingIds = new Set(
-          buildings.filter((b) => b.assignedExecutiveId === req.user!.id).map((b) => b.id)
-        );
-        
-        relatedTickets = relatedTickets
-          .filter((t) =>
+        if (profile?.buildingScope !== "all") {
+          const buildings = await storage.getBuildings();
+          const userBuildingIds = new Set(
+            buildings.filter((b) => b.assignedExecutiveId === req.user!.id).map((b) => b.id)
+          );
+          
+          relatedTickets = relatedTickets.filter((t) =>
             t.createdBy === req.user!.id ||
             t.assignedExecutiveId === req.user!.id ||
             userBuildingIds.has(t.buildingId)
-          )
-          .map((t) => ({ ...t, cost: null }));
+          );
+        }
+        relatedTickets = relatedTickets.map((t) => ({ ...t, cost: null }));
       }
       
       res.json({
@@ -524,12 +529,11 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Visita no encontrada" });
       }
       
-      // Check ownership
-      if (existingVisit.executiveId !== req.user!.id) {
-        const profile = await storage.getUserProfile(req.user!.id);
-        if (!profile || !["gerente_general", "gerente_operaciones"].includes(profile.role)) {
-          return res.status(403).json({ error: "No tienes permiso para iniciar esta visita" });
-        }
+      // Check access using canAccessEntity (handles managers and buildingScope "all")
+      const profile = await storage.getUserProfile(req.user!.id);
+      const hasAccess = await canAccessEntity(req.user!.id, profile, existingVisit);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "No tienes permiso para iniciar esta visita" });
       }
       
       // Validate status transition
@@ -556,12 +560,11 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Visita no encontrada" });
       }
       
-      // Check ownership
-      if (existingVisit.executiveId !== req.user!.id) {
-        const profile = await storage.getUserProfile(req.user!.id);
-        if (!profile || !["gerente_general", "gerente_operaciones"].includes(profile.role)) {
-          return res.status(403).json({ error: "No tienes permiso para completar esta visita" });
-        }
+      // Check access using canAccessEntity (handles managers and buildingScope "all")
+      const profile = await storage.getUserProfile(req.user!.id);
+      const hasAccess = await canAccessEntity(req.user!.id, profile, existingVisit);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "No tienes permiso para completar esta visita" });
       }
       
       // Validate status - must be in progress
@@ -593,17 +596,17 @@ export async function registerRoutes(
 
   app.patch("/api/visits/:id/checklist/:itemId", isAuthenticated, async (req, res) => {
     try {
-      // Verify visit ownership
+      // Verify visit exists
       const visit = await storage.getVisit(req.params.id);
       if (!visit) {
         return res.status(404).json({ error: "Visita no encontrada" });
       }
       
-      if (visit.executiveId !== req.user!.id) {
-        const profile = await storage.getUserProfile(req.user!.id);
-        if (!profile || !["gerente_general", "gerente_operaciones"].includes(profile.role)) {
-          return res.status(403).json({ error: "No tienes permiso para modificar esta visita" });
-        }
+      // Check access using canAccessEntity (handles managers and buildingScope "all")
+      const profile = await storage.getUserProfile(req.user!.id);
+      const hasAccess = await canAccessEntity(req.user!.id, profile, visit);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "No tienes permiso para modificar esta visita" });
       }
       
       // Verify visit is in progress
@@ -638,8 +641,8 @@ export async function registerRoutes(
       
       let tickets = await storage.getTickets(filters);
       
-      // For non-managers: show tickets where user is assigned, created by, or building is assigned to user
-      if (!isManager) {
+      // For non-managers with "assigned" scope: show tickets where user is assigned, created by, or building is assigned to user
+      if (!isManager && profile?.buildingScope !== "all") {
         const buildings = await storage.getBuildings();
         const userBuildingIds = new Set(
           buildings.filter((b) => b.assignedExecutiveId === req.user!.id).map((b) => b.id)
@@ -805,8 +808,8 @@ export async function registerRoutes(
       
       let incidents = await storage.getIncidents(visitId);
       
-      // For non-managers without visitId filter, show incidents they created or from their assigned buildings
-      if (!isManager && !visitId) {
+      // For non-managers with "assigned" scope without visitId filter, show incidents they created or from their assigned buildings
+      if (!isManager && profile?.buildingScope !== "all" && !visitId) {
         const buildings = await storage.getBuildings();
         const userBuildingIds = new Set(
           buildings.filter((b) => b.assignedExecutiveId === req.user!.id).map((b) => b.id)
