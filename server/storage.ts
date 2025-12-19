@@ -58,6 +58,7 @@ export interface IStorage {
 
   // Visit Checklist Items
   getVisitChecklistItems(visitId: string): Promise<VisitChecklistItem[]>;
+  getVisitChecklistItem(id: string): Promise<VisitChecklistItem | undefined>;
   createVisitChecklistItem(item: InsertVisitChecklistItem): Promise<VisitChecklistItem>;
   updateVisitChecklistItem(id: string, data: Partial<InsertVisitChecklistItem>): Promise<VisitChecklistItem | undefined>;
 
@@ -75,6 +76,7 @@ export interface IStorage {
 
   // Attachments
   getAttachments(entityType: string, entityId: string): Promise<Attachment[]>;
+  getAttachment(id: string): Promise<Attachment | undefined>;
   createAttachment(attachment: InsertAttachment): Promise<Attachment>;
   deleteAttachment(id: string): Promise<boolean>;
 }
@@ -197,6 +199,11 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(visitChecklistItems).where(eq(visitChecklistItems.visitId, visitId)).orderBy(visitChecklistItems.order);
   }
 
+  async getVisitChecklistItem(id: string): Promise<VisitChecklistItem | undefined> {
+    const [item] = await db.select().from(visitChecklistItems).where(eq(visitChecklistItems.id, id));
+    return item || undefined;
+  }
+
   async createVisitChecklistItem(item: InsertVisitChecklistItem): Promise<VisitChecklistItem> {
     const [created] = await db.insert(visitChecklistItems).values(item).returning();
     return created;
@@ -290,6 +297,11 @@ export class DatabaseStorage implements IStorage {
       .from(attachments)
       .where(and(eq(attachments.entityType, entityType), eq(attachments.entityId, entityId)))
       .orderBy(desc(attachments.createdAt));
+  }
+
+  async getAttachment(id: string): Promise<Attachment | undefined> {
+    const [attachment] = await db.select().from(attachments).where(eq(attachments.id, id));
+    return attachment || undefined;
   }
 
   async createAttachment(attachment: InsertAttachment): Promise<Attachment> {

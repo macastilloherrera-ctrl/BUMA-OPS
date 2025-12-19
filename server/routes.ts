@@ -373,12 +373,23 @@ export async function registerRoutes(
   app.get("/api/visits", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      const isManagerUser = profile && ["gerente_general", "gerente_operaciones"].includes(profile.role);
+      const isManager = isManagerRole(profile);
       
-      // Managers see all visits, executives see only their own
-      const visits = isManagerUser
-        ? await storage.getVisits()
-        : await storage.getVisits(req.user!.id);
+      // Get all visits for managers, or filter for executives
+      let visits = await storage.getVisits();
+      
+      if (!isManager) {
+        // Executives see visits they created OR visits for their assigned buildings
+        const buildings = await storage.getBuildings();
+        const userBuildingIds = new Set(
+          buildings.filter((b) => b.assignedExecutiveId === req.user!.id).map((b) => b.id)
+        );
+        
+        visits = visits.filter((v) =>
+          v.executiveId === req.user!.id ||
+          userBuildingIds.has(v.buildingId)
+        );
+      }
       
       // Add building info
       const buildings = await storage.getBuildings();
@@ -404,11 +415,14 @@ export async function registerRoutes(
       }
       
       const profile = await storage.getUserProfile(req.user!.id);
-      const isManagerUser = profile && ["gerente_general", "gerente_operaciones"].includes(profile.role);
+      const isManager = isManagerRole(profile);
       
-      // Executives can only view their own visits
-      if (!isManagerUser && visit.executiveId !== req.user!.id) {
-        return res.status(403).json({ error: "No tienes permiso para ver esta visita" });
+      // Check access: user is assigned to visit OR is assigned to the building
+      if (!isManager) {
+        const hasAccess = await canAccessEntity(req.user!.id, profile, visit);
+        if (!hasAccess) {
+          return res.status(403).json({ error: "No tienes permiso para ver esta visita" });
+        }
       }
       
       const building = await storage.getBuilding(visit.buildingId);
@@ -419,10 +433,19 @@ export async function registerRoutes(
       let relatedTickets = await storage.getTickets({ buildingId: visit.buildingId });
       relatedTickets = relatedTickets.filter((t) => ["pendiente", "en_curso", "vencido"].includes(t.status));
       
-      // Filter tickets by ownership for non-managers and strip cost
-      if (!isManagerUser) {
+      // Filter tickets by access for non-managers and strip cost
+      if (!isManager) {
+        const buildings = await storage.getBuildings();
+        const userBuildingIds = new Set(
+          buildings.filter((b) => b.assignedExecutiveId === req.user!.id).map((b) => b.id)
+        );
+        
         relatedTickets = relatedTickets
-          .filter((t) => t.createdBy === req.user!.id || t.assignedExecutiveId === req.user!.id)
+          .filter((t) =>
+            t.createdBy === req.user!.id ||
+            t.assignedExecutiveId === req.user!.id ||
+            userBuildingIds.has(t.buildingId)
+          )
           .map((t) => ({ ...t, cost: null }));
       }
       
@@ -606,20 +629,28 @@ export async function registerRoutes(
   app.get("/api/tickets", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      const canSeeCosts = profile && ["gerente_general", "gerente_operaciones"].includes(profile.role);
-      const isManagerUser = canSeeCosts;
+      const isManager = isManagerRole(profile);
       
-      const filters: { buildingId?: string; executiveId?: string; status?: string } = {};
+      const filters: { buildingId?: string; status?: string } = {};
       
       if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
       if (req.query.status) filters.status = req.query.status as string;
       
-      // Executives only see tickets for their assigned buildings or created by them
-      if (!isManagerUser) {
-        filters.executiveId = req.user!.id;
-      }
+      let tickets = await storage.getTickets(filters);
       
-      const tickets = await storage.getTickets(filters);
+      // For non-managers: show tickets where user is assigned, created by, or building is assigned to user
+      if (!isManager) {
+        const buildings = await storage.getBuildings();
+        const userBuildingIds = new Set(
+          buildings.filter((b) => b.assignedExecutiveId === req.user!.id).map((b) => b.id)
+        );
+        
+        tickets = tickets.filter((t) =>
+          t.createdBy === req.user!.id ||
+          t.assignedExecutiveId === req.user!.id ||
+          userBuildingIds.has(t.buildingId)
+        );
+      }
       
       // Add building names
       const buildings = await storage.getBuildings();
@@ -628,7 +659,7 @@ export async function registerRoutes(
       const ticketsWithBuilding = tickets.map((t) => ({
         ...t,
         building: buildingsMap.get(t.buildingId),
-        cost: canSeeCosts ? t.cost : null,
+        cost: isManager ? t.cost : null,
       }));
       
       res.json(ticketsWithBuilding);
@@ -646,11 +677,12 @@ export async function registerRoutes(
       }
       
       const profile = await storage.getUserProfile(req.user!.id);
-      const isManagerUser = profile && ["gerente_general", "gerente_operaciones"].includes(profile.role);
+      const isManager = isManagerRole(profile);
       
-      // Executives can only view tickets they created or are assigned to
-      if (!isManagerUser) {
-        if (ticket.createdBy !== req.user!.id && ticket.assignedExecutiveId !== req.user!.id) {
+      // Check access: user created it, is assigned to it, or is assigned to the building
+      if (!isManager) {
+        const hasAccess = await canAccessEntity(req.user!.id, profile, ticket);
+        if (!hasAccess) {
           return res.status(403).json({ error: "No tienes permiso para ver este ticket" });
         }
       }
@@ -660,7 +692,7 @@ export async function registerRoutes(
       res.json({
         ...ticket,
         building,
-        cost: isManagerUser ? ticket.cost : null,
+        cost: isManager ? ticket.cost : null,
       });
     } catch (error) {
       console.error("Error getting ticket:", error);
@@ -757,24 +789,36 @@ export async function registerRoutes(
     try {
       const visitId = req.query.visitId as string | undefined;
       const profile = await storage.getUserProfile(req.user!.id);
-      const isManagerUser = profile && ["gerente_general", "gerente_operaciones"].includes(profile.role);
+      const isManager = isManagerRole(profile);
       
       // If visitId provided, verify ownership for non-managers
-      if (visitId && !isManagerUser) {
+      if (visitId && !isManager) {
         const visit = await storage.getVisit(visitId);
-        if (!visit || visit.executiveId !== req.user!.id) {
+        if (!visit) {
+          return res.status(404).json({ error: "Visita no encontrada" });
+        }
+        const hasAccess = await canAccessEntity(req.user!.id, profile, visit);
+        if (!hasAccess) {
           return res.status(403).json({ error: "No tienes permiso para ver estos incidentes" });
         }
       }
       
       let incidents = await storage.getIncidents(visitId);
       
-      // For non-managers without visitId filter, only show their own incidents
-      if (!isManagerUser && !visitId) {
-        incidents = incidents.filter((i) => i.createdBy === req.user!.id);
+      // For non-managers without visitId filter, show incidents they created or from their assigned buildings
+      if (!isManager && !visitId) {
+        const buildings = await storage.getBuildings();
+        const userBuildingIds = new Set(
+          buildings.filter((b) => b.assignedExecutiveId === req.user!.id).map((b) => b.id)
+        );
+        
+        incidents = incidents.filter((i) =>
+          i.createdBy === req.user!.id ||
+          userBuildingIds.has(i.buildingId)
+        );
       }
       
-      res.json(stripCostFields(incidents, !!isManagerUser));
+      res.json(stripCostFields(incidents, isManager));
     } catch (error) {
       console.error("Error getting incidents:", error);
       res.status(500).json({ error: "Error interno del servidor" });
@@ -858,8 +902,59 @@ export async function registerRoutes(
   });
 
   // === Attachments ===
+  // Helper to check access to parent entity for attachments
+  async function canAccessAttachmentEntity(
+    userId: string,
+    profile: UserProfile | null,
+    entityType: string,
+    entityId: string
+  ): Promise<boolean> {
+    if (isManagerRole(profile)) return true;
+    
+    switch (entityType) {
+      case "visit": {
+        const visit = await storage.getVisit(entityId);
+        if (!visit) return false;
+        return canAccessEntity(userId, profile, visit);
+      }
+      case "ticket": {
+        const ticket = await storage.getTicket(entityId);
+        if (!ticket) return false;
+        return canAccessEntity(userId, profile, ticket);
+      }
+      case "incident": {
+        const incident = await storage.getIncident(entityId);
+        if (!incident) return false;
+        return canAccessEntity(userId, profile, incident);
+      }
+      case "checklistItem": {
+        // Need to get the parent visit
+        const item = await storage.getVisitChecklistItem(entityId);
+        if (!item) return false;
+        const visit = await storage.getVisit(item.visitId);
+        if (!visit) return false;
+        return canAccessEntity(userId, profile, visit);
+      }
+      default:
+        return false;
+    }
+  }
+
   app.get("/api/attachments/:entityType/:entityId", isAuthenticated, async (req, res) => {
     try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      
+      // Check access to parent entity
+      const hasAccess = await canAccessAttachmentEntity(
+        req.user!.id,
+        profile,
+        req.params.entityType,
+        req.params.entityId
+      );
+      if (!hasAccess) {
+        return res.status(403).json({ error: "No tienes permiso para ver estos archivos" });
+      }
+      
       const attachments = await storage.getAttachments(req.params.entityType, req.params.entityId);
       res.json(attachments);
     } catch (error) {
@@ -870,6 +965,19 @@ export async function registerRoutes(
 
   app.post("/api/attachments", isAuthenticated, async (req, res) => {
     try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      
+      // Check access to parent entity
+      const hasAccess = await canAccessAttachmentEntity(
+        req.user!.id,
+        profile,
+        req.body.entityType,
+        req.body.entityId
+      );
+      if (!hasAccess) {
+        return res.status(403).json({ error: "No tienes permiso para agregar archivos" });
+      }
+      
       const data = insertAttachmentSchema.parse({
         ...req.body,
         uploadedBy: req.user!.id,
@@ -887,6 +995,20 @@ export async function registerRoutes(
 
   app.delete("/api/attachments/:id", isAuthenticated, async (req, res) => {
     try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      const isManager = isManagerRole(profile);
+      
+      // Get the attachment to check ownership
+      const attachment = await storage.getAttachment(req.params.id);
+      if (!attachment) {
+        return res.status(404).json({ error: "Archivo no encontrado" });
+      }
+      
+      // Only uploader or managers can delete
+      if (!isManager && attachment.uploadedBy !== req.user!.id) {
+        return res.status(403).json({ error: "No tienes permiso para eliminar este archivo" });
+      }
+      
       await storage.deleteAttachment(req.params.id);
       res.status(204).send();
     } catch (error) {
