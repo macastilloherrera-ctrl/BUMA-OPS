@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import type { UserProfile, UserRole } from "@shared/schema";
 
+import { Logo } from "@/components/Logo";
 import Landing from "@/pages/Landing";
 import NotFound from "@/pages/not-found";
 import Visits from "@/pages/Visits";
@@ -31,9 +32,7 @@ function LoadingScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="text-center space-y-4">
-        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold mx-auto">
-          B
-        </div>
+        <Logo size="lg" className="mx-auto" />
         <Skeleton className="h-4 w-32 mx-auto" />
         <Skeleton className="h-3 w-24 mx-auto" />
       </div>

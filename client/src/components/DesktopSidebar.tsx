@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Logo } from "@/components/Logo";
 import type { User } from "@shared/models/auth";
 import type { UserRole } from "@shared/schema";
 
@@ -92,13 +93,7 @@ export function DesktopSidebar({ user, userRole, onLogout }: DesktopSidebarProps
     <Sidebar>
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
-            B
-          </div>
-          <div>
-            <h1 className="font-semibold text-lg">BUMA OPS</h1>
-            <p className="text-xs text-muted-foreground">Operaciones</p>
-          </div>
+          <Logo size="lg" />
         </div>
       </SidebarHeader>
       

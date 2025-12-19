@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Logo } from "@/components/Logo";
 import { Building2, Calendar, ClipboardCheck, Shield } from "lucide-react";
 
 export default function Landing() {
@@ -8,15 +9,7 @@ export default function Landing() {
     <div className="min-h-screen bg-background">
       <header className="border-b border-border">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
-              B
-            </div>
-            <div>
-              <h1 className="font-semibold text-lg">BUMA OPS</h1>
-              <p className="text-xs text-muted-foreground">Plataforma de Operaciones</p>
-            </div>
-          </div>
+          <Logo size="lg" />
           <div className="flex items-center gap-2">
             <ThemeToggle />
             <Button asChild data-testid="button-login">
