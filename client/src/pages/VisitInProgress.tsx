@@ -8,6 +8,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
@@ -18,6 +28,7 @@ import {
   AlertCircle,
   Save,
   X,
+  Ticket,
 } from "lucide-react";
 import type { Visit, Building, VisitChecklistItem, Incident } from "@shared/schema";
 import { Link } from "wouter";
@@ -35,6 +46,13 @@ export default function VisitInProgress() {
   const [notes, setNotes] = useState("");
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
   const [showTicketForm, setShowTicketForm] = useState(false);
+  const [createTicket, setCreateTicket] = useState(false);
+  const [findingDescription, setFindingDescription] = useState("");
+  const [ticketCategory, setTicketCategory] = useState("");
+  const [ticketPriority, setTicketPriority] = useState<"verde" | "amarillo" | "rojo">("verde");
+  const [ticketResponsible, setTicketResponsible] = useState<"ejecutivo" | "proveedor" | "conserjeria" | "comite">("ejecutivo");
+  const [ticketResponsibleName, setTicketResponsibleName] = useState("");
+  const [ticketDueDate, setTicketDueDate] = useState("");
 
   const { data: visit, isLoading } = useQuery<VisitInProgressData>({
     queryKey: ["/api/visits", id],
@@ -74,6 +92,55 @@ export default function VisitInProgress() {
       toast({
         title: "Error",
         description: "No se pudo completar la visita",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const saveNotesMutation = useMutation({
+    mutationFn: async (newNotes: string) => {
+      return apiRequest("PATCH", `/api/visits/${id}/notes`, { notes: newNotes });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/visits", id] });
+    },
+  });
+
+  const createTicketMutation = useMutation({
+    mutationFn: async () => {
+      if (!visit?.buildingId) {
+        throw new Error("Building ID not available");
+      }
+      return apiRequest("POST", "/api/tickets", {
+        buildingId: visit.buildingId,
+        visitId: id,
+        description: findingDescription,
+        category: ticketCategory,
+        priority: ticketPriority,
+        responsibleType: ticketResponsible,
+        responsibleName: ticketResponsible === "ejecutivo" ? "Ejecutivo asignado" : ticketResponsibleName,
+        dueDate: ticketDueDate,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+      toast({
+        title: "Ticket creado",
+        description: "El hallazgo ha sido registrado como ticket",
+      });
+      setShowTicketForm(false);
+      setCreateTicket(false);
+      setFindingDescription("");
+      setTicketCategory("");
+      setTicketPriority("verde");
+      setTicketResponsible("ejecutivo");
+      setTicketResponsibleName("");
+      setTicketDueDate("");
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "No se pudo crear el ticket",
         variant: "destructive",
       });
     },
@@ -211,21 +278,149 @@ export default function VisitInProgress() {
           </CardHeader>
           <CardContent>
             {showTicketForm ? (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 <Textarea
                   placeholder="Describe el hallazgo..."
                   className="min-h-20"
+                  value={findingDescription}
+                  onChange={(e) => setFindingDescription(e.target.value)}
                   data-testid="input-finding-description"
                 />
+
+                <div className="flex items-center gap-2 p-3 rounded-md bg-muted/50">
+                  <Switch
+                    checked={createTicket}
+                    onCheckedChange={setCreateTicket}
+                    data-testid="switch-create-ticket"
+                  />
+                  <Label className="flex items-center gap-2 cursor-pointer">
+                    <Ticket className="h-4 w-4" />
+                    Crear ticket de seguimiento
+                  </Label>
+                </div>
+
+                {createTicket && (
+                  <div className="space-y-3 p-3 border rounded-md">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Categoria</Label>
+                        <Select value={ticketCategory} onValueChange={setTicketCategory}>
+                          <SelectTrigger data-testid="select-ticket-category">
+                            <SelectValue placeholder="Seleccionar" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="mantencion">Mantencion</SelectItem>
+                            <SelectItem value="reparacion">Reparacion</SelectItem>
+                            <SelectItem value="seguridad">Seguridad</SelectItem>
+                            <SelectItem value="limpieza">Limpieza</SelectItem>
+                            <SelectItem value="otro">Otro</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Prioridad</Label>
+                        <Select value={ticketPriority} onValueChange={(v) => setTicketPriority(v as "verde" | "amarillo" | "rojo")}>
+                          <SelectTrigger data-testid="select-ticket-priority">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="verde">Verde - Normal</SelectItem>
+                            <SelectItem value="amarillo">Amarillo - Urgente</SelectItem>
+                            <SelectItem value="rojo">Rojo - Critico</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Responsable</Label>
+                        <Select value={ticketResponsible} onValueChange={(v) => setTicketResponsible(v as "ejecutivo" | "proveedor" | "conserjeria" | "comite")}>
+                          <SelectTrigger data-testid="select-ticket-responsible">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ejecutivo">Ejecutivo</SelectItem>
+                            <SelectItem value="proveedor">Proveedor</SelectItem>
+                            <SelectItem value="conserjeria">Conserjeria</SelectItem>
+                            <SelectItem value="comite">Comite</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Fecha compromiso</Label>
+                        <Input
+                          type="date"
+                          value={ticketDueDate}
+                          onChange={(e) => setTicketDueDate(e.target.value)}
+                          data-testid="input-ticket-due-date"
+                        />
+                      </div>
+                    </div>
+                    {ticketResponsible !== "ejecutivo" && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">Nombre del responsable</Label>
+                        <Input
+                          placeholder="Nombre o empresa"
+                          value={ticketResponsibleName}
+                          onChange={(e) => setTicketResponsibleName(e.target.value)}
+                          data-testid="input-ticket-responsible-name"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex gap-2">
-                  <Button size="sm" data-testid="button-save-finding">
-                    <Save className="h-4 w-4 mr-1" />
-                    Guardar
-                  </Button>
+                  {createTicket ? (
+                    <Button
+                      size="sm"
+                      onClick={() => createTicketMutation.mutate()}
+                      disabled={
+                        !findingDescription || 
+                        !ticketCategory || 
+                        !ticketDueDate || 
+                        !visit?.buildingId || 
+                        (ticketResponsible !== "ejecutivo" && !ticketResponsibleName) ||
+                        createTicketMutation.isPending
+                      }
+                      data-testid="button-save-finding"
+                    >
+                      <Ticket className="h-4 w-4 mr-1" />
+                      {createTicketMutation.isPending ? "Creando..." : "Crear Ticket"}
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const newNotes = notes ? `${notes}\n\nHallazgo: ${findingDescription}` : `Hallazgo: ${findingDescription}`;
+                        setNotes(newNotes);
+                        saveNotesMutation.mutate(newNotes, {
+                          onSuccess: () => {
+                            toast({
+                              title: "Hallazgo registrado",
+                              description: "El hallazgo queda guardado en las notas de la visita",
+                            });
+                            setShowTicketForm(false);
+                            setFindingDescription("");
+                          },
+                        });
+                      }}
+                      disabled={!findingDescription || saveNotesMutation.isPending}
+                      data-testid="button-save-finding"
+                    >
+                      <Save className="h-4 w-4 mr-1" />
+                      {saveNotesMutation.isPending ? "Guardando..." : "Guardar en Notas"}
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setShowTicketForm(false)}
+                    onClick={() => {
+                      setShowTicketForm(false);
+                      setCreateTicket(false);
+                      setFindingDescription("");
+                    }}
                   >
                     <X className="h-4 w-4" />
                   </Button>

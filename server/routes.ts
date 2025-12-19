@@ -553,6 +553,41 @@ export async function registerRoutes(
     }
   });
 
+  const updateNotesSchema = z.object({
+    notes: z.string().transform((v) => v.trim()).pipe(z.string().min(1, "Notas requeridas")),
+  });
+
+  app.patch("/api/visits/:id/notes", isAuthenticated, async (req, res) => {
+    try {
+      const parseResult = updateNotesSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: "Notas requeridas", details: parseResult.error.errors });
+      }
+      const { notes } = parseResult.data;
+
+      const existingVisit = await storage.getVisit(req.params.id);
+      if (!existingVisit) {
+        return res.status(404).json({ error: "Visita no encontrada" });
+      }
+      
+      const profile = await storage.getUserProfile(req.user!.id);
+      const hasAccess = await canAccessEntity(req.user!.id, profile, existingVisit);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "No tienes permiso para modificar esta visita" });
+      }
+      
+      if (existingVisit.status !== "en_curso") {
+        return res.status(400).json({ error: "Solo se pueden actualizar notas de visitas en curso" });
+      }
+      
+      const visit = await storage.updateVisitNotes(req.params.id, notes);
+      res.json(visit);
+    } catch (error) {
+      console.error("Error updating visit notes:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   app.patch("/api/visits/:id/complete", isAuthenticated, async (req, res) => {
     try {
       const existingVisit = await storage.getVisit(req.params.id);

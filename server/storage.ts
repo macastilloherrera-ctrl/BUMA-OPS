@@ -55,6 +55,7 @@ export interface IStorage {
   getVisit(id: string): Promise<Visit | undefined>;
   createVisit(visit: InsertVisit): Promise<Visit>;
   updateVisit(id: string, data: Partial<InsertVisit>): Promise<Visit | undefined>;
+  updateVisitNotes(id: string, notes: string): Promise<Visit | undefined>;
 
   // Visit Checklist Items
   getVisitChecklistItems(visitId: string): Promise<VisitChecklistItem[]>;
@@ -189,6 +190,15 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db
       .update(visits)
       .set({ ...data, updatedAt: new Date() })
+      .where(eq(visits.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async updateVisitNotes(id: string, notes: string): Promise<Visit | undefined> {
+    const [updated] = await db
+      .update(visits)
+      .set({ notes, updatedAt: new Date() })
       .where(eq(visits.id, id))
       .returning();
     return updated || undefined;
