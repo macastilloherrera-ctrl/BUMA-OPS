@@ -1,0 +1,64 @@
+# BUMA OPS - Plataforma de Operaciones
+
+## Descripcion
+Plataforma interna de operaciones para gestionar visitas a terreno, tickets operativos, incidentes y equipos criticos en edificios administrados.
+
+## Stack Tecnologico
+- **Frontend**: React + TypeScript + Tailwind CSS + Shadcn UI
+- **Backend**: Express + Node.js
+- **Base de Datos**: PostgreSQL (Neon) con Drizzle ORM
+- **Autenticacion**: Replit Auth (OpenID Connect)
+- **Almacenamiento**: Replit Object Storage para fotos
+
+## Estructura del Proyecto
+```
+├── client/                 # Frontend React
+│   └── src/
+│       ├── components/     # Componentes reutilizables
+│       ├── pages/          # Paginas de la aplicacion
+│       ├── hooks/          # Custom hooks (use-auth, use-toast)
+│       └── lib/            # Utilidades (queryClient)
+├── server/                 # Backend Express
+│   ├── routes.ts           # API endpoints
+│   ├── storage.ts          # Capa de acceso a datos
+│   └── db.ts               # Conexion a base de datos
+├── shared/                 # Codigo compartido
+│   └── schema.ts           # Modelos y tipos TypeScript
+├── DECISIONS.md            # Decisiones de arquitectura
+└── design_guidelines.md    # Guias de diseno UI
+```
+
+## Roles de Usuario
+1. **Gerente General**: Acceso total, ve costos, aprueba equipos
+2. **Gerente Operaciones**: Gestiona visitas/tickets, ve costos, aprueba equipos
+3. **Gerente Finanzas**: Solo lectura en dashboards
+4. **Ejecutivo Operaciones**: Trabajo de campo, no ve costos
+
+## Funcionalidades Principales
+
+### Ejecutivos (Mobile-First)
+- Programar y ejecutar visitas con checklist
+- Crear tickets desde hallazgos
+- Sugerir equipos criticos
+- Capturar fotos en visitas
+
+### Gerentes (Desktop-First)
+- Dashboard semaforo de tickets (rojo/amarillo/verde)
+- Panel de visitas con cobertura de edificios
+- Gestion de edificios y equipos criticos
+- Visibilidad de costos
+
+## Comandos de Desarrollo
+```bash
+npm run dev          # Iniciar servidor de desarrollo
+npm run db:push      # Sincronizar esquema de base de datos
+npm run db:studio    # Abrir Drizzle Studio
+```
+
+## Variables de Entorno
+- `DATABASE_URL`: URL de conexion a PostgreSQL
+- `SESSION_SECRET`: Secreto para sesiones
+- `REPL_ID`: ID del repl (auto-configurado)
+
+## Decisiones Tecnicas
+Ver archivo `DECISIONS.md` para documentacion completa de decisiones arquitectonicas y suposiciones del sistema.
