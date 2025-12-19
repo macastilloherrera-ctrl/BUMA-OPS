@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -18,6 +21,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -38,7 +49,7 @@ import {
   Calendar,
   RefreshCw,
 } from "lucide-react";
-import type { Ticket, Building } from "@shared/schema";
+import type { Ticket, Building, UserProfile } from "@shared/schema";
 import { format, differenceInDays } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -55,8 +66,14 @@ interface DashboardStats {
 
 export default function DashboardTickets() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [buildingFilter, setBuildingFilter] = useState<string>("all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  const [reassignDialogOpen, setReassignDialogOpen] = useState(false);
+  const [dateDialogOpen, setDateDialogOpen] = useState(false);
+  const [selectedTicket, setSelectedTicket] = useState<TicketWithBuilding | null>(null);
+  const [selectedExecutive, setSelectedExecutive] = useState<string>("");
+  const [newDueDate, setNewDueDate] = useState<string>("");
 
   const { data: tickets, isLoading } = useQuery<TicketWithBuilding[]>({
     queryKey: ["/api/tickets"],
@@ -64,6 +81,10 @@ export default function DashboardTickets() {
 
   const { data: buildings } = useQuery<Building[]>({
     queryKey: ["/api/buildings"],
+  });
+
+  const { data: executives } = useQuery<(UserProfile & { name: string })[]>({
+    queryKey: ["/api/users/executives"],
   });
 
   const updateTicketMutation = useMutation({
@@ -279,10 +300,11 @@ export default function DashboardTickets() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              onClick={() => updateTicketMutation.mutate({
-                                id: ticket.id,
-                                data: { status: "en_curso" },
-                              })}
+                              onClick={() => {
+                                setSelectedTicket(ticket);
+                                setSelectedExecutive(ticket.assignedExecutiveId || "");
+                                setReassignDialogOpen(true);
+                              }}
                             >
                               <UserPlus className="h-4 w-4 mr-2" />
                               Reasignar
@@ -296,15 +318,18 @@ export default function DashboardTickets() {
                               <ArrowUpCircle className="h-4 w-4 mr-2" />
                               Escalar
                             </DropdownMenuItem>
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setLocation(`/visitas/nueva?buildingId=${ticket.buildingId}&type=urgente&ticketId=${ticket.id}`)}
+                            >
                               <Calendar className="h-4 w-4 mr-2" />
                               Crear Visita Urgente
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => updateTicketMutation.mutate({
-                                id: ticket.id,
-                                data: { status: "reprogramado" },
-                              })}
+                              onClick={() => {
+                                setSelectedTicket(ticket);
+                                setNewDueDate(ticket.dueDate ? format(new Date(ticket.dueDate), "yyyy-MM-dd") : "");
+                                setDateDialogOpen(true);
+                              }}
                             >
                               <RefreshCw className="h-4 w-4 mr-2" />
                               Cambiar Fecha
@@ -320,6 +345,99 @@ export default function DashboardTickets() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={reassignDialogOpen} onOpenChange={setReassignDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reasignar Ticket</DialogTitle>
+            <DialogDescription>
+              Selecciona el ejecutivo al que deseas reasignar este ticket.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Ejecutivo</Label>
+              <Select value={selectedExecutive} onValueChange={setSelectedExecutive}>
+                <SelectTrigger data-testid="select-executive">
+                  <SelectValue placeholder="Seleccionar ejecutivo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {executives?.map((exec) => (
+                    <SelectItem key={exec.userId} value={exec.userId}>
+                      {exec.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReassignDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (selectedTicket && selectedExecutive) {
+                  updateTicketMutation.mutate({
+                    id: selectedTicket.id,
+                    data: { assignedExecutiveId: selectedExecutive },
+                  });
+                  setReassignDialogOpen(false);
+                }
+              }}
+              disabled={!selectedExecutive}
+              data-testid="button-confirm-reassign"
+            >
+              Reasignar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dateDialogOpen} onOpenChange={setDateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cambiar Fecha de Compromiso</DialogTitle>
+            <DialogDescription>
+              Ingresa la nueva fecha de compromiso para este ticket.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Nueva Fecha</Label>
+              <Input
+                type="date"
+                value={newDueDate}
+                onChange={(e) => setNewDueDate(e.target.value)}
+                data-testid="input-new-date"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDateDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (selectedTicket && newDueDate) {
+                  updateTicketMutation.mutate({
+                    id: selectedTicket.id,
+                    data: {
+                      dueDate: new Date(newDueDate),
+                      status: "reprogramado",
+                    },
+                  });
+                  setDateDialogOpen(false);
+                }
+              }}
+              disabled={!newDueDate}
+              data-testid="button-confirm-date"
+            >
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
