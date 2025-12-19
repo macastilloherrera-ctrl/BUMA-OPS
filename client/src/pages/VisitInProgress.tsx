@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
   ArrowLeft,
@@ -43,6 +44,7 @@ export default function VisitInProgress() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [notes, setNotes] = useState("");
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
   const [showTicketForm, setShowTicketForm] = useState(false);
@@ -53,6 +55,13 @@ export default function VisitInProgress() {
   const [ticketResponsible, setTicketResponsible] = useState<"ejecutivo" | "proveedor" | "conserjeria" | "comite">("ejecutivo");
   const [ticketResponsibleName, setTicketResponsibleName] = useState("");
   const [ticketDueDate, setTicketDueDate] = useState("");
+
+  const getCurrentUserName = () => {
+    if (user?.firstName && user?.lastName) {
+      return `${user.firstName} ${user.lastName}`;
+    }
+    return user?.email || "Ejecutivo";
+  };
 
   const { data: visit, isLoading } = useQuery<VisitInProgressData>({
     queryKey: ["/api/visits", id],
@@ -106,19 +115,45 @@ export default function VisitInProgress() {
     },
   });
 
+  const isTicketFormValid = (): boolean => {
+    const description = findingDescription.trim();
+    const category = ticketCategory;
+    const dueDate = ticketDueDate;
+    const responsibleName = ticketResponsibleName.trim();
+    
+    if (!description || description.length === 0) return false;
+    if (!category) return false;
+    if (!dueDate) return false;
+    if (ticketResponsible !== "ejecutivo" && (!responsibleName || responsibleName.length === 0)) return false;
+    return true;
+  };
+
+  const handleResponsibleTypeChange = (value: "ejecutivo" | "proveedor" | "conserjeria" | "comite") => {
+    setTicketResponsible(value);
+    if (value === "ejecutivo") {
+      setTicketResponsibleName("");
+    }
+  };
+
   const createTicketMutation = useMutation({
     mutationFn: async () => {
       if (!visit?.buildingId) {
         throw new Error("Building ID not available");
       }
+      if (!isTicketFormValid()) {
+        throw new Error("Complete todos los campos requeridos");
+      }
+      const responsibleName = ticketResponsible === "ejecutivo" 
+        ? getCurrentUserName() 
+        : ticketResponsibleName.trim();
       return apiRequest("POST", "/api/tickets", {
         buildingId: visit.buildingId,
         visitId: id,
-        description: findingDescription,
+        description: findingDescription.trim(),
         category: ticketCategory,
         priority: ticketPriority,
         responsibleType: ticketResponsible,
-        responsibleName: ticketResponsible === "ejecutivo" ? "Ejecutivo asignado" : ticketResponsibleName,
+        responsibleName,
         dueDate: ticketDueDate,
       });
     },
@@ -334,7 +369,7 @@ export default function VisitInProgress() {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <Label className="text-xs">Responsable</Label>
-                        <Select value={ticketResponsible} onValueChange={(v) => setTicketResponsible(v as "ejecutivo" | "proveedor" | "conserjeria" | "comite")}>
+                        <Select value={ticketResponsible} onValueChange={(v) => handleResponsibleTypeChange(v as "ejecutivo" | "proveedor" | "conserjeria" | "comite")}>
                           <SelectTrigger data-testid="select-ticket-responsible">
                             <SelectValue />
                           </SelectTrigger>
@@ -375,14 +410,7 @@ export default function VisitInProgress() {
                     <Button
                       size="sm"
                       onClick={() => createTicketMutation.mutate()}
-                      disabled={
-                        !findingDescription || 
-                        !ticketCategory || 
-                        !ticketDueDate || 
-                        !visit?.buildingId || 
-                        (ticketResponsible !== "ejecutivo" && !ticketResponsibleName) ||
-                        createTicketMutation.isPending
-                      }
+                      disabled={!isTicketFormValid() || !visit?.buildingId || createTicketMutation.isPending}
                       data-testid="button-save-finding"
                     >
                       <Ticket className="h-4 w-4 mr-1" />

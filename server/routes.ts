@@ -588,8 +588,18 @@ export async function registerRoutes(
     }
   });
 
+  const completeVisitSchema = z.object({
+    notes: z.string().optional().transform((v) => v?.trim() || ""),
+  });
+
   app.patch("/api/visits/:id/complete", isAuthenticated, async (req, res) => {
     try {
+      const parseResult = completeVisitSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: "Datos inválidos" });
+      }
+      const { notes } = parseResult.data;
+
       const existingVisit = await storage.getVisit(req.params.id);
       if (!existingVisit) {
         return res.status(404).json({ error: "Visita no encontrada" });
@@ -630,7 +640,7 @@ export async function registerRoutes(
       const visit = await storage.updateVisit(req.params.id, {
         status: "realizada",
         completedAt: new Date(),
-        notes: req.body.notes,
+        notes,
       });
       res.json(visit);
     } catch (error) {
