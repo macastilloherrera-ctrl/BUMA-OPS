@@ -94,8 +94,8 @@ export default function DashboardTickets() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
       toast({
-        title: "Ticket actualizado",
-        description: "Los cambios han sido guardados",
+        title: "Accion completada",
+        description: "El ticket ha sido actualizado exitosamente",
       });
     },
     onError: () => {

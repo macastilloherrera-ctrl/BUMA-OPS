@@ -50,18 +50,20 @@ const INCIDENT_STATUSES = [
   { value: "reprogramada", label: "Reprogramada" },
 ];
 
-const incidentFormSchema = z.object({
+const createIncidentFormSchema = (isUrgentVisit: boolean) => z.object({
   reason: z.string().min(1, "Ingresa el motivo del incidente"),
   failureType: z.string().min(1, "Selecciona el tipo de falla"),
   occurredAt: z.string().min(1, "Ingresa la fecha y hora"),
-  criticalAssetId: z.string().optional(),
+  criticalAssetId: isUrgentVisit 
+    ? z.string().min(1, "Selecciona el equipo critico afectado (obligatorio para visitas urgentes)")
+    : z.string().optional(),
   providerCalled: z.string().optional(),
   communityActions: z.string().optional(),
   status: z.enum(["pendiente", "en_reparacion", "reparada", "reprogramada"]),
   repairDate: z.string().optional(),
 });
 
-type IncidentFormData = z.infer<typeof incidentFormSchema>;
+type IncidentFormData = z.infer<ReturnType<typeof createIncidentFormSchema>>;
 
 interface VisitData extends Visit {
   building?: Building;
@@ -89,9 +91,10 @@ export default function IncidentForm() {
   });
 
   const existingIncident = existingIncidents?.[0];
+  const isUrgentVisit = visit?.type === "urgente";
 
   const form = useForm<IncidentFormData>({
-    resolver: zodResolver(incidentFormSchema),
+    resolver: zodResolver(createIncidentFormSchema(isUrgentVisit)),
     defaultValues: {
       reason: existingIncident?.reason || "",
       failureType: existingIncident?.failureType || "",
@@ -290,15 +293,17 @@ export default function IncidentForm() {
                   name="criticalAssetId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Equipo Critico Afectado</FormLabel>
+                      <FormLabel>
+                        Equipo Critico Afectado {isUrgentVisit && <span className="text-destructive">* (obligatorio)</span>}
+                      </FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger data-testid="select-critical-asset">
-                            <SelectValue placeholder="Selecciona equipo (opcional)" />
+                            <SelectValue placeholder={isUrgentVisit ? "Selecciona equipo (obligatorio)" : "Selecciona equipo (opcional)"} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">Ninguno</SelectItem>
+                          {!isUrgentVisit && <SelectItem value="">Ninguno</SelectItem>}
                           {assets?.map((asset) => (
                             <SelectItem key={asset.id} value={asset.id}>
                               {asset.name} ({asset.type})

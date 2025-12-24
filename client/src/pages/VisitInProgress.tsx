@@ -92,10 +92,12 @@ export default function VisitInProgress() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/visits"] });
       toast({
-        title: "Visita completada",
-        description: "El informe ha sido generado",
+        title: "Visita completada exitosamente",
+        description: "El informe ha sido generado. Redirigiendo...",
       });
-      setLocation(`/visitas/${id}/informe`);
+      setTimeout(() => {
+        setLocation(`/visitas/${id}/informe`);
+      }, 500);
     },
     onError: () => {
       toast({
@@ -304,7 +306,18 @@ export default function VisitInProgress() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowTicketForm(!showTicketForm)}
+                onClick={() => {
+                  if (!showTicketForm) {
+                    const isUrgent = visit?.type === "urgente";
+                    setTicketPriority(isUrgent ? "rojo" : "amarillo");
+                    setTicketResponsible("ejecutivo");
+                    setTicketResponsibleName("");
+                    const suggestedDate = new Date();
+                    suggestedDate.setDate(suggestedDate.getDate() + (isUrgent ? 1 : 3));
+                    setTicketDueDate(suggestedDate.toISOString().split("T")[0]);
+                  }
+                  setShowTicketForm(!showTicketForm);
+                }}
                 data-testid="button-add-finding"
               >
                 <Plus className="h-4 w-4" />

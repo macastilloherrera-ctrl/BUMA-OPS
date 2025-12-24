@@ -115,9 +115,21 @@ export default function Visits() {
                                     {visit.scheduledDate && format(new Date(visit.scheduledDate), "dd MMM, HH:mm", { locale: es })}
                                   </span>
                                 </div>
-                                <Badge variant="outline" className="text-xs">
-                                  {getVisitTypeLabel(visit.type)}
-                                </Badge>
+                                {visit.type === "urgente" ? (
+                                  <Badge variant="destructive" className="text-xs">
+                                    Urgente
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-xs">
+                                    Rutina
+                                  </Badge>
+                                )}
+                                {(visit.status === "atrasada" || 
+                                  (visit.status === "programada" && visit.scheduledDate && isBefore(new Date(visit.scheduledDate), startOfDay(new Date())))) && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    Atrasada
+                                  </Badge>
+                                )}
                               </div>
                             </div>
                             <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
