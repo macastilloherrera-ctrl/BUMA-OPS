@@ -1,4 +1,4 @@
-import { Switch, Route, Redirect } from "wouter";
+import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -12,6 +12,7 @@ import { MobileNav } from "@/components/MobileNav";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import type { UserProfile, UserRole } from "@shared/schema";
+import { getRoleHome, canAccessRoute, isManagerRole, isFinanceRole } from "@/lib/roleRoutes";
 
 import { Logo } from "@/components/Logo";
 import Landing from "@/pages/Landing";
@@ -28,6 +29,7 @@ import CriticalAssets from "@/pages/CriticalAssets";
 import Profile from "@/pages/Profile";
 import DashboardTickets from "@/pages/DashboardTickets";
 import DashboardVisits from "@/pages/DashboardVisits";
+import DashboardOverview from "@/pages/DashboardOverview";
 
 function LoadingScreen() {
   return (
@@ -41,16 +43,47 @@ function LoadingScreen() {
   );
 }
 
+import { useEffect, useRef } from "react";
+
+function RouteGuard({ userRole, children }: { userRole: UserRole; children: React.ReactNode }) {
+  const [location, setLocation] = useLocation();
+  const roleHome = getRoleHome(userRole);
+  const lastRedirectedPath = useRef<string | null>(null);
+  
+  const canAccess = canAccessRoute(userRole, location);
+  
+  useEffect(() => {
+    if (canAccess) {
+      lastRedirectedPath.current = null;
+    } else if (lastRedirectedPath.current !== location) {
+      lastRedirectedPath.current = location;
+      setLocation(roleHome);
+    }
+  }, [canAccess, location, roleHome, setLocation]);
+  
+  if (!canAccess) {
+    return null;
+  }
+  
+  return <>{children}</>;
+}
+
 function AuthenticatedApp() {
   const { user, logout } = useAuth();
 
-  const { data: userProfile } = useQuery<UserProfile>({
+  const { data: userProfile, isLoading: profileLoading } = useQuery<UserProfile>({
     queryKey: ["/api/user/profile"],
   });
 
+  if (profileLoading) {
+    return <LoadingScreen />;
+  }
+
   const userRole: UserRole = userProfile?.role || "ejecutivo_operaciones";
-  const isManager = userRole === "gerente_general" || userRole === "gerente_operaciones";
-  const isFinance = userRole === "gerente_finanzas";
+  const isGeneralManager = userRole === "gerente_general";
+  const isFinance = isFinanceRole(userRole);
+  const isManager = isManagerRole(userRole);
+  const roleHome = getRoleHome(userRole);
 
   const sidebarStyle = {
     "--sidebar-width": "16rem",
@@ -73,41 +106,40 @@ function AuthenticatedApp() {
           </header>
 
           <main className="flex-1 overflow-hidden">
-            <Switch>
-              {isManager && (
-                <>
-                  <Route path="/" component={() => <Redirect to="/dashboard/tickets" />} />
-                  <Route path="/dashboard/tickets" component={DashboardTickets} />
+            <RouteGuard userRole={userRole}>
+              <Switch>
+                <Route path="/" component={() => <Redirect to={roleHome} />} />
+                
+                {isGeneralManager && (
+                  <Route path="/dashboard/overview" component={DashboardOverview} />
+                )}
+                
+                {(isManager || isFinance) && (
+                  <>
+                    <Route path="/dashboard/tickets" component={DashboardTickets} />
+                  </>
+                )}
+
+                {isManager && (
                   <Route path="/dashboard/visitas" component={DashboardVisits} />
-                </>
-              )}
+                )}
 
-              {isFinance && (
-                <>
-                  <Route path="/" component={() => <Redirect to="/dashboard/tickets" />} />
-                  <Route path="/dashboard/tickets" component={DashboardTickets} />
-                </>
-              )}
+                <Route path="/visitas" component={Visits} />
+                <Route path="/visitas/programar" component={ScheduleVisit} />
+                <Route path="/visitas/:id" component={VisitDetail} />
+                <Route path="/visitas/:id/en-curso" component={VisitInProgress} />
+                <Route path="/visitas/:id/incidente" component={IncidentForm} />
 
-              {!isManager && !isFinance && (
-                <Route path="/" component={() => <Redirect to="/visitas" />} />
-              )}
+                <Route path="/tickets" component={Tickets} />
+                <Route path="/tickets/nuevo" component={CreateTicket} />
 
-              <Route path="/visitas" component={Visits} />
-              <Route path="/visitas/programar" component={ScheduleVisit} />
-              <Route path="/visitas/:id" component={VisitDetail} />
-              <Route path="/visitas/:id/en-curso" component={VisitInProgress} />
-              <Route path="/visitas/:id/incidente" component={IncidentForm} />
+                <Route path="/edificios" component={Buildings} />
+                <Route path="/equipos" component={CriticalAssets} />
+                <Route path="/perfil" component={() => <Profile userRole={userRole} />} />
 
-              <Route path="/tickets" component={Tickets} />
-              <Route path="/tickets/nuevo" component={CreateTicket} />
-
-              <Route path="/edificios" component={Buildings} />
-              <Route path="/equipos" component={CriticalAssets} />
-              <Route path="/perfil" component={() => <Profile userRole={userRole} />} />
-
-              <Route component={NotFound} />
-            </Switch>
+                <Route component={NotFound} />
+              </Switch>
+            </RouteGuard>
           </main>
         </div>
 

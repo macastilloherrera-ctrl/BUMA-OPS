@@ -45,7 +45,33 @@
 - Dashboards con tablas y filtros avanzados
 - Acciones en dropdown menus por fila
 
-### 4. Seguridad
+### 4. Rutas y Navegacion
+
+#### Rutas Home por Rol (Post-Login Redirect)
+| Rol | Ruta Home | Descripcion |
+|-----|-----------|-------------|
+| ejecutivo_operaciones | /visitas?view=today | Vista de visitas del dia |
+| gerente_operaciones | /dashboard/tickets | Panel de tickets semaforo |
+| gerente_finanzas | /dashboard/tickets | Panel de tickets (solo lectura) |
+| gerente_general | /dashboard/overview | Panel general con metricas |
+
+#### Rutas Permitidas por Rol
+| Rol | Rutas Permitidas |
+|-----|------------------|
+| gerente_general | /dashboard/overview, /dashboard/tickets, /dashboard/visitas, /visitas/*, /tickets/*, /edificios, /equipos, /perfil |
+| gerente_operaciones | /dashboard/tickets, /dashboard/visitas, /visitas/*, /tickets/*, /edificios, /equipos, /perfil |
+| gerente_finanzas | /dashboard/tickets, /perfil |
+| ejecutivo_operaciones | /visitas/*, /tickets/*, /edificios, /equipos, /perfil |
+
+#### Route Guard
+- Implementado en `client/src/lib/roleRoutes.ts`
+- Funcion `getRoleHome(role)`: Devuelve la ruta home segun rol
+- Funcion `canAccessRoute(role, path)`: Valida si el rol puede acceder a una ruta
+- Si un usuario accede a una ruta no permitida, se redirige automaticamente a su RoleHome
+- Usuarios NO autenticados ven la landing page (/)
+- Usuarios autenticados NUNCA ven la landing; siempre redirigen a su RoleHome
+
+### 5. Seguridad y Autorizacion
 
 #### Matriz de Autorizacion (Roles vs Scopes)
 
@@ -77,7 +103,7 @@ El sistema usa la funcion `canAccessEntity` para verificar acceso a visitas, tic
 - `canAccessBuilding`: Valida acceso a edificio antes de crear entidades
 - `canAccessEntity`: Valida acceso a entidades antes de leer/modificar
 
-### 5. Suposiciones
+### 6. Suposiciones
 
 1. **Checklists predefinidos**: Se asume un checklist estandar para visitas de rutina y otro para emergencias. Los items son fijos por ahora.
 
@@ -93,14 +119,14 @@ El sistema usa la funcion `canAccessEntity` para verificar acceso a visitas, tic
 
 7. **Zona horaria**: Se asume zona horaria de Chile (America/Santiago) para todas las fechas.
 
-### 6. Limitaciones Conocidas
+### 7. Limitaciones Conocidas
 
 1. **Generacion PDF**: Implementacion basica, puede requerir mejoras de formato
 2. **Busqueda**: No hay busqueda full-text, solo filtros basicos
 3. **Historico**: No se mantiene historial de cambios de estado
 4. **Offline**: No hay soporte offline para ejecutivos en terreno
 
-### 7. Proximos Pasos (Modulo 2+)
+### 8. Proximos Pasos (Modulo 2+)
 
 - Mantenciones programadas preventivas
 - Historial y auditoria de cambios

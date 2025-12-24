@@ -67,11 +67,51 @@ const executiveNavItems = [
   },
 ];
 
+const generalManagerNavItems = [
+  { 
+    group: "Dashboards",
+    items: [
+      { path: "/dashboard/overview", label: "Panel General", icon: LayoutDashboard },
+      { path: "/dashboard/tickets", label: "Tickets Semaforo", icon: Ticket },
+      { path: "/dashboard/visitas", label: "Panel Visitas", icon: Calendar },
+    ]
+  },
+  {
+    group: "Gestion",
+    items: [
+      { path: "/edificios", label: "Edificios", icon: Building2 },
+      { path: "/equipos", label: "Equipos Criticos", icon: Wrench },
+      { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
+    ]
+  },
+];
+
+const financeNavItems = [
+  { 
+    group: "Dashboards",
+    items: [
+      { path: "/dashboard/tickets", label: "Tickets Semaforo", icon: Ticket },
+    ]
+  },
+];
+
 export function DesktopSidebar({ user, userRole, onLogout }: DesktopSidebarProps) {
   const [location] = useLocation();
   
-  const isManager = userRole === "gerente_general" || userRole === "gerente_operaciones";
-  const navItems = isManager ? managerNavItems : executiveNavItems;
+  const getNavItems = () => {
+    switch (userRole) {
+      case "gerente_general":
+        return generalManagerNavItems;
+      case "gerente_operaciones":
+        return managerNavItems;
+      case "gerente_finanzas":
+        return financeNavItems;
+      default:
+        return executiveNavItems;
+    }
+  };
+  
+  const navItems = getNavItems();
 
   const getInitials = () => {
     const first = user.firstName?.[0] || "";
