@@ -8,7 +8,9 @@ export function registerAuthRoutes(app: Express): void {
   app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
+      console.log("[auth] Fetching user with ID:", userId);
       const user = await authStorage.getUser(userId);
+      console.log("[auth] User found:", user ? "yes" : "no");
       res.json(user);
     } catch (error) {
       console.error("Error fetching user:", error);
