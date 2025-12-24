@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import {
   insertBuildingSchema,
   insertCriticalAssetSchema,
@@ -96,6 +97,10 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  
+  // Setup Replit Auth (must be first!)
+  await setupAuth(app);
+  registerAuthRoutes(app);
   
   // Get current user's profile
   app.get("/api/user/profile", isAuthenticated, async (req, res) => {
