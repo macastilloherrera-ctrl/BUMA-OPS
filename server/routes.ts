@@ -153,7 +153,20 @@ export async function registerRoutes(
   app.get("/api/users/executives", isAuthenticated, isManager, async (req, res) => {
     try {
       const executives = await storage.getExecutives();
-      res.json(executives);
+      
+      // Map to include displayName from dev users or userId fallback
+      const { DEV_USERS } = await import("./devAuth");
+      const executivesWithNames = executives.map((exec) => {
+        const devUser = DEV_USERS.find((u) => u.id === exec.userId);
+        return {
+          userId: exec.userId,
+          displayName: devUser 
+            ? `${devUser.firstName} ${devUser.lastName}` 
+            : exec.userId.split("@")[0] || exec.userId,
+        };
+      });
+      
+      res.json(executivesWithNames);
     } catch (error) {
       console.error("Error getting executives:", error);
       res.status(500).json({ error: "Error interno del servidor" });

@@ -14,6 +14,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import {
   Select,
@@ -24,15 +25,18 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { ArrowLeft, Calendar } from "lucide-react";
-import type { Building } from "@shared/schema";
+import { ArrowLeft, Calendar, AlertTriangle } from "lucide-react";
+import type { Building, UserProfile } from "@shared/schema";
 import { Link } from "wouter";
+import { isManagerRole } from "@/lib/roleRoutes";
 
 const scheduleVisitSchema = z.object({
   buildingId: z.string().min(1, "Selecciona un edificio"),
   type: z.enum(["rutina", "urgente"]),
+  executiveId: z.string().optional(),
   scheduledDate: z.string().min(1, "Selecciona fecha y hora"),
   notes: z.string().optional(),
+  urgentReason: z.string().optional(),
 });
 
 type ScheduleVisitForm = z.infer<typeof scheduleVisitSchema>;
@@ -41,8 +45,19 @@ export default function ScheduleVisit() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
+  const { data: userProfile } = useQuery<{ role: string }>({
+    queryKey: ["/api/me"],
+  });
+
+  const isManager = userProfile ? isManagerRole(userProfile.role as any) : false;
+
   const { data: buildings } = useQuery<Building[]>({
     queryKey: ["/api/buildings"],
+  });
+
+  const { data: executives } = useQuery<Array<{ userId: string; displayName: string }>>({
+    queryKey: ["/api/users/executives"],
+    enabled: isManager,
   });
 
   const form = useForm<ScheduleVisitForm>({
@@ -50,18 +65,34 @@ export default function ScheduleVisit() {
     defaultValues: {
       buildingId: "",
       type: "rutina",
+      executiveId: "",
       scheduledDate: "",
       notes: "",
+      urgentReason: "",
     },
   });
 
+  const visitType = form.watch("type");
+
   const createVisitMutation = useMutation({
     mutationFn: async (data: ScheduleVisitForm) => {
-      return apiRequest("POST", "/api/visits", {
-        ...data,
+      const payload: any = {
+        buildingId: data.buildingId,
+        type: data.type,
         scheduledDate: new Date(data.scheduledDate).toISOString(),
         status: "programada",
-      });
+        notes: data.notes || null,
+      };
+      
+      if (data.type === "urgente" && data.urgentReason) {
+        payload.urgentReason = data.urgentReason;
+      }
+      
+      if (isManager && data.executiveId) {
+        payload.executiveId = data.executiveId;
+      }
+      
+      return apiRequest("POST", "/api/visits", payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/visits"] });
@@ -156,6 +187,62 @@ export default function ScheduleVisit() {
                     </FormItem>
                   )}
                 />
+
+                {visitType === "urgente" && (
+                  <FormField
+                    control={form.control}
+                    name="urgentReason"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center gap-2">
+                          <AlertTriangle className="h-4 w-4 text-destructive" />
+                          Motivo de urgencia (opcional)
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Ej: Falla en ascensor, corte de agua..."
+                            {...field}
+                            data-testid="input-urgent-reason"
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Breve descripcion del motivo de la visita urgente
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                {isManager && (
+                  <FormField
+                    control={form.control}
+                    name="executiveId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Ejecutivo Asignado</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-executive">
+                              <SelectValue placeholder="Selecciona un ejecutivo" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {executives?.map((exec) => (
+                              <SelectItem key={exec.userId} value={exec.userId}>
+                                {exec.displayName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          Deja vacio para asignarte a ti mismo
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 <FormField
                   control={form.control}

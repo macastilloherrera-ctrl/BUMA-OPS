@@ -125,6 +125,7 @@ export const visits = pgTable("visits", {
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
   notes: text("notes"),
+  urgentReason: text("urgent_reason"),
   checklistType: checklistTypeEnum("checklist_type"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

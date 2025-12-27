@@ -54,7 +54,7 @@ const executiveNavItems = [
   {
     group: "Mi Trabajo",
     items: [
-      { path: "/visitas", label: "Mis Visitas", icon: Calendar },
+      { path: "/visitas", label: "Agenda de Visitas", icon: Calendar },
       { path: "/tickets", label: "Mis Tickets", icon: Ticket },
     ]
   },
