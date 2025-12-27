@@ -513,18 +513,24 @@ export async function registerRoutes(
   app.post("/api/visits", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
+      const userIsManager = isManagerRole(profile);
       
       // Enforce building scope for non-managers
-      if (!isManagerRole(profile)) {
+      if (!userIsManager) {
         const canAccess = await canAccessBuilding(req.user!.id, req.body.buildingId, profile);
         if (!canAccess) {
           return res.status(403).json({ error: "No tienes permiso para crear visitas en este edificio" });
         }
       }
       
+      // Managers can assign to other executives, otherwise use current user
+      const executiveId = (userIsManager && req.body.executiveId) 
+        ? req.body.executiveId 
+        : req.user!.id;
+      
       const data = insertVisitSchema.parse({
         ...req.body,
-        executiveId: req.user!.id,
+        executiveId,
       });
       const visit = await storage.createVisit(data);
       
