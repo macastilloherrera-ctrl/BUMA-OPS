@@ -43,9 +43,12 @@ export default function DevLogin() {
       const response = await apiRequest("POST", "/api/dev-auth/login", { userId });
       return response.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-      window.location.href = "/";
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/profile"] });
+      const redirectTo = data.redirectTo || "/";
+      window.location.href = redirectTo;
     },
   });
 

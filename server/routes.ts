@@ -106,6 +106,27 @@ export async function registerRoutes(
   // Setup Dev Auth (only in development)
   registerDevAuthRoutes(app);
   
+  // Get current user info with role (combined endpoint)
+  app.get("/api/me", isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userId = user.claims?.sub || user.id;
+      const profile = await storage.getUserProfile(userId);
+      
+      res.json({
+        id: userId,
+        email: user.claims?.email || null,
+        firstName: user.claims?.first_name || null,
+        lastName: user.claims?.last_name || null,
+        role: profile?.role || "ejecutivo_operaciones",
+        buildingScope: profile?.buildingScope || "assigned",
+      });
+    } catch (error) {
+      console.error("Error getting user info:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+  
   // Get current user's profile
   app.get("/api/user/profile", isAuthenticated, async (req, res) => {
     try {

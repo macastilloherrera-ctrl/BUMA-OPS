@@ -45,6 +45,20 @@ export function isDevMode(): boolean {
   return process.env.NODE_ENV === "development" || process.env.DEV_AUTH === "true";
 }
 
+function getRedirectForRole(role: string): string {
+  switch (role) {
+    case "gerente_general":
+      return "/dashboard/overview";
+    case "gerente_operaciones":
+      return "/dashboard/tickets";
+    case "gerente_finanzas":
+      return "/dashboard/tickets";
+    case "ejecutivo_operaciones":
+    default:
+      return "/visitas?view=today";
+  }
+}
+
 export function registerDevAuthRoutes(app: Express): void {
   if (!isDevMode()) {
     console.log("[dev-auth] Dev auth disabled (production mode)");
@@ -93,6 +107,7 @@ export function registerDevAuthRoutes(app: Express): void {
         });
       }
 
+      const now = Math.floor(Date.now() / 1000);
       const sessionUser = {
         id: devUser.id,
         claims: {
@@ -102,6 +117,9 @@ export function registerDevAuthRoutes(app: Express): void {
           last_name: devUser.lastName,
           profile_image_url: devUser.profileImageUrl,
         },
+        expires_at: now + 86400 * 7,
+        access_token: "dev-token",
+        refresh_token: "dev-refresh-token",
       };
 
       req.login(sessionUser, (err) => {
@@ -109,7 +127,18 @@ export function registerDevAuthRoutes(app: Express): void {
           console.error("[dev-auth] Login error:", err);
           return res.status(500).json({ error: "Error al iniciar sesion" });
         }
-        res.json({ success: true, user: sessionUser });
+        
+        const profile = existingProfile || {
+          role: devUser.role,
+          buildingScope: devUser.role.includes("gerente") ? "all" : "assigned",
+        };
+        
+        res.json({ 
+          success: true, 
+          user: sessionUser,
+          profile,
+          redirectTo: getRedirectForRole(devUser.role),
+        });
       });
     } catch (error) {
       console.error("[dev-auth] Error:", error);
@@ -119,5 +148,11 @@ export function registerDevAuthRoutes(app: Express): void {
 
   app.get("/api/dev-auth/status", (_req: Request, res: Response) => {
     res.json({ enabled: true, mode: "development" });
+  });
+
+  app.get("/api/dev-auth/logout", (req: Request, res: Response) => {
+    req.logout(() => {
+      res.redirect("/");
+    });
   });
 }
