@@ -103,7 +103,12 @@ function AuthenticatedApp() {
         <div className="flex flex-col flex-1 min-w-0">
           <header className="hidden md:flex items-center justify-between gap-4 p-3 border-b border-border">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <ThemeToggle />
+            <div className="flex items-center gap-4">
+              <span className="text-sm text-muted-foreground" data-testid="text-user-info">
+                Conectado como: {user.email} ({userRole.replace("_", " ")})
+              </span>
+              <ThemeToggle />
+            </div>
           </header>
 
           <main className="flex-1 overflow-hidden">
