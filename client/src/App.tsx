@@ -30,6 +30,7 @@ import Profile from "@/pages/Profile";
 import DashboardTickets from "@/pages/DashboardTickets";
 import DashboardVisits from "@/pages/DashboardVisits";
 import DashboardOverview from "@/pages/DashboardOverview";
+import DevLogin from "@/pages/DevLogin";
 
 function LoadingScreen() {
   return (
@@ -151,12 +152,16 @@ function AuthenticatedApp() {
 
 function AppRouter() {
   const { user, isLoading, isAuthenticated } = useAuth();
+  const [location] = useLocation();
 
   if (isLoading) {
     return <LoadingScreen />;
   }
 
   if (!isAuthenticated) {
+    if (location === "/dev-login") {
+      return <DevLogin />;
+    }
     return <Landing />;
   }
 
