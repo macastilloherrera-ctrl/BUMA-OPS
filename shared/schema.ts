@@ -30,6 +30,7 @@ export const visitStatusEnum = pgEnum("visit_status", [
   "atrasada",
   "en_curso",
   "realizada",
+  "no_realizada",
   "cancelada"
 ]);
 
