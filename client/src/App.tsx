@@ -23,7 +23,8 @@ import VisitInProgress from "@/pages/VisitInProgress";
 import IncidentForm from "@/pages/IncidentForm";
 import ScheduleVisit from "@/pages/ScheduleVisit";
 import Tickets from "@/pages/Tickets";
-import CreateTicket from "@/pages/CreateTicket";
+import NewTicket from "@/pages/NewTicket";
+import TicketDetail from "@/pages/TicketDetail";
 import Buildings from "@/pages/Buildings";
 import BuildingDetail from "@/pages/BuildingDetail";
 import CriticalAssets from "@/pages/CriticalAssets";
@@ -139,7 +140,8 @@ function AuthenticatedApp() {
                 <Route path="/visitas/:id/incidente" component={IncidentForm} />
 
                 <Route path="/tickets" component={Tickets} />
-                <Route path="/tickets/nuevo" component={CreateTicket} />
+                <Route path="/tickets/nuevo" component={NewTicket} />
+                <Route path="/tickets/:id" component={TicketDetail} />
 
                 <Route path="/edificios" component={Buildings} />
                 <Route path="/edificios/:id" component={BuildingDetail} />

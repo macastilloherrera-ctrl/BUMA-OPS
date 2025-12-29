@@ -115,12 +115,14 @@ export default function Tickets() {
                                     {ticket.building?.name || "Edificio"}
                                   </span>
                                 </div>
-                                <div className="flex items-center gap-1">
-                                  <Calendar className="h-3 w-3" />
-                                  <span>
-                                    {ticket.dueDate && format(new Date(ticket.dueDate), "dd MMM", { locale: es })}
-                                  </span>
-                                </div>
+                                {ticket.scheduledDate && (
+                                  <div className="flex items-center gap-1">
+                                    <Calendar className="h-3 w-3" />
+                                    <span>
+                                      {format(new Date(ticket.scheduledDate), "dd MMM", { locale: es })}
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                             <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
