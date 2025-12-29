@@ -89,17 +89,20 @@ export default function Tickets() {
                   {filterTickets(tab).map((ticket) => (
                     <Link key={ticket.id} href={`/tickets/${ticket.id}`}>
                       <Card
-                        className={`hover-elevate cursor-pointer border-l-4 ${
-                          ticket.priority === "rojo"
-                            ? "border-l-red-500"
-                            : ticket.priority === "amarillo"
-                            ? "border-l-amber-500"
-                            : "border-l-green-500"
-                        }`}
+                        className="hover-elevate cursor-pointer"
                         data-testid={`card-ticket-${ticket.id}`}
                       >
                         <CardContent className="p-4">
-                          <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-start gap-3">
+                            <div
+                              className={`w-1 self-stretch rounded-full flex-shrink-0 ${
+                                ticket.priority === "rojo"
+                                  ? "bg-red-500"
+                                  : ticket.priority === "amarillo"
+                                  ? "bg-amber-500"
+                                  : "bg-green-500"
+                              }`}
+                            />
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1 flex-wrap">
                                 <PriorityBadge priority={ticket.priority} />
@@ -125,7 +128,7 @@ export default function Tickets() {
                                 )}
                               </div>
                             </div>
-                            <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                            <ChevronRight className="h-5 w-5 text-muted-foreground flex-shrink-0 self-center" />
                           </div>
                         </CardContent>
                       </Card>
