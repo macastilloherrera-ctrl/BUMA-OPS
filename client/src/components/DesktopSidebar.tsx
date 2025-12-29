@@ -44,6 +44,13 @@ const managerNavItems = [
     ]
   },
   {
+    group: "Operaciones",
+    items: [
+      { path: "/tickets", label: "Tickets", icon: Ticket },
+      { path: "/visitas", label: "Visitas", icon: Calendar },
+    ]
+  },
+  {
     group: "Gestion",
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2 },
@@ -80,6 +87,13 @@ const generalManagerNavItems = [
       { path: "/dashboard/tickets", label: "Tickets Semaforo", icon: Ticket },
       { path: "/dashboard/visitas", label: "Panel Visitas", icon: Calendar },
       { path: "/calendario", label: "Calendario", icon: CalendarDays },
+    ]
+  },
+  {
+    group: "Operaciones",
+    items: [
+      { path: "/tickets", label: "Tickets", icon: Ticket },
+      { path: "/visitas", label: "Visitas", icon: Calendar },
     ]
   },
   {
