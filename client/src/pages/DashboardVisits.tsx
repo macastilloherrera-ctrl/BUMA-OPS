@@ -38,12 +38,6 @@ interface VisitWithBuilding extends Visit {
   executiveName?: string;
 }
 
-interface DashboardStats {
-  totalBuildings: number;
-  visitedBuildings: number;
-  overdueVisits: number;
-  buildingsWithoutRecentVisit: number;
-}
 
 interface ExecutiveWorkload {
   id: string;
@@ -60,7 +54,7 @@ interface ExecutiveInfo {
 
 export default function DashboardVisits() {
   const [activeTab, setActiveTab] = useState("agenda");
-  const [showBuildingsDialog, setShowBuildingsDialog] = useState(false);
+  const [showCoverageDialog, setShowCoverageDialog] = useState(false);
   const [showOverdueDialog, setShowOverdueDialog] = useState(false);
   const [selectedBuilding, setSelectedBuilding] = useState<Building | null>(null);
 
@@ -121,21 +115,14 @@ export default function DashboardVisits() {
     return groups;
   };
 
-  const getStats = (): DashboardStats => {
+  const getStats = () => {
     if (!visits || !buildings) {
       return {
         totalBuildings: 0,
-        visitedBuildings: 0,
+        visitedThisMonth: 0,
         overdueVisits: 0,
-        buildingsWithoutRecentVisit: 0,
       };
     }
-
-    const visitedBuildingIds = new Set(
-      visits
-        .filter((v) => v.status === "realizada")
-        .map((v) => v.buildingId)
-    );
 
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -153,31 +140,40 @@ export default function DashboardVisits() {
 
     return {
       totalBuildings: buildings.length,
-      visitedBuildings: visitedBuildingIds.size,
+      visitedThisMonth: recentlyVisitedIds.size,
       overdueVisits: overdueVisits.length,
-      buildingsWithoutRecentVisit: buildings.length - recentlyVisitedIds.size,
     };
   };
 
   const stats = getStats();
   const coveragePercent = stats.totalBuildings > 0
-    ? Math.round((stats.visitedBuildings / stats.totalBuildings) * 100)
+    ? Math.round((stats.visitedThisMonth / stats.totalBuildings) * 100)
     : 0;
 
   const groupedUpcoming = groupVisitsByDate(upcomingVisits);
 
-  const getVisitedBuildingIds = () => {
+  const getMonthlyVisitedBuildingIds = () => {
     if (!visits) return new Set<string>();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     return new Set(
       visits
-        .filter((v) => v.status === "realizada")
+        .filter((v) => v.status === "realizada" && v.completedAt && new Date(v.completedAt) > thirtyDaysAgo)
         .map((v) => v.buildingId)
     );
   };
 
-  const visitedBuildingIds = getVisitedBuildingIds();
-  const visitedBuildings = buildings?.filter(b => visitedBuildingIds.has(b.id)) || [];
-  const notVisitedBuildings = buildings?.filter(b => !visitedBuildingIds.has(b.id)) || [];
+  const monthlyVisitedIds = getMonthlyVisitedBuildingIds();
+  const visitedThisMonth = buildings?.filter(b => monthlyVisitedIds.has(b.id)) || [];
+  const notVisitedThisMonth = buildings?.filter(b => !monthlyVisitedIds.has(b.id)) || [];
+
+  const getBuildingVisitHistory = (buildingId: string) => {
+    return visits?.filter(v => v.buildingId === buildingId && v.status === "realizada")
+      .sort((a, b) => {
+        if (!a.completedAt || !b.completedAt) return 0;
+        return compareAsc(new Date(b.completedAt), new Date(a.completedAt));
+      }) || [];
+  };
 
   const renderVisitCard = (visit: VisitWithBuilding) => (
     <Link key={visit.id} href={`/visitas/${visit.id}`}>
@@ -241,24 +237,30 @@ export default function DashboardVisits() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card 
           className="hover-elevate cursor-pointer" 
-          onClick={() => setShowBuildingsDialog(true)}
-          data-testid="card-buildings-visited"
+          onClick={() => setShowCoverageDialog(true)}
+          data-testid="card-monthly-coverage"
         >
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-muted-foreground">Edificios Visitados</p>
+              <p className="text-sm text-muted-foreground">Cobertura Mensual</p>
               <Building2 className="h-5 w-5 text-muted-foreground" />
             </div>
             <div className="space-y-2">
               <div className="flex items-end gap-2">
                 <span className="text-3xl font-bold" data-testid="stat-coverage">
-                  {stats.visitedBuildings}/{stats.totalBuildings}
+                  {stats.visitedThisMonth}/{stats.totalBuildings}
+                </span>
+                <span className="text-sm text-muted-foreground mb-1">
+                  edificios
                 </span>
               </div>
               <Progress value={coveragePercent} className="h-2" />
+              <p className="text-xs text-muted-foreground">
+                Ultimos 30 dias
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -278,21 +280,6 @@ export default function DashboardVisits() {
             </p>
             <p className="text-sm text-muted-foreground mt-1">
               Requieren atencion
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-muted-foreground">Sin Visita Reciente</p>
-              <Calendar className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <p className="text-3xl font-bold" data-testid="stat-no-recent">
-              {stats.buildingsWithoutRecentVisit}
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              Ultimos 30 dias
             </p>
           </CardContent>
         </Card>
@@ -483,8 +470,8 @@ export default function DashboardVisits() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={showBuildingsDialog} onOpenChange={(open) => {
-        setShowBuildingsDialog(open);
+      <Dialog open={showCoverageDialog} onOpenChange={(open) => {
+        setShowCoverageDialog(open);
         if (!open) setSelectedBuilding(null);
       }}>
         <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
@@ -501,8 +488,13 @@ export default function DashboardVisits() {
                   <ArrowLeft className="h-4 w-4" />
                 </Button>
               )}
-              {selectedBuilding ? selectedBuilding.name : "Edificios Visitados"}
+              {selectedBuilding ? selectedBuilding.name : "Cobertura Mensual"}
             </DialogTitle>
+            {!selectedBuilding && (
+              <p className="text-sm text-muted-foreground">
+                Edificios visitados en los ultimos 30 dias
+              </p>
+            )}
           </DialogHeader>
 
           {selectedBuilding ? (
@@ -544,7 +536,7 @@ export default function DashboardVisits() {
                         const isOverdue = visit.status === "atrasada" || 
                           (visit.scheduledDate && isBefore(new Date(visit.scheduledDate), todayStart));
                         return (
-                          <Link key={visit.id} href={`/visitas/${visit.id}`} onClick={() => setShowBuildingsDialog(false)}>
+                          <Link key={visit.id} href={`/visitas/${visit.id}`} onClick={() => setShowCoverageDialog(false)}>
                             <div
                               className={`flex items-center justify-between p-3 rounded-md hover-elevate cursor-pointer ${isOverdue ? 'bg-destructive/10' : 'bg-muted/30'}`}
                               data-testid={`building-visit-${visit.id}`}
@@ -584,16 +576,11 @@ export default function DashboardVisits() {
               </div>
 
               <div>
-                <h3 className="text-sm font-medium mb-3">Ultima visita completada</h3>
+                <h3 className="text-sm font-medium mb-3">Historico de visitas</h3>
                 {(() => {
-                  const lastCompleted = visits?.filter(
-                    v => v.buildingId === selectedBuilding.id && v.status === "realizada"
-                  ).sort((a, b) => {
-                    if (!a.completedAt || !b.completedAt) return 0;
-                    return compareAsc(new Date(b.completedAt), new Date(a.completedAt));
-                  })[0];
+                  const history = getBuildingVisitHistory(selectedBuilding.id);
 
-                  if (!lastCompleted) {
+                  if (history.length === 0) {
                     return (
                       <p className="text-sm text-muted-foreground py-2">
                         Este edificio nunca ha sido visitado
@@ -602,13 +589,25 @@ export default function DashboardVisits() {
                   }
 
                   return (
-                    <div className="flex items-center gap-2 text-sm p-3 rounded-md bg-muted/30">
-                      <CheckCircle2 className="h-4 w-4 text-green-600" />
-                      <span>
-                        {lastCompleted.completedAt && format(new Date(lastCompleted.completedAt), "dd MMM yyyy", { locale: es })}
-                      </span>
-                      <span className="text-muted-foreground">por</span>
-                      <span>{getExecutiveName(lastCompleted.executiveId)}</span>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {history.map((visit) => (
+                        <div 
+                          key={visit.id} 
+                          className="flex items-center gap-3 p-3 rounded-md bg-muted/30"
+                          data-testid={`history-visit-${visit.id}`}
+                        >
+                          <CheckCircle2 className="h-4 w-4 text-green-600 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm font-medium">
+                              {visit.completedAt && format(new Date(visit.completedAt), "dd MMM yyyy", { locale: es })}
+                            </span>
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <User className="h-3 w-3" />
+                              <span>{getExecutiveName(visit.executiveId)}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   );
                 })()}
@@ -616,53 +615,66 @@ export default function DashboardVisits() {
             </div>
           ) : (
             <div className="space-y-4">
-              {notVisitedBuildings.length > 0 && (
+              {notVisitedThisMonth.length > 0 && (
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
                     <XCircle className="h-4 w-4 text-destructive" />
-                    Sin visita ({notVisitedBuildings.length})
+                    Sin visita este mes ({notVisitedThisMonth.length})
                   </h3>
                   <div className="space-y-2">
-                    {notVisitedBuildings.map((building) => (
-                      <div
-                        key={building.id}
-                        className="flex items-center gap-3 p-2 rounded-md bg-muted/30 hover-elevate cursor-pointer"
-                        onClick={() => setSelectedBuilding(building)}
-                        data-testid={`building-not-visited-${building.id}`}
-                      >
-                        <Building2 className="h-4 w-4 text-muted-foreground" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{building.name}</p>
-                          <p className="text-xs text-muted-foreground truncate">{building.address}</p>
+                    {notVisitedThisMonth.map((building) => {
+                      const lastVisit = getBuildingVisitHistory(building.id)[0];
+                      return (
+                        <div
+                          key={building.id}
+                          className="flex items-center gap-3 p-2 rounded-md bg-muted/30 hover-elevate cursor-pointer"
+                          onClick={() => setSelectedBuilding(building)}
+                          data-testid={`building-not-visited-${building.id}`}
+                        >
+                          <Building2 className="h-4 w-4 text-muted-foreground" />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{building.name}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {lastVisit 
+                                ? `Ultima visita: ${format(new Date(lastVisit.completedAt!), "dd MMM yyyy", { locale: es })}`
+                                : "Nunca visitado"
+                              }
+                            </p>
+                          </div>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         </div>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
-              {visitedBuildings.length > 0 && (
+              {visitedThisMonth.length > 0 && (
                 <div>
                   <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-600" />
-                    Con visita completada ({visitedBuildings.length})
+                    Visitados este mes ({visitedThisMonth.length})
                   </h3>
                   <div className="space-y-2">
-                    {visitedBuildings.map((building) => (
-                      <div
-                        key={building.id}
-                        className="flex items-center gap-3 p-2 rounded-md bg-muted/30 hover-elevate cursor-pointer"
-                        onClick={() => setSelectedBuilding(building)}
-                        data-testid={`building-visited-${building.id}`}
-                      >
-                        <Building2 className="h-4 w-4 text-green-600" />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{building.name}</p>
-                          <p className="text-xs text-muted-foreground truncate">{building.address}</p>
+                    {visitedThisMonth.map((building) => {
+                      const lastVisit = getBuildingVisitHistory(building.id)[0];
+                      return (
+                        <div
+                          key={building.id}
+                          className="flex items-center gap-3 p-2 rounded-md bg-muted/30 hover-elevate cursor-pointer"
+                          onClick={() => setSelectedBuilding(building)}
+                          data-testid={`building-visited-${building.id}`}
+                        >
+                          <Building2 className="h-4 w-4 text-green-600" />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{building.name}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {lastVisit && `Ultima: ${format(new Date(lastVisit.completedAt!), "dd MMM yyyy", { locale: es })} - ${getExecutiveName(lastVisit.executiveId)}`}
+                            </p>
+                          </div>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         </div>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
