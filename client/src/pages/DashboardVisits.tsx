@@ -56,6 +56,7 @@ export default function DashboardVisits() {
   const [activeTab, setActiveTab] = useState("agenda");
   const [showCoverageDialog, setShowCoverageDialog] = useState(false);
   const [showOverdueDialog, setShowOverdueDialog] = useState(false);
+  const [showTeamDialog, setShowTeamDialog] = useState(false);
   const [selectedBuilding, setSelectedBuilding] = useState<Building | null>(null);
 
   const { data: visits, isLoading: visitsLoading } = useQuery<VisitWithBuilding[]>({
@@ -183,6 +184,47 @@ export default function DashboardVisits() {
   };
 
   const executiveStats = getExecutiveStats();
+
+  const getTodaysVisitsByExecutive = () => {
+    if (!visits || !executivesList) return [];
+    
+    const today = startOfDay(new Date());
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const todaysVisits = visits.filter(v => {
+      if (!v.scheduledDate) return false;
+      const visitDate = new Date(v.scheduledDate);
+      return visitDate >= today && visitDate < tomorrow && 
+             (v.status === "programada" || v.status === "en_curso");
+    });
+
+    const grouped: { [key: string]: { executive: ExecutiveInfo; visits: VisitWithBuilding[] } } = {};
+    
+    todaysVisits.forEach(visit => {
+      const execId = visit.executiveId || "unknown";
+      if (!grouped[execId]) {
+        const exec = executivesList.find(e => e.userId === execId);
+        grouped[execId] = {
+          executive: exec || { userId: execId, displayName: execId },
+          visits: []
+        };
+      }
+      grouped[execId].visits.push(visit);
+    });
+
+    return Object.values(grouped).sort((a, b) => 
+      a.executive.displayName.localeCompare(b.executive.displayName)
+    );
+  };
+
+  const getInProgressVisits = () => {
+    if (!visits) return [];
+    return visits.filter(v => v.status === "en_curso");
+  };
+
+  const todaysVisitsByExecutive = getTodaysVisitsByExecutive();
+  const inProgressVisits = getInProgressVisits();
 
   const getMonthlyVisitedBuildingIds = () => {
     if (!visits) return new Set<string>();
@@ -316,7 +358,11 @@ export default function DashboardVisits() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card 
+          className="hover-elevate cursor-pointer"
+          onClick={() => setShowTeamDialog(true)}
+          data-testid="card-team-field"
+        >
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm text-muted-foreground">Equipo en Campo</p>
@@ -819,6 +865,122 @@ export default function DashboardVisits() {
                 })}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showTeamDialog} onOpenChange={setShowTeamDialog}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Equipo en Campo
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Actividad de ejecutivos para hoy
+            </p>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {inProgressVisits.length > 0 && (
+              <div className="p-3 rounded-md bg-green-500/10 border border-green-500/20">
+                <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                  <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  En terreno ahora ({inProgressVisits.length})
+                </h3>
+                <div className="space-y-2">
+                  {inProgressVisits.map((visit) => (
+                    <Link 
+                      key={visit.id} 
+                      href={`/visitas/${visit.id}`}
+                      onClick={() => setShowTeamDialog(false)}
+                    >
+                      <div
+                        className="flex items-center gap-3 p-3 rounded-md bg-background hover-elevate cursor-pointer"
+                        data-testid={`in-progress-visit-${visit.id}`}
+                      >
+                        <User className="h-4 w-4 text-green-600 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm">{getExecutiveName(visit.executiveId)}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {visit.building?.name || "Edificio"}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <Badge variant="outline" className="text-xs bg-green-500/10 text-green-700 border-green-500/30">
+                            En curso
+                          </Badge>
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {todaysVisitsByExecutive.length > 0 ? (
+              <div className="p-3 rounded-md bg-muted/30 border">
+                <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  Visitas programadas hoy ({todaysVisitsByExecutive.reduce((acc, g) => acc + g.visits.length, 0)})
+                </h3>
+                <div className="space-y-4">
+                  {todaysVisitsByExecutive.map((group) => (
+                    <div key={group.executive.userId} className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <User className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="text-sm font-medium">{group.executive.displayName}</span>
+                        <Badge variant="secondary" className="text-xs">
+                          {group.visits.length} {group.visits.length === 1 ? 'visita' : 'visitas'}
+                        </Badge>
+                      </div>
+                      <div className="pl-5 space-y-1">
+                        {group.visits
+                          .sort((a, b) => {
+                            if (!a.scheduledDate || !b.scheduledDate) return 0;
+                            return compareAsc(new Date(a.scheduledDate), new Date(b.scheduledDate));
+                          })
+                          .map((visit) => (
+                            <Link 
+                              key={visit.id} 
+                              href={`/visitas/${visit.id}`}
+                              onClick={() => setShowTeamDialog(false)}
+                            >
+                              <div 
+                                className="flex items-center gap-3 p-2 rounded-md bg-background hover-elevate cursor-pointer"
+                                data-testid={`today-visit-${visit.id}`}
+                              >
+                                <Clock className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                <span className="text-sm font-medium">
+                                  {visit.scheduledDate && format(new Date(visit.scheduledDate), "HH:mm", { locale: es })}
+                                </span>
+                                <span className="text-sm text-muted-foreground truncate flex-1">
+                                  {visit.building?.name || "Edificio"}
+                                </span>
+                                {visit.status === "en_curso" && (
+                                  <Badge variant="outline" className="text-xs bg-green-500/10 text-green-700 border-green-500/30">
+                                    En curso
+                                  </Badge>
+                                )}
+                                {visit.type === "urgente" && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    Urgente
+                                  </Badge>
+                                )}
+                              </div>
+                            </Link>
+                          ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground">No hay visitas programadas para hoy</p>
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
