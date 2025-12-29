@@ -7,10 +7,16 @@ import {
   buildingFolders,
   buildingFiles,
   criticalAssets,
+  maintainerCategories,
+  maintainers,
+  maintainerCategoryLinks,
   visits,
   visitChecklistItems,
   incidents,
   tickets,
+  ticketQuotes,
+  ticketPhotos,
+  ticketCommunications,
   attachments,
   type User,
   type UserProfile,
@@ -27,6 +33,12 @@ import {
   type InsertBuildingFile,
   type CriticalAsset,
   type InsertCriticalAsset,
+  type MaintainerCategory,
+  type InsertMaintainerCategory,
+  type Maintainer,
+  type InsertMaintainer,
+  type MaintainerCategoryLink,
+  type InsertMaintainerCategoryLink,
   type Visit,
   type InsertVisit,
   type VisitChecklistItem,
@@ -35,6 +47,12 @@ import {
   type InsertIncident,
   type Ticket,
   type InsertTicket,
+  type TicketQuote,
+  type InsertTicketQuote,
+  type TicketPhoto,
+  type InsertTicketPhoto,
+  type TicketCommunication,
+  type InsertTicketCommunication,
   type Attachment,
   type InsertAttachment,
 } from "@shared/schema";
@@ -117,6 +135,43 @@ export interface IStorage {
   getAttachment(id: string): Promise<Attachment | undefined>;
   createAttachment(attachment: InsertAttachment): Promise<Attachment>;
   deleteAttachment(id: string): Promise<boolean>;
+
+  // Maintainer Categories
+  getMaintainerCategories(): Promise<MaintainerCategory[]>;
+  getMaintainerCategory(id: string): Promise<MaintainerCategory | undefined>;
+  createMaintainerCategory(category: InsertMaintainerCategory): Promise<MaintainerCategory>;
+  deleteMaintainerCategory(id: string): Promise<boolean>;
+
+  // Maintainers
+  getMaintainers(): Promise<Maintainer[]>;
+  getMaintainer(id: string): Promise<Maintainer | undefined>;
+  createMaintainer(maintainer: InsertMaintainer): Promise<Maintainer>;
+  updateMaintainer(id: string, data: Partial<InsertMaintainer>): Promise<Maintainer | undefined>;
+  deleteMaintainer(id: string): Promise<boolean>;
+
+  // Maintainer Category Links
+  getMaintainerCategoryLinks(maintainerId: string): Promise<MaintainerCategoryLink[]>;
+  getMaintainersByCategory(categoryId: string): Promise<Maintainer[]>;
+  linkMaintainerToCategory(maintainerId: string, categoryId: string): Promise<MaintainerCategoryLink>;
+  unlinkMaintainerFromCategory(maintainerId: string, categoryId: string): Promise<boolean>;
+  replaceMaintainerCategories(maintainerId: string, categoryIds: string[]): Promise<MaintainerCategoryLink[]>;
+
+  // Ticket Quotes
+  getTicketQuotes(ticketId: string): Promise<TicketQuote[]>;
+  getTicketQuote(id: string): Promise<TicketQuote | undefined>;
+  createTicketQuote(quote: InsertTicketQuote): Promise<TicketQuote>;
+  updateTicketQuote(id: string, data: Partial<InsertTicketQuote>): Promise<TicketQuote | undefined>;
+  deleteTicketQuote(id: string): Promise<boolean>;
+
+  // Ticket Photos
+  getTicketPhotos(ticketId: string): Promise<TicketPhoto[]>;
+  createTicketPhoto(photo: InsertTicketPhoto): Promise<TicketPhoto>;
+  deleteTicketPhoto(id: string): Promise<boolean>;
+
+  // Ticket Communications
+  getTicketCommunications(ticketId: string): Promise<TicketCommunication[]>;
+  createTicketCommunication(comm: InsertTicketCommunication): Promise<TicketCommunication>;
+  acknowledgeTicketCommunication(id: string, acknowledgedBy: string): Promise<TicketCommunication | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -453,6 +508,164 @@ export class DatabaseStorage implements IStorage {
   async deleteAttachment(id: string): Promise<boolean> {
     await db.delete(attachments).where(eq(attachments.id, id));
     return true;
+  }
+
+  // Maintainer Categories
+  async getMaintainerCategories(): Promise<MaintainerCategory[]> {
+    return db.select().from(maintainerCategories).orderBy(maintainerCategories.name);
+  }
+
+  async getMaintainerCategory(id: string): Promise<MaintainerCategory | undefined> {
+    const [category] = await db.select().from(maintainerCategories).where(eq(maintainerCategories.id, id));
+    return category || undefined;
+  }
+
+  async createMaintainerCategory(category: InsertMaintainerCategory): Promise<MaintainerCategory> {
+    const [created] = await db.insert(maintainerCategories).values(category).returning();
+    return created;
+  }
+
+  async deleteMaintainerCategory(id: string): Promise<boolean> {
+    await db.delete(maintainerCategories).where(eq(maintainerCategories.id, id));
+    return true;
+  }
+
+  // Maintainers
+  async getMaintainers(): Promise<Maintainer[]> {
+    return db.select().from(maintainers).orderBy(maintainers.companyName);
+  }
+
+  async getMaintainer(id: string): Promise<Maintainer | undefined> {
+    const [maintainer] = await db.select().from(maintainers).where(eq(maintainers.id, id));
+    return maintainer || undefined;
+  }
+
+  async createMaintainer(maintainer: InsertMaintainer): Promise<Maintainer> {
+    const [created] = await db.insert(maintainers).values(maintainer).returning();
+    return created;
+  }
+
+  async updateMaintainer(id: string, data: Partial<InsertMaintainer>): Promise<Maintainer | undefined> {
+    const [updated] = await db
+      .update(maintainers)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(maintainers.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteMaintainer(id: string): Promise<boolean> {
+    await db.delete(maintainerCategoryLinks).where(eq(maintainerCategoryLinks.maintainerId, id));
+    await db.delete(maintainers).where(eq(maintainers.id, id));
+    return true;
+  }
+
+  // Maintainer Category Links
+  async getMaintainerCategoryLinks(maintainerId: string): Promise<MaintainerCategoryLink[]> {
+    return db.select().from(maintainerCategoryLinks).where(eq(maintainerCategoryLinks.maintainerId, maintainerId));
+  }
+
+  async getMaintainersByCategory(categoryId: string): Promise<Maintainer[]> {
+    const links = await db.select().from(maintainerCategoryLinks).where(eq(maintainerCategoryLinks.categoryId, categoryId));
+    if (links.length === 0) return [];
+    
+    const maintainerIds = links.map(l => l.maintainerId);
+    return db.select().from(maintainers).where(
+      sql`${maintainers.id} IN (${sql.join(maintainerIds.map(id => sql`${id}`), sql`, `)})`
+    );
+  }
+
+  async linkMaintainerToCategory(maintainerId: string, categoryId: string): Promise<MaintainerCategoryLink> {
+    const [created] = await db.insert(maintainerCategoryLinks).values({ maintainerId, categoryId }).returning();
+    return created;
+  }
+
+  async unlinkMaintainerFromCategory(maintainerId: string, categoryId: string): Promise<boolean> {
+    await db.delete(maintainerCategoryLinks).where(
+      and(
+        eq(maintainerCategoryLinks.maintainerId, maintainerId),
+        eq(maintainerCategoryLinks.categoryId, categoryId)
+      )
+    );
+    return true;
+  }
+
+  async replaceMaintainerCategories(maintainerId: string, categoryIds: string[]): Promise<MaintainerCategoryLink[]> {
+    await db.delete(maintainerCategoryLinks).where(eq(maintainerCategoryLinks.maintainerId, maintainerId));
+    
+    if (categoryIds.length === 0) return [];
+    
+    const links = categoryIds.map(categoryId => ({ maintainerId, categoryId }));
+    return db.insert(maintainerCategoryLinks).values(links).returning();
+  }
+
+  // Ticket Quotes
+  async getTicketQuotes(ticketId: string): Promise<TicketQuote[]> {
+    return db.select().from(ticketQuotes).where(eq(ticketQuotes.ticketId, ticketId)).orderBy(ticketQuotes.amountNet);
+  }
+
+  async getTicketQuote(id: string): Promise<TicketQuote | undefined> {
+    const [quote] = await db.select().from(ticketQuotes).where(eq(ticketQuotes.id, id));
+    return quote || undefined;
+  }
+
+  async createTicketQuote(quote: InsertTicketQuote): Promise<TicketQuote> {
+    const amountTotal = Number(quote.amountNet) * (1 + Number(quote.ivaRate || 19) / 100);
+    const [created] = await db.insert(ticketQuotes).values({ ...quote, amountTotal: amountTotal.toString() }).returning();
+    return created;
+  }
+
+  async updateTicketQuote(id: string, data: Partial<InsertTicketQuote>): Promise<TicketQuote | undefined> {
+    const updateData: any = { ...data };
+    if (data.amountNet || data.ivaRate) {
+      const existing = await this.getTicketQuote(id);
+      if (existing) {
+        const net = Number(data.amountNet || existing.amountNet);
+        const iva = Number(data.ivaRate || existing.ivaRate || 19);
+        updateData.amountTotal = (net * (1 + iva / 100)).toString();
+      }
+    }
+    const [updated] = await db.update(ticketQuotes).set(updateData).where(eq(ticketQuotes.id, id)).returning();
+    return updated || undefined;
+  }
+
+  async deleteTicketQuote(id: string): Promise<boolean> {
+    await db.delete(ticketQuotes).where(eq(ticketQuotes.id, id));
+    return true;
+  }
+
+  // Ticket Photos
+  async getTicketPhotos(ticketId: string): Promise<TicketPhoto[]> {
+    return db.select().from(ticketPhotos).where(eq(ticketPhotos.ticketId, ticketId)).orderBy(desc(ticketPhotos.createdAt));
+  }
+
+  async createTicketPhoto(photo: InsertTicketPhoto): Promise<TicketPhoto> {
+    const [created] = await db.insert(ticketPhotos).values(photo).returning();
+    return created;
+  }
+
+  async deleteTicketPhoto(id: string): Promise<boolean> {
+    await db.delete(ticketPhotos).where(eq(ticketPhotos.id, id));
+    return true;
+  }
+
+  // Ticket Communications
+  async getTicketCommunications(ticketId: string): Promise<TicketCommunication[]> {
+    return db.select().from(ticketCommunications).where(eq(ticketCommunications.ticketId, ticketId)).orderBy(desc(ticketCommunications.sentAt));
+  }
+
+  async createTicketCommunication(comm: InsertTicketCommunication): Promise<TicketCommunication> {
+    const [created] = await db.insert(ticketCommunications).values(comm).returning();
+    return created;
+  }
+
+  async acknowledgeTicketCommunication(id: string, acknowledgedBy: string): Promise<TicketCommunication | undefined> {
+    const [updated] = await db
+      .update(ticketCommunications)
+      .set({ acknowledgedBy, acknowledgedAt: new Date() })
+      .where(eq(ticketCommunications.id, id))
+      .returning();
+    return updated || undefined;
   }
 }
 

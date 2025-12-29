@@ -19,6 +19,7 @@ import {
   Wrench,
   Users,
   LogOut,
+  HardHat,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -45,6 +46,7 @@ const managerNavItems = [
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2 },
       { path: "/equipos", label: "Equipos Criticos", icon: Wrench },
+      { path: "/mantenedores", label: "Mantenedores", icon: HardHat },
       { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
     ]
   },
@@ -81,6 +83,7 @@ const generalManagerNavItems = [
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2 },
       { path: "/equipos", label: "Equipos Criticos", icon: Wrench },
+      { path: "/mantenedores", label: "Mantenedores", icon: HardHat },
       { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
     ]
   },

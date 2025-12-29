@@ -10,10 +10,15 @@ import {
   insertBuildingFolderSchema,
   insertBuildingFileSchema,
   insertCriticalAssetSchema,
+  insertMaintainerCategorySchema,
+  insertMaintainerSchema,
   insertVisitSchema,
   insertVisitChecklistItemSchema,
   insertIncidentSchema,
   insertTicketSchema,
+  insertTicketQuoteSchema,
+  insertTicketPhotoSchema,
+  insertTicketCommunicationSchema,
   insertAttachmentSchema,
   type UserRole,
   type UserProfile,
@@ -1301,6 +1306,323 @@ export async function registerRoutes(
       res.status(204).send();
     } catch (error) {
       console.error("Error deleting attachment:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ========== MAINTAINER CATEGORIES ROUTES ==========
+  
+  app.get("/api/maintainers/categories", isAuthenticated, async (req, res) => {
+    try {
+      const categories = await storage.getMaintainerCategories();
+      res.json(categories);
+    } catch (error) {
+      console.error("Error fetching maintainer categories:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/maintainers/categories", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const data = insertMaintainerCategorySchema.parse({
+        ...req.body,
+        createdBy: req.user!.id,
+      });
+      const category = await storage.createMaintainerCategory(data);
+      res.status(201).json(category);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos invalidos", details: error.errors });
+      }
+      console.error("Error creating maintainer category:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/maintainers/categories/:id", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const category = await storage.getMaintainerCategory(req.params.id);
+      if (!category) {
+        return res.status(404).json({ error: "Categoria no encontrada" });
+      }
+      if (category.isDefault) {
+        return res.status(400).json({ error: "No se puede eliminar una categoria por defecto" });
+      }
+      await storage.deleteMaintainerCategory(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting maintainer category:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ========== MAINTAINERS ROUTES ==========
+
+  app.get("/api/maintainers", isAuthenticated, async (req, res) => {
+    try {
+      const maintainersList = await storage.getMaintainers();
+      
+      // For each maintainer, get their category links
+      const maintainersWithCategories = await Promise.all(
+        maintainersList.map(async (m) => {
+          const links = await storage.getMaintainerCategoryLinks(m.id);
+          const categoryIds = links.map(l => l.categoryId);
+          return { ...m, categoryIds };
+        })
+      );
+      
+      res.json(maintainersWithCategories);
+    } catch (error) {
+      console.error("Error fetching maintainers:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/maintainers/by-category/:categoryId", isAuthenticated, async (req, res) => {
+    try {
+      const maintainersList = await storage.getMaintainersByCategory(req.params.categoryId);
+      res.json(maintainersList);
+    } catch (error) {
+      console.error("Error fetching maintainers by category:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/maintainers/:id", isAuthenticated, async (req, res) => {
+    try {
+      const maintainer = await storage.getMaintainer(req.params.id);
+      if (!maintainer) {
+        return res.status(404).json({ error: "Mantenedor no encontrado" });
+      }
+      
+      const links = await storage.getMaintainerCategoryLinks(maintainer.id);
+      const categoryIds = links.map(l => l.categoryId);
+      
+      res.json({ ...maintainer, categoryIds });
+    } catch (error) {
+      console.error("Error fetching maintainer:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/maintainers", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const { categoryIds, ...maintainerData } = req.body;
+      
+      const data = insertMaintainerSchema.parse({
+        ...maintainerData,
+        createdBy: req.user!.id,
+      });
+      
+      const maintainer = await storage.createMaintainer(data);
+      
+      // Link categories if provided
+      if (categoryIds && Array.isArray(categoryIds) && categoryIds.length > 0) {
+        await storage.replaceMaintainerCategories(maintainer.id, categoryIds);
+      }
+      
+      const links = await storage.getMaintainerCategoryLinks(maintainer.id);
+      res.status(201).json({ ...maintainer, categoryIds: links.map(l => l.categoryId) });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos invalidos", details: error.errors });
+      }
+      console.error("Error creating maintainer:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.patch("/api/maintainers/:id", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const { categoryIds, ...maintainerData } = req.body;
+      
+      const maintainer = await storage.updateMaintainer(req.params.id, maintainerData);
+      if (!maintainer) {
+        return res.status(404).json({ error: "Mantenedor no encontrado" });
+      }
+      
+      // Update categories if provided
+      if (categoryIds && Array.isArray(categoryIds)) {
+        await storage.replaceMaintainerCategories(maintainer.id, categoryIds);
+      }
+      
+      const links = await storage.getMaintainerCategoryLinks(maintainer.id);
+      res.json({ ...maintainer, categoryIds: links.map(l => l.categoryId) });
+    } catch (error) {
+      console.error("Error updating maintainer:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/maintainers/:id", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const maintainer = await storage.getMaintainer(req.params.id);
+      if (!maintainer) {
+        return res.status(404).json({ error: "Mantenedor no encontrado" });
+      }
+      await storage.deleteMaintainer(req.params.id);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting maintainer:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ========== TICKET QUOTES ROUTES ==========
+
+  app.get("/api/tickets/:ticketId/quotes", isAuthenticated, async (req, res) => {
+    try {
+      const ticket = await storage.getTicket(req.params.ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket no encontrado" });
+      }
+      
+      const profile = await storage.getUserProfile(req.user!.id);
+      const hasAccess = await canAccessEntity(req.user!.id, profile, ticket);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "No tienes acceso a este ticket" });
+      }
+      
+      const quotes = await storage.getTicketQuotes(req.params.ticketId);
+      res.json(quotes);
+    } catch (error) {
+      console.error("Error fetching ticket quotes:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/tickets/:ticketId/quotes", isAuthenticated, async (req, res) => {
+    try {
+      const ticket = await storage.getTicket(req.params.ticketId);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket no encontrado" });
+      }
+      
+      const profile = await storage.getUserProfile(req.user!.id);
+      const hasAccess = await canAccessEntity(req.user!.id, profile, ticket);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "No tienes acceso a este ticket" });
+      }
+      
+      const data = insertTicketQuoteSchema.parse({
+        ...req.body,
+        ticketId: req.params.ticketId,
+        createdBy: req.user!.id,
+      });
+      
+      const quote = await storage.createTicketQuote(data);
+      res.status(201).json(quote);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos invalidos", details: error.errors });
+      }
+      console.error("Error creating ticket quote:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.patch("/api/tickets/:ticketId/quotes/:quoteId", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const quote = await storage.updateTicketQuote(req.params.quoteId, req.body);
+      if (!quote) {
+        return res.status(404).json({ error: "Cotizacion no encontrada" });
+      }
+      res.json(quote);
+    } catch (error) {
+      console.error("Error updating ticket quote:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/tickets/:ticketId/quotes/:quoteId", isAuthenticated, isManager, async (req, res) => {
+    try {
+      await storage.deleteTicketQuote(req.params.quoteId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting ticket quote:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ========== TICKET PHOTOS ROUTES ==========
+
+  app.get("/api/tickets/:ticketId/photos", isAuthenticated, async (req, res) => {
+    try {
+      const photos = await storage.getTicketPhotos(req.params.ticketId);
+      res.json(photos);
+    } catch (error) {
+      console.error("Error fetching ticket photos:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/tickets/:ticketId/photos", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertTicketPhotoSchema.parse({
+        ...req.body,
+        ticketId: req.params.ticketId,
+        uploadedBy: req.user!.id,
+      });
+      const photo = await storage.createTicketPhoto(data);
+      res.status(201).json(photo);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos invalidos", details: error.errors });
+      }
+      console.error("Error creating ticket photo:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/tickets/:ticketId/photos/:photoId", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteTicketPhoto(req.params.photoId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting ticket photo:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ========== TICKET COMMUNICATIONS ROUTES ==========
+
+  app.get("/api/tickets/:ticketId/communications", isAuthenticated, async (req, res) => {
+    try {
+      const communications = await storage.getTicketCommunications(req.params.ticketId);
+      res.json(communications);
+    } catch (error) {
+      console.error("Error fetching ticket communications:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/tickets/:ticketId/communications", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertTicketCommunicationSchema.parse({
+        ...req.body,
+        ticketId: req.params.ticketId,
+        sentBy: req.user!.id,
+      });
+      const communication = await storage.createTicketCommunication(data);
+      res.status(201).json(communication);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos invalidos", details: error.errors });
+      }
+      console.error("Error creating ticket communication:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.patch("/api/tickets/:ticketId/communications/:commId/acknowledge", isAuthenticated, async (req, res) => {
+    try {
+      const communication = await storage.acknowledgeTicketCommunication(req.params.commId, req.user!.id);
+      if (!communication) {
+        return res.status(404).json({ error: "Comunicado no encontrado" });
+      }
+      res.json(communication);
+    } catch (error) {
+      console.error("Error acknowledging communication:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });

@@ -31,6 +31,7 @@ import Profile from "@/pages/Profile";
 import DashboardTickets from "@/pages/DashboardTickets";
 import DashboardVisits from "@/pages/DashboardVisits";
 import DashboardOverview from "@/pages/DashboardOverview";
+import Maintainers from "@/pages/Maintainers";
 import DevLogin from "@/pages/DevLogin";
 
 function LoadingScreen() {
@@ -143,6 +144,10 @@ function AuthenticatedApp() {
                 <Route path="/edificios" component={Buildings} />
                 <Route path="/edificios/:id" component={BuildingDetail} />
                 <Route path="/equipos" component={CriticalAssets} />
+                
+                {isManager && (
+                  <Route path="/mantenedores" component={Maintainers} />
+                )}
                 <Route path="/perfil" component={() => <Profile userRole={userRole} />} />
 
                 <Route component={NotFound} />
