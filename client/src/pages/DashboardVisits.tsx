@@ -7,13 +7,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Building2,
   Calendar,
@@ -23,6 +21,8 @@ import {
   Plus,
   MapPin,
   Clock,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import type { Visit, Building } from "@shared/schema";
 import { format, differenceInDays, isToday, isTomorrow, isBefore, startOfDay, compareAsc } from "date-fns";
@@ -52,6 +52,7 @@ interface ExecutiveWorkload {
 
 export default function DashboardVisits() {
   const [activeTab, setActiveTab] = useState("agenda");
+  const [showBuildingsDialog, setShowBuildingsDialog] = useState(false);
 
   const { data: visits, isLoading: visitsLoading } = useQuery<VisitWithBuilding[]>({
     queryKey: ["/api/visits"],
@@ -145,6 +146,19 @@ export default function DashboardVisits() {
 
   const groupedUpcoming = groupVisitsByDate(upcomingVisits);
 
+  const getVisitedBuildingIds = () => {
+    if (!visits) return new Set<string>();
+    return new Set(
+      visits
+        .filter((v) => v.status === "realizada")
+        .map((v) => v.buildingId)
+    );
+  };
+
+  const visitedBuildingIds = getVisitedBuildingIds();
+  const visitedBuildings = buildings?.filter(b => visitedBuildingIds.has(b.id)) || [];
+  const notVisitedBuildings = buildings?.filter(b => !visitedBuildingIds.has(b.id)) || [];
+
   const renderVisitCard = (visit: VisitWithBuilding) => (
     <Link key={visit.id} href={`/visitas/${visit.id}`}>
       <Card className="hover-elevate cursor-pointer" data-testid={`card-visit-${visit.id}`}>
@@ -208,19 +222,20 @@ export default function DashboardVisits() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
+        <Card 
+          className="hover-elevate cursor-pointer" 
+          onClick={() => setShowBuildingsDialog(true)}
+          data-testid="card-buildings-visited"
+        >
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-muted-foreground">Cobertura Edificios</p>
+              <p className="text-sm text-muted-foreground">Edificios Visitados</p>
               <Building2 className="h-5 w-5 text-muted-foreground" />
             </div>
             <div className="space-y-2">
               <div className="flex items-end gap-2">
                 <span className="text-3xl font-bold" data-testid="stat-coverage">
-                  {coveragePercent}%
-                </span>
-                <span className="text-sm text-muted-foreground mb-1">
-                  ({stats.visitedBuildings}/{stats.totalBuildings})
+                  {stats.visitedBuildings}/{stats.totalBuildings}
                 </span>
               </div>
               <Progress value={coveragePercent} className="h-2" />
@@ -443,6 +458,67 @@ export default function DashboardVisits() {
           )}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={showBuildingsDialog} onOpenChange={setShowBuildingsDialog}>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edificios Visitados</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {notVisitedBuildings.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
+                  <XCircle className="h-4 w-4 text-destructive" />
+                  Sin visita ({notVisitedBuildings.length})
+                </h3>
+                <div className="space-y-2">
+                  {notVisitedBuildings.map((building) => (
+                    <div
+                      key={building.id}
+                      className="flex items-center gap-3 p-2 rounded-md bg-muted/30"
+                      data-testid={`building-not-visited-${building.id}`}
+                    >
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{building.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{building.address}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {visitedBuildings.length > 0 && (
+              <div>
+                <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  Con visita completada ({visitedBuildings.length})
+                </h3>
+                <div className="space-y-2">
+                  {visitedBuildings.map((building) => (
+                    <div
+                      key={building.id}
+                      className="flex items-center gap-3 p-2 rounded-md bg-muted/30"
+                      data-testid={`building-visited-${building.id}`}
+                    >
+                      <Building2 className="h-4 w-4 text-green-600" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{building.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{building.address}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {buildings?.length === 0 && (
+              <p className="text-center text-muted-foreground py-4">
+                No hay edificios registrados
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
