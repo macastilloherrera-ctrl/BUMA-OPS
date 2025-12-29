@@ -115,20 +115,19 @@ export default function DashboardVisits() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-2xl font-semibold">Panel de Visitas</h1>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" asChild data-testid="button-create-urgent">
-            <Link href="/visitas/programar?type=urgente">
+          <Button asChild data-testid="button-schedule-visit">
+            <Link href="/visitas/programar">
               <Plus className="h-4 w-4 mr-2" />
-              Visita Urgente
+              Programar visita
             </Link>
           </Button>
           <Button
             variant="outline"
-            size="sm"
+            size="icon"
             onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/visits"] })}
             data-testid="button-refresh"
           >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Actualizar
+            <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
       </div>
