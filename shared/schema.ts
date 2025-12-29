@@ -117,6 +117,9 @@ export const buildingStaff = pgTable("building_staff", {
   birthDate: timestamp("birth_date"),
   phone: varchar("phone", { length: 50 }),
   email: varchar("email", { length: 255 }),
+  isActive: boolean("is_active").notNull().default(true),
+  deactivatedAt: timestamp("deactivated_at"),
+  deactivatedBy: varchar("deactivated_by"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -126,6 +129,29 @@ export const buildingFeatures = pgTable("building_features", {
   buildingId: varchar("building_id").notNull(),
   name: varchar("name", { length: 255 }).notNull(),
   value: varchar("value", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Building Folders table (for document organization)
+export const buildingFolders = pgTable("building_folders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  buildingId: varchar("building_id").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Building Files table (files within folders)
+export const buildingFiles = pgTable("building_files", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  folderId: varchar("folder_id").notNull(),
+  buildingId: varchar("building_id").notNull(),
+  fileName: varchar("file_name", { length: 255 }).notNull(),
+  objectStorageKey: text("object_storage_key").notNull(),
+  fileType: varchar("file_type", { length: 100 }),
+  fileSize: integer("file_size"),
+  uploadedBy: varchar("uploaded_by").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -240,6 +266,8 @@ export const buildingsRelations = relations(buildings, ({ one, many }) => ({
   incidents: many(incidents),
   staff: many(buildingStaff),
   features: many(buildingFeatures),
+  folders: many(buildingFolders),
+  files: many(buildingFiles),
 }));
 
 export const buildingStaffRelations = relations(buildingStaff, ({ one }) => ({
@@ -252,6 +280,25 @@ export const buildingStaffRelations = relations(buildingStaff, ({ one }) => ({
 export const buildingFeaturesRelations = relations(buildingFeatures, ({ one }) => ({
   building: one(buildings, {
     fields: [buildingFeatures.buildingId],
+    references: [buildings.id],
+  }),
+}));
+
+export const buildingFoldersRelations = relations(buildingFolders, ({ one, many }) => ({
+  building: one(buildings, {
+    fields: [buildingFolders.buildingId],
+    references: [buildings.id],
+  }),
+  files: many(buildingFiles),
+}));
+
+export const buildingFilesRelations = relations(buildingFiles, ({ one }) => ({
+  folder: one(buildingFolders, {
+    fields: [buildingFiles.folderId],
+    references: [buildingFolders.id],
+  }),
+  building: one(buildings, {
+    fields: [buildingFiles.buildingId],
     references: [buildings.id],
   }),
 }));
@@ -339,6 +386,16 @@ export const insertBuildingFeatureSchema = createInsertSchema(buildingFeatures).
   createdAt: true,
 });
 
+export const insertBuildingFolderSchema = createInsertSchema(buildingFolders).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertBuildingFileSchema = createInsertSchema(buildingFiles).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertCriticalAssetSchema = createInsertSchema(criticalAssets).omit({
   id: true,
   createdAt: true,
@@ -385,6 +442,12 @@ export type BuildingStaff = typeof buildingStaff.$inferSelect;
 
 export type InsertBuildingFeature = z.infer<typeof insertBuildingFeatureSchema>;
 export type BuildingFeature = typeof buildingFeatures.$inferSelect;
+
+export type InsertBuildingFolder = z.infer<typeof insertBuildingFolderSchema>;
+export type BuildingFolder = typeof buildingFolders.$inferSelect;
+
+export type InsertBuildingFile = z.infer<typeof insertBuildingFileSchema>;
+export type BuildingFile = typeof buildingFiles.$inferSelect;
 
 export type InsertCriticalAsset = z.infer<typeof insertCriticalAssetSchema>;
 export type CriticalAsset = typeof criticalAssets.$inferSelect;
