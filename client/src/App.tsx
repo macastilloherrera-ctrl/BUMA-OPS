@@ -25,6 +25,7 @@ import ScheduleVisit from "@/pages/ScheduleVisit";
 import Tickets from "@/pages/Tickets";
 import CreateTicket from "@/pages/CreateTicket";
 import Buildings from "@/pages/Buildings";
+import BuildingDetail from "@/pages/BuildingDetail";
 import CriticalAssets from "@/pages/CriticalAssets";
 import Profile from "@/pages/Profile";
 import DashboardTickets from "@/pages/DashboardTickets";
@@ -140,6 +141,7 @@ function AuthenticatedApp() {
                 <Route path="/tickets/nuevo" component={CreateTicket} />
 
                 <Route path="/edificios" component={Buildings} />
+                <Route path="/edificios/:id" component={BuildingDetail} />
                 <Route path="/equipos" component={CriticalAssets} />
                 <Route path="/perfil" component={() => <Profile userRole={userRole} />} />
 

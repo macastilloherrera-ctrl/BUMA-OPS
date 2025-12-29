@@ -714,7 +714,11 @@ export default function Buildings() {
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-lg">{building.name}</CardTitle>
+                    <Link href={`/edificios/${building.id}`}>
+                      <CardTitle className="text-lg hover:underline cursor-pointer" data-testid={`link-building-name-${building.id}`}>
+                        {building.name}
+                      </CardTitle>
+                    </Link>
                     {getStatusBadge(building.status)}
                   </div>
                 </CardHeader>
