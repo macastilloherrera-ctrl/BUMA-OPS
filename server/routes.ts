@@ -7,6 +7,8 @@ import {
   insertBuildingSchema,
   insertBuildingStaffSchema,
   insertBuildingFeatureSchema,
+  insertBuildingFolderSchema,
+  insertBuildingFileSchema,
   insertCriticalAssetSchema,
   insertVisitSchema,
   insertVisitChecklistItemSchema,
@@ -314,6 +316,37 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/buildings/:buildingId/staff", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const data = insertBuildingStaffSchema.omit({ buildingId: true }).parse(req.body);
+      const staff = await storage.createBuildingStaff({ ...data, buildingId: req.params.buildingId });
+      res.status(201).json(staff);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos invalidos", details: error.errors });
+      }
+      console.error("Error creating building staff:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.patch("/api/building-staff/:id", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const data = insertBuildingStaffSchema.partial().parse(req.body);
+      const staff = await storage.updateBuildingStaff(req.params.id, data);
+      if (!staff) {
+        return res.status(404).json({ error: "Personal no encontrado" });
+      }
+      res.json(staff);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos invalidos", details: error.errors });
+      }
+      console.error("Error updating building staff:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   // === Building Features ===
   app.get("/api/buildings/:id/features", isAuthenticated, async (req, res) => {
     try {
@@ -336,6 +369,100 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Datos invalidos", details: error.errors });
       }
       console.error("Error updating building features:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // === Building Folders (Manager only) ===
+  app.get("/api/buildings/:id/folders", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const folders = await storage.getBuildingFolders(req.params.id);
+      res.json(folders);
+    } catch (error) {
+      console.error("Error getting building folders:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/buildings/:id/folders", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const data = insertBuildingFolderSchema.omit({ buildingId: true, createdBy: true }).parse(req.body);
+      const folder = await storage.createBuildingFolder({
+        ...data,
+        buildingId: req.params.id,
+        createdBy: req.user!.id,
+      });
+      res.status(201).json(folder);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos invalidos", details: error.errors });
+      }
+      console.error("Error creating building folder:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/building-folders/:id", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const folder = await storage.getBuildingFolder(req.params.id);
+      if (!folder) {
+        return res.status(404).json({ error: "Carpeta no encontrada" });
+      }
+      if (folder.isDefault) {
+        return res.status(400).json({ error: "No se puede eliminar carpeta predeterminada" });
+      }
+      await storage.deleteBuildingFolder(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting building folder:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // === Building Files (Manager only) ===
+  app.get("/api/building-folders/:id/files", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const files = await storage.getBuildingFiles(req.params.id);
+      res.json(files);
+    } catch (error) {
+      console.error("Error getting building files:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/building-folders/:id/files", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const folder = await storage.getBuildingFolder(req.params.id);
+      if (!folder) {
+        return res.status(404).json({ error: "Carpeta no encontrada" });
+      }
+      const data = insertBuildingFileSchema.omit({ folderId: true, buildingId: true, uploadedBy: true }).parse(req.body);
+      const file = await storage.createBuildingFile({
+        ...data,
+        folderId: req.params.id,
+        buildingId: folder.buildingId,
+        uploadedBy: req.user!.id,
+      });
+      res.status(201).json(file);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos invalidos", details: error.errors });
+      }
+      console.error("Error creating building file:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/building-files/:id", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const file = await storage.getBuildingFile(req.params.id);
+      if (!file) {
+        return res.status(404).json({ error: "Archivo no encontrado" });
+      }
+      await storage.deleteBuildingFile(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting building file:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });

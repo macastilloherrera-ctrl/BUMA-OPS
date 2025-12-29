@@ -4,6 +4,8 @@ import {
   buildings,
   buildingStaff,
   buildingFeatures,
+  buildingFolders,
+  buildingFiles,
   criticalAssets,
   visits,
   visitChecklistItems,
@@ -19,6 +21,10 @@ import {
   type InsertBuildingStaff,
   type BuildingFeature,
   type InsertBuildingFeature,
+  type BuildingFolder,
+  type InsertBuildingFolder,
+  type BuildingFile,
+  type InsertBuildingFile,
   type CriticalAsset,
   type InsertCriticalAsset,
   type Visit,
@@ -52,6 +58,7 @@ export interface IStorage {
   // Building Staff
   getBuildingStaff(buildingId: string): Promise<BuildingStaff[]>;
   createBuildingStaff(staff: InsertBuildingStaff): Promise<BuildingStaff>;
+  updateBuildingStaff(id: string, data: Partial<InsertBuildingStaff>): Promise<BuildingStaff | undefined>;
   deleteBuildingStaff(id: string): Promise<boolean>;
   replaceBuildingStaff(buildingId: string, staff: InsertBuildingStaff[]): Promise<BuildingStaff[]>;
 
@@ -60,6 +67,18 @@ export interface IStorage {
   createBuildingFeature(feature: InsertBuildingFeature): Promise<BuildingFeature>;
   deleteBuildingFeature(id: string): Promise<boolean>;
   replaceBuildingFeatures(buildingId: string, features: InsertBuildingFeature[]): Promise<BuildingFeature[]>;
+
+  // Building Folders
+  getBuildingFolders(buildingId: string): Promise<BuildingFolder[]>;
+  getBuildingFolder(id: string): Promise<BuildingFolder | undefined>;
+  createBuildingFolder(folder: InsertBuildingFolder): Promise<BuildingFolder>;
+  deleteBuildingFolder(id: string): Promise<boolean>;
+
+  // Building Files
+  getBuildingFiles(folderId: string): Promise<BuildingFile[]>;
+  getBuildingFile(id: string): Promise<BuildingFile | undefined>;
+  createBuildingFile(file: InsertBuildingFile): Promise<BuildingFile>;
+  deleteBuildingFile(id: string): Promise<boolean>;
 
   // Critical Assets
   getCriticalAssets(buildingId?: string): Promise<CriticalAsset[]>;
@@ -164,6 +183,15 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
+  async updateBuildingStaff(id: string, data: Partial<InsertBuildingStaff>): Promise<BuildingStaff | undefined> {
+    const [updated] = await db
+      .update(buildingStaff)
+      .set(data)
+      .where(eq(buildingStaff.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
   async deleteBuildingStaff(id: string): Promise<boolean> {
     await db.delete(buildingStaff).where(eq(buildingStaff.id, id));
     return true;
@@ -196,6 +224,47 @@ export class DatabaseStorage implements IStorage {
     if (featuresList.length === 0) return [];
     const created = await db.insert(buildingFeatures).values(featuresList).returning();
     return created;
+  }
+
+  // Building Folders
+  async getBuildingFolders(buildingId: string): Promise<BuildingFolder[]> {
+    return db.select().from(buildingFolders).where(eq(buildingFolders.buildingId, buildingId)).orderBy(buildingFolders.name);
+  }
+
+  async getBuildingFolder(id: string): Promise<BuildingFolder | undefined> {
+    const [folder] = await db.select().from(buildingFolders).where(eq(buildingFolders.id, id));
+    return folder || undefined;
+  }
+
+  async createBuildingFolder(folder: InsertBuildingFolder): Promise<BuildingFolder> {
+    const [created] = await db.insert(buildingFolders).values(folder).returning();
+    return created;
+  }
+
+  async deleteBuildingFolder(id: string): Promise<boolean> {
+    await db.delete(buildingFiles).where(eq(buildingFiles.folderId, id));
+    await db.delete(buildingFolders).where(eq(buildingFolders.id, id));
+    return true;
+  }
+
+  // Building Files
+  async getBuildingFiles(folderId: string): Promise<BuildingFile[]> {
+    return db.select().from(buildingFiles).where(eq(buildingFiles.folderId, folderId)).orderBy(desc(buildingFiles.createdAt));
+  }
+
+  async getBuildingFile(id: string): Promise<BuildingFile | undefined> {
+    const [file] = await db.select().from(buildingFiles).where(eq(buildingFiles.id, id));
+    return file || undefined;
+  }
+
+  async createBuildingFile(file: InsertBuildingFile): Promise<BuildingFile> {
+    const [created] = await db.insert(buildingFiles).values(file).returning();
+    return created;
+  }
+
+  async deleteBuildingFile(id: string): Promise<boolean> {
+    await db.delete(buildingFiles).where(eq(buildingFiles.id, id));
+    return true;
   }
 
   // Critical Assets
