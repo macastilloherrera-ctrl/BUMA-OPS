@@ -61,6 +61,7 @@ interface ExecutiveInfo {
 export default function DashboardVisits() {
   const [activeTab, setActiveTab] = useState("agenda");
   const [showBuildingsDialog, setShowBuildingsDialog] = useState(false);
+  const [showOverdueDialog, setShowOverdueDialog] = useState(false);
   const [selectedBuilding, setSelectedBuilding] = useState<Building | null>(null);
 
   const { data: visits, isLoading: visitsLoading } = useQuery<VisitWithBuilding[]>({
@@ -262,7 +263,11 @@ export default function DashboardVisits() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card 
+          className="hover-elevate cursor-pointer"
+          onClick={() => setShowOverdueDialog(true)}
+          data-testid="card-overdue-visits"
+        >
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
               <p className="text-sm text-muted-foreground">Visitas Atrasadas</p>
@@ -666,6 +671,86 @@ export default function DashboardVisits() {
                   No hay edificios registrados
                 </p>
               )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showOverdueDialog} onOpenChange={setShowOverdueDialog}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Visitas Atrasadas ({overdueVisits.length})
+            </DialogTitle>
+          </DialogHeader>
+
+          {overdueVisits.length === 0 ? (
+            <div className="text-center py-8">
+              <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto mb-3" />
+              <p className="text-muted-foreground">No hay visitas atrasadas</p>
+              <p className="text-sm text-muted-foreground mt-1">Todas las visitas estan al dia</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {overdueVisits
+                .sort((a, b) => {
+                  if (!a.scheduledDate || !b.scheduledDate) return 0;
+                  return compareAsc(new Date(a.scheduledDate), new Date(b.scheduledDate));
+                })
+                .map((visit) => {
+                  const daysOverdue = visit.scheduledDate 
+                    ? differenceInDays(new Date(), new Date(visit.scheduledDate))
+                    : 0;
+                  
+                  return (
+                    <Link 
+                      key={visit.id} 
+                      href={`/visitas/${visit.id}`}
+                      onClick={() => setShowOverdueDialog(false)}
+                    >
+                      <div
+                        className="flex items-start justify-between p-3 rounded-md bg-destructive/10 hover-elevate cursor-pointer"
+                        data-testid={`overdue-visit-detail-${visit.id}`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <h3 className="font-medium text-sm">
+                              {visit.building?.name || "Edificio"}
+                            </h3>
+                            <Badge variant="destructive" className="text-xs">
+                              {daysOverdue} {daysOverdue === 1 ? 'dia' : 'dias'} atrasada
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
+                            <MapPin className="h-3 w-3" />
+                            <span className="truncate">
+                              {visit.building?.address || "Direccion"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-4 text-xs flex-wrap">
+                            <div className="flex items-center gap-1 text-destructive">
+                              <Clock className="h-3 w-3" />
+                              <span>
+                                {visit.scheduledDate && format(new Date(visit.scheduledDate), "dd MMM yyyy, HH:mm", { locale: es })}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              <User className="h-3 w-3" />
+                              <span>{getExecutiveName(visit.executiveId)}</span>
+                            </div>
+                          </div>
+                          {visit.type === "urgente" && (
+                            <Badge variant="destructive" className="text-xs mt-2">
+                              Urgente
+                            </Badge>
+                          )}
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground mt-1" />
+                      </div>
+                    </Link>
+                  );
+                })}
             </div>
           )}
         </DialogContent>
