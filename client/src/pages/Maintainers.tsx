@@ -2,11 +2,10 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import type { MaintainerCategory, Maintainer } from "@shared/schema";
+import type { MaintainerCategory, Maintainer, UserProfile } from "@shared/schema";
 import {
   Card,
   CardContent,
@@ -76,12 +75,15 @@ type MaintainerForm = z.infer<typeof maintainerSchema>;
 
 export default function Maintainers() {
   const { toast } = useToast();
-  const { userProfile } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("maintainers");
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [isMaintainerDialogOpen, setIsMaintainerDialogOpen] = useState(false);
   const [editingMaintainer, setEditingMaintainer] = useState<MaintainerWithCategories | null>(null);
+
+  const { data: userProfile } = useQuery<UserProfile>({
+    queryKey: ["/api/user/profile"],
+  });
 
   const isManager = userProfile?.role === "gerente_general" || userProfile?.role === "gerente_operaciones";
 
@@ -116,7 +118,7 @@ export default function Maintainers() {
 
   const createCategoryMutation = useMutation({
     mutationFn: async (data: CategoryForm) => {
-      return apiRequest("/api/maintainers/categories", { method: "POST", body: JSON.stringify(data) });
+      return apiRequest("POST", "/api/maintainers/categories", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/maintainers/categories"] });
@@ -131,7 +133,7 @@ export default function Maintainers() {
 
   const deleteCategoryMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest(`/api/maintainers/categories/${id}`, { method: "DELETE" });
+      return apiRequest("DELETE", `/api/maintainers/categories/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/maintainers/categories"] });
@@ -146,7 +148,7 @@ export default function Maintainers() {
     mutationFn: async (data: MaintainerForm) => {
       const url = editingMaintainer ? `/api/maintainers/${editingMaintainer.id}` : "/api/maintainers";
       const method = editingMaintainer ? "PATCH" : "POST";
-      return apiRequest(url, { method, body: JSON.stringify(data) });
+      return apiRequest(method, url, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/maintainers"] });
@@ -162,7 +164,7 @@ export default function Maintainers() {
 
   const deleteMaintainerMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest(`/api/maintainers/${id}`, { method: "DELETE" });
+      return apiRequest("DELETE", `/api/maintainers/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/maintainers"] });
