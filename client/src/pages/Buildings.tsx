@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
@@ -27,20 +28,46 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useForm } from "react-hook-form";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Plus, MapPin, User, Search, Pencil } from "lucide-react";
-import type { Building, UserProfile } from "@shared/schema";
+import { Building2, Plus, MapPin, User, Search, Pencil, Trash2, UserPlus, Settings2 } from "lucide-react";
+import type { Building, UserProfile, BuildingStaff, BuildingFeature } from "@shared/schema";
 import { Link } from "wouter";
+
+const staffSchema = z.object({
+  fullName: z.string().min(1, "Nombre requerido"),
+  role: z.string().min(1, "Cargo requerido"),
+  birthDate: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().email("Email invalido").optional().or(z.literal("")),
+});
+
+const featureSchema = z.object({
+  name: z.string().min(1, "Nombre requerido"),
+  value: z.string().optional(),
+});
 
 const buildingSchema = z.object({
   name: z.string().min(1, "El nombre es requerido"),
   address: z.string().min(1, "La direccion es requerida"),
   status: z.enum(["activo", "inactivo", "en_revision"]),
   assignedExecutiveId: z.string().optional(),
+  departmentCount: z.coerce.number().min(0).default(0),
+  elevatorCount: z.coerce.number().min(0).default(0),
+  gateCount: z.coerce.number().min(0).default(0),
+  extinguisherCount: z.coerce.number().min(0).default(0),
+  visitorParkingCount: z.coerce.number().min(0).default(0),
+  staff: z.array(staffSchema).default([]),
+  features: z.array(featureSchema).default([]),
 });
 
 type BuildingForm = z.infer<typeof buildingSchema>;
@@ -70,15 +97,92 @@ export default function Buildings() {
       address: "",
       status: "activo",
       assignedExecutiveId: "",
+      departmentCount: 0,
+      elevatorCount: 0,
+      gateCount: 0,
+      extinguisherCount: 0,
+      visitorParkingCount: 0,
+      staff: [],
+      features: [],
     },
   });
 
+  const { fields: staffFields, append: appendStaff, remove: removeStaff } = useFieldArray({
+    control: form.control,
+    name: "staff",
+  });
+
+  const { fields: featureFields, append: appendFeature, remove: removeFeature } = useFieldArray({
+    control: form.control,
+    name: "features",
+  });
+
+  const { data: existingStaff } = useQuery<BuildingStaff[]>({
+    queryKey: ["/api/buildings", editingBuilding?.id, "staff"],
+    enabled: !!editingBuilding?.id,
+  });
+
+  const { data: existingFeatures } = useQuery<BuildingFeature[]>({
+    queryKey: ["/api/buildings", editingBuilding?.id, "features"],
+    enabled: !!editingBuilding?.id,
+  });
+
+  useEffect(() => {
+    if (editingBuilding && existingStaff) {
+      form.setValue("staff", existingStaff.map(s => ({
+        fullName: s.fullName,
+        role: s.role,
+        birthDate: s.birthDate ? new Date(s.birthDate).toISOString().split("T")[0] : "",
+        phone: s.phone || "",
+        email: s.email || "",
+      })));
+    }
+  }, [existingStaff, editingBuilding, form]);
+
+  useEffect(() => {
+    if (editingBuilding && existingFeatures) {
+      form.setValue("features", existingFeatures.map(f => ({
+        name: f.name,
+        value: f.value || "",
+      })));
+    }
+  }, [existingFeatures, editingBuilding, form]);
+
   const createBuildingMutation = useMutation({
     mutationFn: async (data: BuildingForm) => {
+      const { staff, features, ...buildingData } = data;
+      
+      let building: Building;
       if (editingBuilding) {
-        return apiRequest("PATCH", `/api/buildings/${editingBuilding.id}`, data);
+        const res = await apiRequest("PATCH", `/api/buildings/${editingBuilding.id}`, buildingData);
+        building = await res.json();
+      } else {
+        const res = await apiRequest("POST", "/api/buildings", buildingData);
+        building = await res.json();
       }
-      return apiRequest("POST", "/api/buildings", data);
+
+      if (building && building.id) {
+        if (staff.length > 0 || editingBuilding) {
+          const staffData = staff.map(s => ({
+            fullName: s.fullName,
+            role: s.role,
+            birthDate: s.birthDate ? new Date(s.birthDate) : null,
+            phone: s.phone || null,
+            email: s.email || null,
+          }));
+          await apiRequest("PUT", `/api/buildings/${building.id}/staff`, staffData);
+        }
+
+        if (features.length > 0 || editingBuilding) {
+          const featuresData = features.map(f => ({
+            name: f.name,
+            value: f.value || null,
+          }));
+          await apiRequest("PUT", `/api/buildings/${building.id}/features`, featuresData);
+        }
+      }
+
+      return building;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/buildings"] });
@@ -110,6 +214,13 @@ export default function Buildings() {
       address: building.address,
       status: building.status,
       assignedExecutiveId: building.assignedExecutiveId || "",
+      departmentCount: building.departmentCount || 0,
+      elevatorCount: building.elevatorCount || 0,
+      gateCount: building.gateCount || 0,
+      extinguisherCount: building.extinguisherCount || 0,
+      visitorParkingCount: building.visitorParkingCount || 0,
+      staff: [],
+      features: [],
     });
     setIsDialogOpen(true);
   };
@@ -147,114 +258,425 @@ export default function Buildings() {
                 Agregar
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
               <DialogHeader>
                 <DialogTitle>
                   {editingBuilding ? "Editar Edificio" : "Nuevo Edificio"}
                 </DialogTitle>
               </DialogHeader>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nombre *</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Nombre del edificio"
-                            {...field}
-                            data-testid="input-building-name"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="address"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Direccion *</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Direccion completa"
-                            {...field}
-                            data-testid="input-building-address"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="status"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Estado</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+              <ScrollArea className="flex-1 pr-4">
+                <Form {...form}>
+                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Nombre *</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Nombre del edificio"
+                                {...field}
+                                data-testid="input-building-name"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="status"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Estado</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger data-testid="select-status">
+                                  <SelectValue />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="activo">Activo</SelectItem>
+                                <SelectItem value="inactivo">Inactivo</SelectItem>
+                                <SelectItem value="en_revision">En Revision</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <FormField
+                      control={form.control}
+                      name="address"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Direccion *</FormLabel>
                           <FormControl>
-                            <SelectTrigger data-testid="select-status">
-                              <SelectValue />
-                            </SelectTrigger>
+                            <Input
+                              placeholder="Direccion completa"
+                              {...field}
+                              data-testid="input-building-address"
+                            />
                           </FormControl>
-                          <SelectContent>
-                            <SelectItem value="activo">Activo</SelectItem>
-                            <SelectItem value="inactivo">Inactivo</SelectItem>
-                            <SelectItem value="en_revision">En Revision</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="assignedExecutiveId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Ejecutivo Asignado</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-executive">
-                              <SelectValue placeholder="Seleccionar ejecutivo" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {executives?.map((exec) => (
-                              <SelectItem key={exec.id} value={exec.userId}>
-                                {exec.userId}
-                              </SelectItem>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="assignedExecutiveId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Ejecutivo Asignado</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-executive">
+                                <SelectValue placeholder="Seleccionar ejecutivo" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {executives?.map((exec) => (
+                                <SelectItem key={exec.id} value={exec.userId}>
+                                  {exec.userId}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <Accordion type="multiple" className="w-full" defaultValue={["counts"]}>
+                      <AccordionItem value="counts">
+                        <AccordionTrigger className="text-sm font-medium">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4" />
+                            Caracteristicas del Edificio
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 pt-2">
+                            <FormField
+                              control={form.control}
+                              name="departmentCount"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel className="text-xs">Departamentos</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      {...field}
+                                      data-testid="input-department-count"
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="elevatorCount"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel className="text-xs">Ascensores</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      {...field}
+                                      data-testid="input-elevator-count"
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="gateCount"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel className="text-xs">Portones</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      {...field}
+                                      data-testid="input-gate-count"
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="extinguisherCount"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel className="text-xs">Extintores</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      {...field}
+                                      data-testid="input-extinguisher-count"
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={form.control}
+                              name="visitorParkingCount"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel className="text-xs">Est. Visitas</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      {...field}
+                                      data-testid="input-visitor-parking-count"
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+
+                      <AccordionItem value="staff">
+                        <AccordionTrigger className="text-sm font-medium">
+                          <div className="flex items-center gap-2">
+                            <User className="h-4 w-4" />
+                            Personal del Edificio ({staffFields.length})
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="space-y-3 pt-2">
+                            {staffFields.map((field, index) => (
+                              <div key={field.id} className="p-3 border rounded-md space-y-2 relative">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="absolute top-1 right-1"
+                                  onClick={() => removeStaff(index)}
+                                  data-testid={`button-remove-staff-${index}`}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                                <div className="grid grid-cols-2 gap-2">
+                                  <FormField
+                                    control={form.control}
+                                    name={`staff.${index}.fullName`}
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel className="text-xs">Nombre Completo *</FormLabel>
+                                        <FormControl>
+                                          <Input
+                                            placeholder="Juan Perez"
+                                            {...field}
+                                            data-testid={`input-staff-name-${index}`}
+                                          />
+                                        </FormControl>
+                                        <FormMessage />
+                                      </FormItem>
+                                    )}
+                                  />
+                                  <FormField
+                                    control={form.control}
+                                    name={`staff.${index}.role`}
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel className="text-xs">Cargo *</FormLabel>
+                                        <FormControl>
+                                          <Input
+                                            placeholder="Conserje"
+                                            {...field}
+                                            data-testid={`input-staff-role-${index}`}
+                                          />
+                                        </FormControl>
+                                        <FormMessage />
+                                      </FormItem>
+                                    )}
+                                  />
+                                </div>
+                                <div className="grid grid-cols-3 gap-2">
+                                  <FormField
+                                    control={form.control}
+                                    name={`staff.${index}.birthDate`}
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel className="text-xs">Fecha Nacimiento</FormLabel>
+                                        <FormControl>
+                                          <Input
+                                            type="date"
+                                            {...field}
+                                            data-testid={`input-staff-birthdate-${index}`}
+                                          />
+                                        </FormControl>
+                                        <FormMessage />
+                                      </FormItem>
+                                    )}
+                                  />
+                                  <FormField
+                                    control={form.control}
+                                    name={`staff.${index}.phone`}
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel className="text-xs">Telefono</FormLabel>
+                                        <FormControl>
+                                          <Input
+                                            placeholder="+56912345678"
+                                            {...field}
+                                            data-testid={`input-staff-phone-${index}`}
+                                          />
+                                        </FormControl>
+                                        <FormMessage />
+                                      </FormItem>
+                                    )}
+                                  />
+                                  <FormField
+                                    control={form.control}
+                                    name={`staff.${index}.email`}
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel className="text-xs">Email</FormLabel>
+                                        <FormControl>
+                                          <Input
+                                            type="email"
+                                            placeholder="email@ejemplo.com"
+                                            {...field}
+                                            data-testid={`input-staff-email-${index}`}
+                                          />
+                                        </FormControl>
+                                        <FormMessage />
+                                      </FormItem>
+                                    )}
+                                  />
+                                </div>
+                              </div>
                             ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <div className="flex gap-2 pt-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleDialogClose}
-                      className="flex-1"
-                    >
-                      Cancelar
-                    </Button>
-                    <Button
-                      type="submit"
-                      className="flex-1"
-                      disabled={createBuildingMutation.isPending}
-                      data-testid="button-save-building"
-                    >
-                      {createBuildingMutation.isPending ? "Guardando..." : "Guardar"}
-                    </Button>
-                  </div>
-                </form>
-              </Form>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => appendStaff({ fullName: "", role: "", birthDate: "", phone: "", email: "" })}
+                              className="w-full"
+                              data-testid="button-add-staff"
+                            >
+                              <UserPlus className="h-4 w-4 mr-1" />
+                              Agregar Personal
+                            </Button>
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+
+                      <AccordionItem value="features">
+                        <AccordionTrigger className="text-sm font-medium">
+                          <div className="flex items-center gap-2">
+                            <Settings2 className="h-4 w-4" />
+                            Otras Caracteristicas ({featureFields.length})
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="space-y-3 pt-2">
+                            {featureFields.map((field, index) => (
+                              <div key={field.id} className="flex items-end gap-2">
+                                <FormField
+                                  control={form.control}
+                                  name={`features.${index}.name`}
+                                  render={({ field }) => (
+                                    <FormItem className="flex-1">
+                                      <FormLabel className="text-xs">Caracteristica</FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          placeholder="Ej: Piscina"
+                                          {...field}
+                                          data-testid={`input-feature-name-${index}`}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={form.control}
+                                  name={`features.${index}.value`}
+                                  render={({ field }) => (
+                                    <FormItem className="flex-1">
+                                      <FormLabel className="text-xs">Valor</FormLabel>
+                                      <FormControl>
+                                        <Input
+                                          placeholder="Ej: 1"
+                                          {...field}
+                                          data-testid={`input-feature-value-${index}`}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => removeFeature(index)}
+                                  data-testid={`button-remove-feature-${index}`}
+                                >
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </div>
+                            ))}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => appendFeature({ name: "", value: "" })}
+                              className="w-full"
+                              data-testid="button-add-feature"
+                            >
+                              <Plus className="h-4 w-4 mr-1" />
+                              Agregar Caracteristica
+                            </Button>
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
+
+                    <div className="flex gap-2 pt-4">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleDialogClose}
+                        className="flex-1"
+                      >
+                        Cancelar
+                      </Button>
+                      <Button
+                        type="submit"
+                        className="flex-1"
+                        disabled={createBuildingMutation.isPending}
+                        data-testid="button-save-building"
+                      >
+                        {createBuildingMutation.isPending ? "Guardando..." : "Guardar"}
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+              </ScrollArea>
             </DialogContent>
           </Dialog>
         </div>
@@ -305,6 +727,19 @@ export default function Buildings() {
                     <User className="h-4 w-4 flex-shrink-0" />
                     <span>{building.executiveName || "Sin asignar"}</span>
                   </div>
+                  {(building.departmentCount || building.elevatorCount) ? (
+                    <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
+                      {building.departmentCount ? (
+                        <Badge variant="outline" className="text-xs">{building.departmentCount} dptos</Badge>
+                      ) : null}
+                      {building.elevatorCount ? (
+                        <Badge variant="outline" className="text-xs">{building.elevatorCount} asc</Badge>
+                      ) : null}
+                      {building.gateCount ? (
+                        <Badge variant="outline" className="text-xs">{building.gateCount} port</Badge>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div className="flex gap-2 pt-2">
                     <Button
                       variant="outline"
