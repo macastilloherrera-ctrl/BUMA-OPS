@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -26,11 +25,12 @@ import {
   User,
   ChevronRight,
   ArrowLeft,
+  ChevronLeft,
 } from "lucide-react";
-import type { Visit, Building } from "@shared/schema";
-import { format, differenceInDays, isToday, isTomorrow, isBefore, startOfDay, compareAsc } from "date-fns";
+import type { Visit, Building, VisitStatus } from "@shared/schema";
+import { format, differenceInDays, isToday, isBefore, startOfDay, compareAsc, addDays, startOfWeek, isSameDay, addWeeks, subWeeks } from "date-fns";
 import { es } from "date-fns/locale";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { queryClient } from "@/lib/queryClient";
 
 interface VisitWithBuilding extends Visit {
@@ -52,8 +52,75 @@ interface ExecutiveInfo {
   displayName: string;
 }
 
+const getStatusColor = (status: VisitStatus, scheduledDate?: Date | string | null) => {
+  const today = startOfDay(new Date());
+  const visitDate = scheduledDate ? startOfDay(new Date(scheduledDate)) : null;
+  const isOverdue = visitDate && isBefore(visitDate, today) && status === "programada";
+  
+  switch (status) {
+    case "realizada":
+      return {
+        bg: "bg-green-100 dark:bg-green-900/30",
+        border: "border-green-500",
+        text: "text-green-700 dark:text-green-300",
+        label: "Ejecutada",
+        isOverdue: false
+      };
+    case "programada":
+      if (isOverdue) {
+        return {
+          bg: "bg-red-50 dark:bg-red-900/20",
+          border: "border-red-300",
+          text: "text-red-600 dark:text-red-300",
+          label: "Atrasada",
+          isOverdue: true
+        };
+      }
+      return {
+        bg: "bg-amber-100 dark:bg-amber-900/30",
+        border: "border-amber-500",
+        text: "text-amber-700 dark:text-amber-300",
+        label: "Programada",
+        isOverdue: false
+      };
+    case "atrasada":
+      return {
+        bg: "bg-red-50 dark:bg-red-900/20",
+        border: "border-red-300",
+        text: "text-red-600 dark:text-red-300",
+        label: "Atrasada",
+        isOverdue: true
+      };
+    case "no_realizada":
+      return {
+        bg: "bg-red-200 dark:bg-red-900/50",
+        border: "border-red-600",
+        text: "text-red-800 dark:text-red-200",
+        label: "No Realizada",
+        isOverdue: false
+      };
+    case "en_curso":
+      return {
+        bg: "bg-blue-100 dark:bg-blue-900/30",
+        border: "border-blue-500",
+        text: "text-blue-700 dark:text-blue-300",
+        label: "En Curso",
+        isOverdue: false
+      };
+    default:
+      return {
+        bg: "bg-muted",
+        border: "border-muted-foreground/20",
+        text: "text-muted-foreground",
+        label: status,
+        isOverdue: false
+      };
+  }
+};
+
 export default function DashboardVisits() {
-  const [activeTab, setActiveTab] = useState("agenda");
+  const [, navigate] = useLocation();
+  const [currentWeekStart, setCurrentWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [showCoverageDialog, setShowCoverageDialog] = useState(false);
   const [showOverdueDialog, setShowOverdueDialog] = useState(false);
   const [showTeamDialog, setShowTeamDialog] = useState(false);
@@ -89,33 +156,6 @@ export default function DashboardVisits() {
     (v.status === "programada" && v.scheduledDate && isBefore(new Date(v.scheduledDate), todayStart))
   ) || [];
 
-  const upcomingVisits = visits?.filter((v) => 
-    v.status === "programada" && v.scheduledDate && !isBefore(new Date(v.scheduledDate), todayStart)
-  ).sort((a, b) => compareAsc(new Date(a.scheduledDate!), new Date(b.scheduledDate!))) || [];
-
-  const groupVisitsByDate = (visitList: VisitWithBuilding[]) => {
-    const groups: { [key: string]: VisitWithBuilding[] } = {};
-    
-    visitList.forEach((visit) => {
-      if (!visit.scheduledDate) return;
-      const date = new Date(visit.scheduledDate);
-      let label: string;
-      
-      if (isToday(date)) {
-        label = "Hoy";
-      } else if (isTomorrow(date)) {
-        label = "Manana";
-      } else {
-        label = format(date, "EEEE d 'de' MMMM", { locale: es });
-      }
-      
-      if (!groups[label]) groups[label] = [];
-      groups[label].push(visit);
-    });
-    
-    return groups;
-  };
-
   const getStats = () => {
     if (!visits || !buildings) {
       return {
@@ -150,8 +190,6 @@ export default function DashboardVisits() {
   const coveragePercent = stats.totalBuildings > 0
     ? Math.round((stats.visitedThisMonth / stats.totalBuildings) * 100)
     : 0;
-
-  const groupedUpcoming = groupVisitsByDate(upcomingVisits);
 
   const getExecutiveStats = () => {
     if (!visits) return { withVisitsToday: 0, inField: 0 };
@@ -248,46 +286,6 @@ export default function DashboardVisits() {
         return compareAsc(new Date(b.completedAt), new Date(a.completedAt));
       }) || [];
   };
-
-  const renderVisitCard = (visit: VisitWithBuilding) => (
-    <Link key={visit.id} href={`/visitas/${visit.id}`}>
-      <Card className="hover-elevate cursor-pointer" data-testid={`card-visit-${visit.id}`}>
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1 flex-wrap">
-                <h3 className="font-medium truncate">
-                  {visit.building?.name || "Edificio"}
-                </h3>
-                {visit.type === "urgente" && (
-                  <Badge variant="destructive" className="text-xs">Urgente</Badge>
-                )}
-              </div>
-              <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
-                <MapPin className="h-3.5 w-3.5" />
-                <span className="truncate">
-                  {visit.building?.address || "Direccion"}
-                </span>
-              </div>
-              <div className="flex items-center gap-4 text-sm flex-wrap">
-                <div className="flex items-center gap-1 text-muted-foreground">
-                  <Clock className="h-3.5 w-3.5" />
-                  <span>
-                    {visit.scheduledDate && format(new Date(visit.scheduledDate), "HH:mm", { locale: es })}
-                  </span>
-                </div>
-                {visit.executiveName && (
-                  <span className="text-muted-foreground">
-                    {visit.executiveName}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
-  );
 
   return (
     <div className="p-6 space-y-6">
@@ -390,175 +388,293 @@ export default function DashboardVisits() {
         </Card>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="agenda" data-testid="tab-agenda">
-            <Calendar className="h-4 w-4 mr-2" />
-            Agenda
-            {upcomingVisits.length > 0 && (
-              <Badge variant="secondary" className="ml-2 text-xs">
-                {upcomingVisits.length}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="atrasadas" data-testid="tab-atrasadas">
-            <AlertTriangle className="h-4 w-4 mr-2" />
-            Atrasadas
-            {overdueVisits.length > 0 && (
-              <Badge variant="destructive" className="ml-2 text-xs">
-                {overdueVisits.length}
-              </Badge>
-            )}
-          </TabsTrigger>
-        </TabsList>
+      {/* Outlook-style Calendar View */}
+      <Card data-testid="card-calendar-view">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCurrentWeekStart(subWeeks(currentWeekStart, 1))}
+                data-testid="button-prev-week"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setCurrentWeekStart(addWeeks(currentWeekStart, 1))}
+                data-testid="button-next-week"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              <CardTitle className="text-lg">
+                {format(currentWeekStart, "d MMM", { locale: es })} - {format(addDays(currentWeekStart, 6), "d MMM yyyy", { locale: es })}
+              </CardTitle>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}
+                data-testid="button-today"
+              >
+                Hoy
+              </Button>
+            </div>
+          </div>
+          {/* Legend */}
+          <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t">
+            <span className="text-xs text-muted-foreground">Leyenda:</span>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm bg-green-100 dark:bg-green-900/30 border border-green-500" />
+              <span className="text-xs">Ejecutada</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm bg-amber-100 dark:bg-amber-900/30 border border-amber-500" />
+              <span className="text-xs">Programada</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm bg-red-50 dark:bg-red-900/20 border border-red-300" />
+              <span className="text-xs">Atrasada</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm bg-red-200 dark:bg-red-900/50 border border-red-600" />
+              <span className="text-xs">No Realizada</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm bg-blue-100 dark:bg-blue-900/30 border border-blue-500" />
+              <span className="text-xs">En Curso</span>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-2 sm:p-4">
+          <div className="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
+            {visitsLoading ? (
+              <div className="grid grid-cols-7 gap-1 sm:gap-2 min-w-[700px]">
+                {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                  <Skeleton key={i} className="h-32 w-full min-w-[90px]" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-7 gap-1 sm:gap-2 min-w-[700px]">
+              {[0, 1, 2, 3, 4, 5, 6].map((dayOffset) => {
+                const dayDate = addDays(currentWeekStart, dayOffset);
+                const dayVisits = visits?.filter((v) => {
+                  if (!v.scheduledDate) return false;
+                  return isSameDay(new Date(v.scheduledDate), dayDate);
+                }).sort((a, b) => {
+                  const timeA = new Date(a.scheduledDate!).getTime();
+                  const timeB = new Date(b.scheduledDate!).getTime();
+                  return timeA - timeB;
+                }) || [];
+                
+                const isDayToday = isToday(dayDate);
+                const isPast = isBefore(dayDate, startOfDay(new Date()));
 
-        <TabsContent value="agenda" className="mt-4">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              {visitsLoading ? (
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-24 w-full" />
-                  ))}
-                </div>
-              ) : upcomingVisits.length === 0 ? (
-                <Card>
-                  <CardContent className="py-12 text-center">
-                    <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                    <p className="text-muted-foreground mb-4">No hay visitas programadas</p>
-                    <Button asChild variant="outline">
-                      <Link href="/visitas/programar">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Programar primera visita
-                      </Link>
-                    </Button>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="space-y-6">
-                  {Object.entries(groupedUpcoming).map(([dateLabel, dateVisits]) => (
-                    <div key={dateLabel}>
-                      <h2 className="text-sm font-medium text-muted-foreground mb-3 capitalize">
-                        {dateLabel}
-                      </h2>
-                      <div className="space-y-3">
-                        {dateVisits.map(renderVisitCard)}
+                return (
+                  <div
+                    key={dayOffset}
+                    className={`min-h-32 rounded-md border p-1 sm:p-2 ${
+                      isDayToday 
+                        ? "bg-primary/5 border-primary/50" 
+                        : isPast 
+                          ? "bg-muted/30" 
+                          : "bg-background"
+                    }`}
+                    data-testid={`calendar-day-${format(dayDate, "yyyy-MM-dd")}`}
+                  >
+                    {/* Day header */}
+                    <div className={`text-center mb-1 sm:mb-2 pb-1 border-b ${isDayToday ? "border-primary/30" : ""}`}>
+                      <div className="text-xs text-muted-foreground capitalize">
+                        {format(dayDate, "EEE", { locale: es })}
+                      </div>
+                      <div className={`text-sm font-semibold ${isDayToday ? "text-primary" : ""}`}>
+                        {format(dayDate, "d")}
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <Card>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Users className="h-4 w-4" />
-                    Carga por Ejecutivo
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {!executives ? (
-                    <div className="space-y-2">
-                      {[1, 2].map((i) => (
-                        <Skeleton key={i} className="h-12 w-full" />
-                      ))}
-                    </div>
-                  ) : executives.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      No hay ejecutivos registrados
-                    </p>
-                  ) : (
-                    <div className="space-y-3">
-                      {executives.map((exec) => (
-                        <div
-                          key={exec.id}
-                          className="flex items-center justify-between p-2 rounded-md bg-muted/30"
-                          data-testid={`exec-summary-${exec.id}`}
-                        >
-                          <div>
-                            <p className="font-medium text-sm">{exec.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {exec.assignedBuildings} edificios
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {exec.pendingVisits > 0 && (
-                              <Badge variant="outline" className="text-xs">
-                                {exec.pendingVisits} pend.
+                    
+                    {/* Day visits */}
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {dayVisits.length === 0 && !isPast && (
+                        <p className="text-xs text-muted-foreground text-center py-2">-</p>
+                      )}
+                      {dayVisits.map((visit) => {
+                        const statusColors = getStatusColor(visit.status as VisitStatus, visit.scheduledDate);
+                        const isNoRealizada = visit.status === "no_realizada";
+                        
+                        return (
+                          <div
+                            key={visit.id}
+                            onClick={() => {
+                              if (isNoRealizada) {
+                                navigate(`/visitas/${visit.id}`);
+                              } else {
+                                navigate(`/visitas/${visit.id}`);
+                              }
+                            }}
+                            className={`p-1.5 sm:p-2 rounded-md border-l-4 cursor-pointer hover-elevate ${statusColors.bg} ${statusColors.border}`}
+                            data-testid={`calendar-visit-${visit.id}`}
+                          >
+                            <div className={`text-xs font-medium truncate ${statusColors.text}`}>
+                              {visit.building?.name || "Edificio"}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {format(new Date(visit.scheduledDate!), "HH:mm")}
+                            </div>
+                            {isNoRealizada && (
+                              <Badge 
+                                variant="destructive" 
+                                className="text-xs mt-1 py-0"
+                              >
+                                Reprogramar
                               </Badge>
                             )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+                  </div>
+                );
+              })}
+              </div>
+            )}
           </div>
-        </TabsContent>
+        </CardContent>
+      </Card>
 
-        <TabsContent value="atrasadas" className="mt-4">
-          {visitsLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-24 w-full" />
-              ))}
-            </div>
-          ) : overdueVisits.length === 0 ? (
-            <Card>
-              <CardContent className="py-12 text-center">
-                <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                <p className="text-muted-foreground">No hay visitas atrasadas</p>
+      {/* Summary cards below calendar */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Overdue visits summary */}
+        <Card 
+          className="hover-elevate cursor-pointer"
+          onClick={() => setShowOverdueDialog(true)}
+          data-testid="card-overdue-summary"
+        >
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              Visitas Atrasadas
+              {overdueVisits.length > 0 && (
+                <Badge variant="destructive" className="ml-auto">
+                  {overdueVisits.length}
+                </Badge>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {overdueVisits.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Sin visitas atrasadas</p>
+            ) : (
+              <div className="space-y-2">
+                {overdueVisits.slice(0, 3).map((visit) => (
+                  <div key={visit.id} className="flex items-center justify-between text-sm">
+                    <span className="truncate">{visit.building?.name}</span>
+                    <Badge variant="outline" className="text-xs text-destructive">
+                      {differenceInDays(new Date(), new Date(visit.scheduledDate!))}d
+                    </Badge>
+                  </div>
+                ))}
+                {overdueVisits.length > 3 && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    +{overdueVisits.length - 3} mas
+                  </p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* No realizadas summary */}
+        {(() => {
+          const noRealizadas = visits?.filter(v => v.status === "no_realizada") || [];
+          return (
+            <Card 
+              className="hover-elevate cursor-pointer"
+              onClick={() => {
+                if (noRealizadas.length > 0) {
+                  navigate(`/visitas/${noRealizadas[0].id}`);
+                }
+              }}
+              data-testid="card-no-realizadas-summary"
+            >
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <XCircle className="h-4 w-4 text-red-600" />
+                  No Realizadas
+                  {noRealizadas.length > 0 && (
+                    <Badge className="ml-auto bg-red-600">
+                      {noRealizadas.length}
+                    </Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {noRealizadas.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Sin visitas por reprogramar</p>
+                ) : (
+                  <div className="space-y-2">
+                    {noRealizadas.slice(0, 3).map((visit) => (
+                      <Link key={visit.id} href={`/visitas/${visit.id}`}>
+                        <div className="flex items-center justify-between text-sm hover-elevate p-1 rounded">
+                          <span className="truncate">{visit.building?.name}</span>
+                          <Badge variant="outline" className="text-xs">
+                            Reprogramar
+                          </Badge>
+                        </div>
+                      </Link>
+                    ))}
+                    {noRealizadas.length > 3 && (
+                      <p className="text-xs text-muted-foreground text-center">
+                        +{noRealizadas.length - 3} mas
+                      </p>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
-          ) : (
-            <div className="space-y-3">
-              {overdueVisits.map((visit) => (
-                <Link key={visit.id} href={`/visitas/${visit.id}`}>
-                  <Card className="hover-elevate cursor-pointer border-destructive/50" data-testid={`card-visit-overdue-${visit.id}`}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <h3 className="font-medium truncate">
-                              {visit.building?.name || "Edificio"}
-                            </h3>
-                            <Badge variant="destructive" className="text-xs">
-                              {visit.scheduledDate && differenceInDays(new Date(), new Date(visit.scheduledDate))} dias atrasada
-                            </Badge>
-                          </div>
-                          <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
-                            <MapPin className="h-3.5 w-3.5" />
-                            <span className="truncate">
-                              {visit.building?.address || "Direccion"}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-4 text-sm flex-wrap">
-                            <div className="flex items-center gap-1 text-destructive">
-                              <Clock className="h-3.5 w-3.5" />
-                              <span>
-                                {visit.scheduledDate && format(new Date(visit.scheduledDate), "dd MMM, HH:mm", { locale: es })}
-                              </span>
-                            </div>
-                            {visit.executiveName && (
-                              <span className="text-muted-foreground">
-                                {visit.executiveName}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+          );
+        })()}
+
+        {/* Executive workload */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Carga por Ejecutivo
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {!executives ? (
+              <div className="space-y-2">
+                {[1, 2].map((i) => (
+                  <Skeleton key={i} className="h-8 w-full" />
+                ))}
+              </div>
+            ) : executives.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay ejecutivos</p>
+            ) : (
+              <div className="space-y-2">
+                {executives.slice(0, 4).map((exec) => (
+                  <div
+                    key={exec.id}
+                    className="flex items-center justify-between text-sm"
+                    data-testid={`exec-workload-${exec.id}`}
+                  >
+                    <span className="truncate">{exec.name}</span>
+                    {exec.pendingVisits > 0 && (
+                      <Badge variant="outline" className="text-xs">
+                        {exec.pendingVisits} pend.
+                      </Badge>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Dialog open={showCoverageDialog} onOpenChange={(open) => {
         setShowCoverageDialog(open);

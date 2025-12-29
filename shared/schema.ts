@@ -34,6 +34,8 @@ export const visitStatusEnum = pgEnum("visit_status", [
   "cancelada"
 ]);
 
+export type VisitStatus = "borrador" | "programada" | "atrasada" | "en_curso" | "realizada" | "no_realizada" | "cancelada";
+
 export const incidentStatusEnum = pgEnum("incident_status", [
   "pendiente",
   "en_reparacion",
