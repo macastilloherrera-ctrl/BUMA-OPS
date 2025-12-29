@@ -37,7 +37,10 @@ import {
   Wrench,
   Building2,
   Tag,
+  ImagePlus,
+  X,
 } from "lucide-react";
+import { ObjectUploader } from "@/components/ObjectUploader";
 
 interface MaintainerWithCategories {
   id: string;
@@ -50,10 +53,12 @@ const ticketSchema = z.object({
   buildingId: z.string().min(1, "Selecciona un edificio"),
   ticketType: z.enum(["urgencia", "planificado", "mantencion"]),
   categoryId: z.string().optional(),
+  otherCategoryDescription: z.string().optional(),
   description: z.string().min(10, "La descripcion debe tener al menos 10 caracteres"),
   priority: z.enum(["rojo", "amarillo", "verde"]),
   requiresMaintainerVisit: z.boolean().default(false),
   requiresExecutiveVisit: z.boolean().default(false),
+  startDate: z.string().min(1, "La fecha de inicio es obligatoria"),
   scheduledDate: z.string().optional(),
 });
 
@@ -95,10 +100,16 @@ const priorities = [
   { value: "verde", label: "Normal", description: "Sin urgencia", color: "bg-green-500" },
 ];
 
+interface UploadedImage {
+  name: string;
+  objectPath: string;
+}
+
 export default function NewTicket() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [step, setStep] = useState<"type" | "details">("type");
+  const [uploadedImages, setUploadedImages] = useState<UploadedImage[]>([]);
 
   const { data: userProfile } = useQuery<UserProfile>({
     queryKey: ["/api/user/profile"],
@@ -122,10 +133,12 @@ export default function NewTicket() {
       buildingId: "",
       ticketType: "urgencia",
       categoryId: "",
+      otherCategoryDescription: "",
       description: "",
       priority: "verde",
       requiresMaintainerVisit: false,
       requiresExecutiveVisit: false,
+      startDate: new Date().toISOString().split("T")[0],
       scheduledDate: "",
     },
   });
@@ -147,10 +160,31 @@ export default function NewTicket() {
         priority: data.priority,
         requiresMaintainerVisit: data.requiresMaintainerVisit,
         requiresExecutiveVisit: data.requiresExecutiveVisit,
+        startDate: new Date(data.startDate).toISOString(),
       };
-      if (data.categoryId) payload.categoryId = data.categoryId;
+      if (data.categoryId && data.categoryId !== "otro") {
+        payload.categoryId = data.categoryId;
+      }
+      if (data.categoryId === "otro" && data.otherCategoryDescription) {
+        payload.otherCategoryDescription = data.otherCategoryDescription;
+      }
       if (data.scheduledDate) payload.scheduledDate = new Date(data.scheduledDate).toISOString();
-      return apiRequest("POST", "/api/tickets", payload);
+      
+      const ticketResponse = await apiRequest("POST", "/api/tickets", payload);
+      const ticketData = await ticketResponse.json();
+      
+      if (uploadedImages.length > 0 && ticketData.id) {
+        for (const img of uploadedImages) {
+          await apiRequest("POST", "/api/ticket-photos", {
+            ticketId: ticketData.id,
+            photoType: "inicial",
+            objectStorageKey: img.objectPath,
+            description: img.name,
+          });
+        }
+      }
+      
+      return ticketData;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
@@ -302,10 +336,11 @@ export default function NewTicket() {
                             {cat.name}
                           </SelectItem>
                         ))}
+                        <SelectItem value="otro">Otro</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
-                    {selectedCategoryId && getMaintainersForCategory(selectedCategoryId).length > 0 && (
+                    {selectedCategoryId && selectedCategoryId !== "otro" && getMaintainersForCategory(selectedCategoryId).length > 0 && (
                       <div className="mt-2 p-3 bg-muted/50 rounded-md">
                         <p className="text-xs text-muted-foreground mb-1">Proveedores disponibles:</p>
                         <div className="flex flex-wrap gap-1">
@@ -321,6 +356,26 @@ export default function NewTicket() {
                   </FormItem>
                 )}
               />
+
+              {selectedCategoryId === "otro" && (
+                <FormField
+                  control={form.control}
+                  name="otherCategoryDescription"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Especifica la categoria</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Describe el tipo de servicio..."
+                          {...field}
+                          data-testid="input-other-category"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <FormField
                 control={form.control}
@@ -370,6 +425,24 @@ export default function NewTicket() {
                           </div>
                         ))}
                       </RadioGroup>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="startDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Fecha de Inicio *</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="date"
+                        {...field}
+                        data-testid="input-start-date"
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -434,6 +507,68 @@ export default function NewTicket() {
                     </FormItem>
                   )}
                 />
+              </div>
+
+              <div className="space-y-3">
+                <Label className="flex items-center gap-2">
+                  <ImagePlus className="h-4 w-4" />
+                  Imagenes (opcional)
+                </Label>
+                <div className="flex flex-wrap gap-2">
+                  {uploadedImages.map((img, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-2 bg-muted px-3 py-2 rounded-md text-sm"
+                      data-testid={`uploaded-image-${idx}`}
+                    >
+                      <span className="truncate max-w-[150px]">{img.name}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5"
+                        onClick={() => setUploadedImages((prev) => prev.filter((_, i) => i !== idx))}
+                        data-testid={`button-remove-image-${idx}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+                <ObjectUploader
+                  maxNumberOfFiles={5}
+                  maxFileSize={10485760}
+                  onGetUploadParameters={async (file) => {
+                    const res = await fetch("/api/uploads/request-url", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        name: file.name,
+                        size: file.size,
+                        contentType: file.type,
+                      }),
+                    });
+                    const { uploadURL } = await res.json();
+                    return {
+                      method: "PUT",
+                      url: uploadURL,
+                      headers: { "Content-Type": file.type },
+                    };
+                  }}
+                  onComplete={(result) => {
+                    const newImages = (result.successful || []).map((file) => ({
+                      name: file.name,
+                      objectPath: file.response?.body?.objectPath as string || file.name,
+                    }));
+                    if (newImages.length > 0) {
+                      setUploadedImages((prev) => [...prev, ...newImages]);
+                      toast({ title: `${newImages.length} imagen(es) subida(s)` });
+                    }
+                  }}
+                >
+                  <ImagePlus className="h-4 w-4 mr-2" />
+                  Subir Imagenes
+                </ObjectUploader>
               </div>
 
               <div className="flex gap-3 pt-4">

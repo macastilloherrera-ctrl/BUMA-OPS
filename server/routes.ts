@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
+import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { registerDevAuthRoutes, isDevMode } from "./devAuth";
 import {
   insertBuildingSchema,
@@ -114,6 +115,9 @@ export async function registerRoutes(
   
   // Setup Dev Auth (only in development)
   registerDevAuthRoutes(app);
+  
+  // Setup Object Storage routes
+  registerObjectStorageRoutes(app);
   
   // Get current user info with role (combined endpoint)
   app.get("/api/me", isAuthenticated, async (req, res) => {

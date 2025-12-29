@@ -285,6 +285,7 @@ export const tickets = pgTable("tickets", {
   buildingId: varchar("building_id").notNull(),
   ticketType: ticketTypeEnum("ticket_type").notNull().default("urgencia"),
   categoryId: varchar("category_id"),
+  otherCategoryDescription: text("other_category_description"),
   maintainerId: varchar("maintainer_id"),
   visitId: varchar("visit_id"),
   description: text("description").notNull(),
