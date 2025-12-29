@@ -152,6 +152,38 @@ export default function DashboardVisits() {
 
   const groupedUpcoming = groupVisitsByDate(upcomingVisits);
 
+  const getExecutiveStats = () => {
+    if (!visits) return { withVisitsToday: 0, inField: 0 };
+    
+    const today = startOfDay(new Date());
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const executivesWithVisitsToday = new Set(
+      visits
+        .filter(v => {
+          if (!v.scheduledDate) return false;
+          const visitDate = new Date(v.scheduledDate);
+          return visitDate >= today && visitDate < tomorrow && 
+                 (v.status === "programada" || v.status === "en_curso");
+        })
+        .map(v => v.executiveId)
+    );
+
+    const executivesInField = new Set(
+      visits
+        .filter(v => v.status === "en_curso")
+        .map(v => v.executiveId)
+    );
+
+    return {
+      withVisitsToday: executivesWithVisitsToday.size,
+      inField: executivesInField.size,
+    };
+  };
+
+  const executiveStats = getExecutiveStats();
+
   const getMonthlyVisitedBuildingIds = () => {
     if (!visits) return new Set<string>();
     const thirtyDaysAgo = new Date();
@@ -287,15 +319,27 @@ export default function DashboardVisits() {
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-4">
-              <p className="text-sm text-muted-foreground">Ejecutivos Activos</p>
+              <p className="text-sm text-muted-foreground">Equipo en Campo</p>
               <Users className="h-5 w-5 text-muted-foreground" />
             </div>
-            <p className="text-3xl font-bold" data-testid="stat-executives">
-              {executives?.length || 0}
-            </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              En operacion
-            </p>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Con visitas hoy</span>
+                <span className="text-xl font-bold" data-testid="stat-executives-today">
+                  {executiveStats.withVisitsToday}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">En terreno ahora</span>
+                <span className="text-xl font-bold" data-testid="stat-executives-field">
+                  {executiveStats.inField > 0 ? (
+                    <span className="text-green-600">{executiveStats.inField}</span>
+                  ) : (
+                    <span>{executiveStats.inField}</span>
+                  )}
+                </span>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
