@@ -2,6 +2,8 @@ import {
   users,
   userProfiles,
   buildings,
+  buildingStaff,
+  buildingFeatures,
   criticalAssets,
   visits,
   visitChecklistItems,
@@ -13,6 +15,10 @@ import {
   type InsertUserProfile,
   type Building,
   type InsertBuilding,
+  type BuildingStaff,
+  type InsertBuildingStaff,
+  type BuildingFeature,
+  type InsertBuildingFeature,
   type CriticalAsset,
   type InsertCriticalAsset,
   type Visit,
@@ -42,6 +48,18 @@ export interface IStorage {
   createBuilding(building: InsertBuilding): Promise<Building>;
   updateBuilding(id: string, data: Partial<InsertBuilding>): Promise<Building | undefined>;
   deleteBuilding(id: string): Promise<boolean>;
+
+  // Building Staff
+  getBuildingStaff(buildingId: string): Promise<BuildingStaff[]>;
+  createBuildingStaff(staff: InsertBuildingStaff): Promise<BuildingStaff>;
+  deleteBuildingStaff(id: string): Promise<boolean>;
+  replaceBuildingStaff(buildingId: string, staff: InsertBuildingStaff[]): Promise<BuildingStaff[]>;
+
+  // Building Features
+  getBuildingFeatures(buildingId: string): Promise<BuildingFeature[]>;
+  createBuildingFeature(feature: InsertBuildingFeature): Promise<BuildingFeature>;
+  deleteBuildingFeature(id: string): Promise<boolean>;
+  replaceBuildingFeatures(buildingId: string, features: InsertBuildingFeature[]): Promise<BuildingFeature[]>;
 
   // Critical Assets
   getCriticalAssets(buildingId?: string): Promise<CriticalAsset[]>;
@@ -134,6 +152,50 @@ export class DatabaseStorage implements IStorage {
   async deleteBuilding(id: string): Promise<boolean> {
     const result = await db.delete(buildings).where(eq(buildings.id, id));
     return true;
+  }
+
+  // Building Staff
+  async getBuildingStaff(buildingId: string): Promise<BuildingStaff[]> {
+    return db.select().from(buildingStaff).where(eq(buildingStaff.buildingId, buildingId));
+  }
+
+  async createBuildingStaff(staff: InsertBuildingStaff): Promise<BuildingStaff> {
+    const [created] = await db.insert(buildingStaff).values(staff).returning();
+    return created;
+  }
+
+  async deleteBuildingStaff(id: string): Promise<boolean> {
+    await db.delete(buildingStaff).where(eq(buildingStaff.id, id));
+    return true;
+  }
+
+  async replaceBuildingStaff(buildingId: string, staffList: InsertBuildingStaff[]): Promise<BuildingStaff[]> {
+    await db.delete(buildingStaff).where(eq(buildingStaff.buildingId, buildingId));
+    if (staffList.length === 0) return [];
+    const created = await db.insert(buildingStaff).values(staffList).returning();
+    return created;
+  }
+
+  // Building Features
+  async getBuildingFeatures(buildingId: string): Promise<BuildingFeature[]> {
+    return db.select().from(buildingFeatures).where(eq(buildingFeatures.buildingId, buildingId));
+  }
+
+  async createBuildingFeature(feature: InsertBuildingFeature): Promise<BuildingFeature> {
+    const [created] = await db.insert(buildingFeatures).values(feature).returning();
+    return created;
+  }
+
+  async deleteBuildingFeature(id: string): Promise<boolean> {
+    await db.delete(buildingFeatures).where(eq(buildingFeatures.id, id));
+    return true;
+  }
+
+  async replaceBuildingFeatures(buildingId: string, featuresList: InsertBuildingFeature[]): Promise<BuildingFeature[]> {
+    await db.delete(buildingFeatures).where(eq(buildingFeatures.buildingId, buildingId));
+    if (featuresList.length === 0) return [];
+    const created = await db.insert(buildingFeatures).values(featuresList).returning();
+    return created;
   }
 
   // Critical Assets

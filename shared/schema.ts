@@ -99,8 +99,34 @@ export const buildings = pgTable("buildings", {
   address: text("address").notNull(),
   status: buildingStatusEnum("status").notNull().default("activo"),
   assignedExecutiveId: varchar("assigned_executive_id"),
+  departmentCount: integer("department_count").default(0),
+  elevatorCount: integer("elevator_count").default(0),
+  gateCount: integer("gate_count").default(0),
+  extinguisherCount: integer("extinguisher_count").default(0),
+  visitorParkingCount: integer("visitor_parking_count").default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Building Staff table
+export const buildingStaff = pgTable("building_staff", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  buildingId: varchar("building_id").notNull(),
+  fullName: varchar("full_name", { length: 255 }).notNull(),
+  role: varchar("role", { length: 100 }).notNull(),
+  birthDate: timestamp("birth_date"),
+  phone: varchar("phone", { length: 50 }),
+  email: varchar("email", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Building Features table (custom characteristics)
+export const buildingFeatures = pgTable("building_features", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  buildingId: varchar("building_id").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  value: varchar("value", { length: 255 }),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 // Critical Assets table
@@ -212,6 +238,22 @@ export const buildingsRelations = relations(buildings, ({ one, many }) => ({
   visits: many(visits),
   tickets: many(tickets),
   incidents: many(incidents),
+  staff: many(buildingStaff),
+  features: many(buildingFeatures),
+}));
+
+export const buildingStaffRelations = relations(buildingStaff, ({ one }) => ({
+  building: one(buildings, {
+    fields: [buildingStaff.buildingId],
+    references: [buildings.id],
+  }),
+}));
+
+export const buildingFeaturesRelations = relations(buildingFeatures, ({ one }) => ({
+  building: one(buildings, {
+    fields: [buildingFeatures.buildingId],
+    references: [buildings.id],
+  }),
 }));
 
 export const criticalAssetsRelations = relations(criticalAssets, ({ one }) => ({
@@ -287,6 +329,16 @@ export const insertBuildingSchema = createInsertSchema(buildings).omit({
   updatedAt: true,
 });
 
+export const insertBuildingStaffSchema = createInsertSchema(buildingStaff).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertBuildingFeatureSchema = createInsertSchema(buildingFeatures).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertCriticalAssetSchema = createInsertSchema(criticalAssets).omit({
   id: true,
   createdAt: true,
@@ -328,6 +380,12 @@ export type UserProfile = typeof userProfiles.$inferSelect;
 export type InsertBuilding = z.infer<typeof insertBuildingSchema>;
 export type Building = typeof buildings.$inferSelect;
 
+export type InsertBuildingStaff = z.infer<typeof insertBuildingStaffSchema>;
+export type BuildingStaff = typeof buildingStaff.$inferSelect;
+
+export type InsertBuildingFeature = z.infer<typeof insertBuildingFeatureSchema>;
+export type BuildingFeature = typeof buildingFeatures.$inferSelect;
+
 export type InsertCriticalAsset = z.infer<typeof insertCriticalAssetSchema>;
 export type CriticalAsset = typeof criticalAssets.$inferSelect;
 
@@ -348,7 +406,6 @@ export type Attachment = typeof attachments.$inferSelect;
 
 // Helper types for frontend
 export type UserRole = "gerente_general" | "gerente_operaciones" | "gerente_finanzas" | "ejecutivo_operaciones";
-export type VisitStatus = "borrador" | "programada" | "atrasada" | "en_curso" | "realizada" | "cancelada";
 export type VisitType = "rutina" | "urgente";
 export type TicketPriority = "rojo" | "amarillo" | "verde";
 export type TicketStatus = "pendiente" | "en_curso" | "vencido" | "resuelto" | "reprogramado";

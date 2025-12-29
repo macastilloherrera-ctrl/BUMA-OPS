@@ -5,6 +5,8 @@ import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { registerDevAuthRoutes, isDevMode } from "./devAuth";
 import {
   insertBuildingSchema,
+  insertBuildingStaffSchema,
+  insertBuildingFeatureSchema,
   insertCriticalAssetSchema,
   insertVisitSchema,
   insertVisitChecklistItemSchema,
@@ -282,6 +284,58 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Datos invalidos", details: error.errors });
       }
       console.error("Error updating building:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // === Building Staff ===
+  app.get("/api/buildings/:id/staff", isAuthenticated, async (req, res) => {
+    try {
+      const staff = await storage.getBuildingStaff(req.params.id);
+      res.json(staff);
+    } catch (error) {
+      console.error("Error getting building staff:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.put("/api/buildings/:id/staff", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const staffArray = z.array(insertBuildingStaffSchema.omit({ buildingId: true })).parse(req.body);
+      const staffWithBuildingId = staffArray.map(s => ({ ...s, buildingId: req.params.id }));
+      const staff = await storage.replaceBuildingStaff(req.params.id, staffWithBuildingId);
+      res.json(staff);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos invalidos", details: error.errors });
+      }
+      console.error("Error updating building staff:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // === Building Features ===
+  app.get("/api/buildings/:id/features", isAuthenticated, async (req, res) => {
+    try {
+      const features = await storage.getBuildingFeatures(req.params.id);
+      res.json(features);
+    } catch (error) {
+      console.error("Error getting building features:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.put("/api/buildings/:id/features", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const featuresArray = z.array(insertBuildingFeatureSchema.omit({ buildingId: true })).parse(req.body);
+      const featuresWithBuildingId = featuresArray.map(f => ({ ...f, buildingId: req.params.id }));
+      const features = await storage.replaceBuildingFeatures(req.params.id, featuresWithBuildingId);
+      res.json(features);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos invalidos", details: error.errors });
+      }
+      console.error("Error updating building features:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
