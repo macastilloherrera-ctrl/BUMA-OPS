@@ -80,6 +80,34 @@ export const buildingScopeEnum = pgEnum("building_scope", [
   "all"
 ]);
 
+// Ticket type enum (3 types)
+export const ticketTypeEnum = pgEnum("ticket_type", [
+  "urgencia",
+  "planificado",
+  "mantencion"
+]);
+
+// Receiver type enum (who receives the maintainer)
+export const receiverTypeEnum = pgEnum("receiver_type", [
+  "ejecutivo",
+  "gerente_operaciones",
+  "personal_edificio"
+]);
+
+// Quote status enum
+export const quoteStatusEnum = pgEnum("quote_status", [
+  "pendiente",
+  "aceptada",
+  "rechazada"
+]);
+
+// Communication audience enum
+export const communicationAudienceEnum = pgEnum("communication_audience", [
+  "comunidad",
+  "conserjeria",
+  "comite"
+]);
+
 // User profiles table (extends auth users with role info)
 export const userProfiles = pgTable("user_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -155,6 +183,41 @@ export const buildingFiles = pgTable("building_files", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Maintainer Categories table
+export const maintainerCategories = pgTable("maintainer_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Maintainers table (companies)
+export const maintainers = pgTable("maintainers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyName: varchar("company_name", { length: 255 }).notNull(),
+  contactName: varchar("contact_name", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  phone2: varchar("phone_2", { length: 50 }),
+  email: varchar("email", { length: 255 }),
+  address: text("address"),
+  responseTimeHours: integer("response_time_hours"),
+  notes: text("notes"),
+  isPreferred: boolean("is_preferred").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Maintainer-Category links (many-to-many)
+export const maintainerCategoryLinks = pgTable("maintainer_category_links", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  maintainerId: varchar("maintainer_id").notNull(),
+  categoryId: varchar("category_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Critical Assets table
 export const criticalAssets = pgTable("critical_assets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -216,23 +279,78 @@ export const incidents = pgTable("incidents", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Tickets table
+// Tickets table (updated with full workflow support)
 export const tickets = pgTable("tickets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   buildingId: varchar("building_id").notNull(),
+  ticketType: ticketTypeEnum("ticket_type").notNull().default("urgencia"),
+  categoryId: varchar("category_id"),
+  maintainerId: varchar("maintainer_id"),
   visitId: varchar("visit_id"),
   description: text("description").notNull(),
-  category: varchar("category", { length: 100 }).notNull(),
   priority: ticketPriorityEnum("priority").notNull().default("verde"),
-  responsibleType: ticketResponsibleTypeEnum("responsible_type").notNull(),
-  responsibleName: varchar("responsible_name", { length: 255 }),
-  assignedExecutiveId: varchar("assigned_executive_id"),
-  dueDate: timestamp("due_date").notNull(),
   status: ticketStatusEnum("status").notNull().default("pendiente"),
-  cost: decimal("cost", { precision: 12, scale: 2 }),
+  assignedExecutiveId: varchar("assigned_executive_id"),
+  requiresMaintainerVisit: boolean("requires_maintainer_visit").default(false),
+  requiresExecutiveVisit: boolean("requires_executive_visit").default(false),
+  scheduledDate: timestamp("scheduled_date"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  receiverType: receiverTypeEnum("receiver_type"),
+  receiverId: varchar("receiver_id"),
+  approvedQuoteId: varchar("approved_quote_id"),
+  approvedBy: varchar("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  workStartedAt: timestamp("work_started_at"),
+  workCompletedAt: timestamp("work_completed_at"),
+  invoiceNumber: varchar("invoice_number", { length: 100 }),
+  invoiceAmount: decimal("invoice_amount", { precision: 12, scale: 2 }),
+  closedAt: timestamp("closed_at"),
+  closedBy: varchar("closed_by"),
   createdBy: varchar("created_by").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Ticket Quotes table
+export const ticketQuotes = pgTable("ticket_quotes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").notNull(),
+  maintainerId: varchar("maintainer_id"),
+  companyName: varchar("company_name", { length: 255 }).notNull(),
+  description: text("description"),
+  amountNet: decimal("amount_net", { precision: 12, scale: 2 }).notNull(),
+  ivaRate: decimal("iva_rate", { precision: 5, scale: 2 }).default("19"),
+  amountTotal: decimal("amount_total", { precision: 12, scale: 2 }),
+  durationHours: integer("duration_hours"),
+  durationDays: integer("duration_days"),
+  attachmentKey: text("attachment_key"),
+  status: quoteStatusEnum("status").notNull().default("pendiente"),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Ticket Photos table
+export const ticketPhotos = pgTable("ticket_photos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").notNull(),
+  photoType: varchar("photo_type", { length: 50 }).notNull(),
+  objectStorageKey: text("object_storage_key").notNull(),
+  description: text("description"),
+  uploadedBy: varchar("uploaded_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Ticket Communications table
+export const ticketCommunications = pgTable("ticket_communications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").notNull(),
+  audience: communicationAudienceEnum("audience").notNull(),
+  message: text("message").notNull(),
+  sentBy: varchar("sent_by").notNull(),
+  sentAt: timestamp("sent_at").defaultNow(),
+  acknowledgedBy: varchar("acknowledged_by"),
+  acknowledgedAt: timestamp("acknowledged_at"),
 });
 
 // Attachments table
@@ -310,6 +428,27 @@ export const criticalAssetsRelations = relations(criticalAssets, ({ one }) => ({
   }),
 }));
 
+export const maintainerCategoriesRelations = relations(maintainerCategories, ({ many }) => ({
+  maintainerLinks: many(maintainerCategoryLinks),
+}));
+
+export const maintainersRelations = relations(maintainers, ({ many }) => ({
+  categoryLinks: many(maintainerCategoryLinks),
+  tickets: many(tickets),
+  quotes: many(ticketQuotes),
+}));
+
+export const maintainerCategoryLinksRelations = relations(maintainerCategoryLinks, ({ one }) => ({
+  maintainer: one(maintainers, {
+    fields: [maintainerCategoryLinks.maintainerId],
+    references: [maintainers.id],
+  }),
+  category: one(maintainerCategories, {
+    fields: [maintainerCategoryLinks.categoryId],
+    references: [maintainerCategories.id],
+  }),
+}));
+
 export const visitsRelations = relations(visits, ({ one, many }) => ({
   building: one(buildings, {
     fields: [visits.buildingId],
@@ -346,7 +485,7 @@ export const incidentsRelations = relations(incidents, ({ one }) => ({
   }),
 }));
 
-export const ticketsRelations = relations(tickets, ({ one }) => ({
+export const ticketsRelations = relations(tickets, ({ one, many }) => ({
   building: one(buildings, {
     fields: [tickets.buildingId],
     references: [buildings.id],
@@ -358,6 +497,42 @@ export const ticketsRelations = relations(tickets, ({ one }) => ({
   assignedExecutive: one(userProfiles, {
     fields: [tickets.assignedExecutiveId],
     references: [userProfiles.userId],
+  }),
+  category: one(maintainerCategories, {
+    fields: [tickets.categoryId],
+    references: [maintainerCategories.id],
+  }),
+  maintainer: one(maintainers, {
+    fields: [tickets.maintainerId],
+    references: [maintainers.id],
+  }),
+  quotes: many(ticketQuotes),
+  photos: many(ticketPhotos),
+  communications: many(ticketCommunications),
+}));
+
+export const ticketQuotesRelations = relations(ticketQuotes, ({ one }) => ({
+  ticket: one(tickets, {
+    fields: [ticketQuotes.ticketId],
+    references: [tickets.id],
+  }),
+  maintainer: one(maintainers, {
+    fields: [ticketQuotes.maintainerId],
+    references: [maintainers.id],
+  }),
+}));
+
+export const ticketPhotosRelations = relations(ticketPhotos, ({ one }) => ({
+  ticket: one(tickets, {
+    fields: [ticketPhotos.ticketId],
+    references: [tickets.id],
+  }),
+}));
+
+export const ticketCommunicationsRelations = relations(ticketCommunications, ({ one }) => ({
+  ticket: one(tickets, {
+    fields: [ticketCommunications.ticketId],
+    references: [tickets.id],
   }),
 }));
 
@@ -402,6 +577,22 @@ export const insertCriticalAssetSchema = createInsertSchema(criticalAssets).omit
   updatedAt: true,
 });
 
+export const insertMaintainerCategorySchema = createInsertSchema(maintainerCategories).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertMaintainerSchema = createInsertSchema(maintainers).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertMaintainerCategoryLinkSchema = createInsertSchema(maintainerCategoryLinks).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertVisitSchema = createInsertSchema(visits).omit({
   id: true,
   createdAt: true,
@@ -430,6 +621,21 @@ export const insertAttachmentSchema = createInsertSchema(attachments).omit({
   createdAt: true,
 });
 
+export const insertTicketQuoteSchema = createInsertSchema(ticketQuotes).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertTicketPhotoSchema = createInsertSchema(ticketPhotos).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertTicketCommunicationSchema = createInsertSchema(ticketCommunications).omit({
+  id: true,
+  sentAt: true,
+});
+
 // Types
 export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
 export type UserProfile = typeof userProfiles.$inferSelect;
@@ -452,6 +658,15 @@ export type BuildingFile = typeof buildingFiles.$inferSelect;
 export type InsertCriticalAsset = z.infer<typeof insertCriticalAssetSchema>;
 export type CriticalAsset = typeof criticalAssets.$inferSelect;
 
+export type InsertMaintainerCategory = z.infer<typeof insertMaintainerCategorySchema>;
+export type MaintainerCategory = typeof maintainerCategories.$inferSelect;
+
+export type InsertMaintainer = z.infer<typeof insertMaintainerSchema>;
+export type Maintainer = typeof maintainers.$inferSelect;
+
+export type InsertMaintainerCategoryLink = z.infer<typeof insertMaintainerCategoryLinkSchema>;
+export type MaintainerCategoryLink = typeof maintainerCategoryLinks.$inferSelect;
+
 export type InsertVisit = z.infer<typeof insertVisitSchema>;
 export type Visit = typeof visits.$inferSelect;
 
@@ -467,10 +682,23 @@ export type Ticket = typeof tickets.$inferSelect;
 export type InsertAttachment = z.infer<typeof insertAttachmentSchema>;
 export type Attachment = typeof attachments.$inferSelect;
 
+export type InsertTicketQuote = z.infer<typeof insertTicketQuoteSchema>;
+export type TicketQuote = typeof ticketQuotes.$inferSelect;
+
+export type InsertTicketPhoto = z.infer<typeof insertTicketPhotoSchema>;
+export type TicketPhoto = typeof ticketPhotos.$inferSelect;
+
+export type InsertTicketCommunication = z.infer<typeof insertTicketCommunicationSchema>;
+export type TicketCommunication = typeof ticketCommunications.$inferSelect;
+
 // Helper types for frontend
 export type UserRole = "gerente_general" | "gerente_operaciones" | "gerente_finanzas" | "ejecutivo_operaciones";
 export type VisitType = "rutina" | "urgente";
 export type TicketPriority = "rojo" | "amarillo" | "verde";
 export type TicketStatus = "pendiente" | "en_curso" | "vencido" | "resuelto" | "reprogramado";
+export type TicketType = "urgencia" | "planificado" | "mantencion";
+export type ReceiverType = "ejecutivo" | "gerente_operaciones" | "personal_edificio";
+export type QuoteStatus = "pendiente" | "aceptada" | "rechazada";
+export type CommunicationAudience = "comunidad" | "conserjeria" | "comite";
 export type IncidentStatus = "pendiente" | "en_reparacion" | "reparada" | "reprogramada";
 export type ChecklistType = "rutina" | "emergencia";
