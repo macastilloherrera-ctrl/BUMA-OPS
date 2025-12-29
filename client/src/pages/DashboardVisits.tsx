@@ -23,6 +23,9 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
+  User,
+  ChevronRight,
+  ArrowLeft,
 } from "lucide-react";
 import type { Visit, Building } from "@shared/schema";
 import { format, differenceInDays, isToday, isTomorrow, isBefore, startOfDay, compareAsc } from "date-fns";
@@ -50,9 +53,15 @@ interface ExecutiveWorkload {
   completedThisMonth: number;
 }
 
+interface ExecutiveInfo {
+  userId: string;
+  displayName: string;
+}
+
 export default function DashboardVisits() {
   const [activeTab, setActiveTab] = useState("agenda");
   const [showBuildingsDialog, setShowBuildingsDialog] = useState(false);
+  const [selectedBuilding, setSelectedBuilding] = useState<Building | null>(null);
 
   const { data: visits, isLoading: visitsLoading } = useQuery<VisitWithBuilding[]>({
     queryKey: ["/api/visits"],
@@ -65,6 +74,16 @@ export default function DashboardVisits() {
   const { data: executives } = useQuery<ExecutiveWorkload[]>({
     queryKey: ["/api/executives/workload"],
   });
+
+  const { data: executivesList } = useQuery<ExecutiveInfo[]>({
+    queryKey: ["/api/users/executives"],
+  });
+
+  const getExecutiveName = (executiveId: string | null | undefined): string => {
+    if (!executiveId || !executivesList) return "Sin asignar";
+    const exec = executivesList.find(e => e.userId === executiveId);
+    return exec?.displayName || executiveId;
+  };
 
   const now = new Date();
   const todayStart = startOfDay(now);
@@ -459,64 +478,196 @@ export default function DashboardVisits() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={showBuildingsDialog} onOpenChange={setShowBuildingsDialog}>
-        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto">
+      <Dialog open={showBuildingsDialog} onOpenChange={(open) => {
+        setShowBuildingsDialog(open);
+        if (!open) setSelectedBuilding(null);
+      }}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edificios Visitados</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              {selectedBuilding && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 mr-1"
+                  onClick={() => setSelectedBuilding(null)}
+                  data-testid="button-back-to-list"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              )}
+              {selectedBuilding ? selectedBuilding.name : "Edificios Visitados"}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            {notVisitedBuildings.length > 0 && (
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
-                  <XCircle className="h-4 w-4 text-destructive" />
-                  Sin visita ({notVisitedBuildings.length})
-                </h3>
-                <div className="space-y-2">
-                  {notVisitedBuildings.map((building) => (
-                    <div
-                      key={building.id}
-                      className="flex items-center gap-3 p-2 rounded-md bg-muted/30"
-                      data-testid={`building-not-visited-${building.id}`}
-                    >
-                      <Building2 className="h-4 w-4 text-muted-foreground" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{building.name}</p>
-                        <p className="text-xs text-muted-foreground truncate">{building.address}</p>
-                      </div>
-                    </div>
-                  ))}
+
+          {selectedBuilding ? (
+            <div className="space-y-4">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <MapPin className="h-4 w-4 text-muted-foreground" />
+                  <span>{selectedBuilding.address}</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <span className="font-medium">Ejecutivo asignado:</span>
+                  <span>{getExecutiveName(selectedBuilding.assignedExecutiveId)}</span>
                 </div>
               </div>
-            )}
-            {visitedBuildings.length > 0 && (
+
               <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  Con visita completada ({visitedBuildings.length})
-                </h3>
-                <div className="space-y-2">
-                  {visitedBuildings.map((building) => (
-                    <div
-                      key={building.id}
-                      className="flex items-center gap-3 p-2 rounded-md bg-muted/30"
-                      data-testid={`building-visited-${building.id}`}
-                    >
-                      <Building2 className="h-4 w-4 text-green-600" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{building.name}</p>
-                        <p className="text-xs text-muted-foreground truncate">{building.address}</p>
-                      </div>
+                <h3 className="text-sm font-medium mb-3">Visitas pendientes/atrasadas</h3>
+                {(() => {
+                  const buildingVisits = visits?.filter(
+                    v => v.buildingId === selectedBuilding.id && 
+                    (v.status === "programada" || v.status === "atrasada")
+                  ).sort((a, b) => {
+                    if (!a.scheduledDate || !b.scheduledDate) return 0;
+                    return compareAsc(new Date(a.scheduledDate), new Date(b.scheduledDate));
+                  }) || [];
+
+                  if (buildingVisits.length === 0) {
+                    return (
+                      <p className="text-sm text-muted-foreground py-4 text-center">
+                        No hay visitas pendientes para este edificio
+                      </p>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-2">
+                      {buildingVisits.map((visit) => {
+                        const isOverdue = visit.status === "atrasada" || 
+                          (visit.scheduledDate && isBefore(new Date(visit.scheduledDate), todayStart));
+                        return (
+                          <Link key={visit.id} href={`/visitas/${visit.id}`} onClick={() => setShowBuildingsDialog(false)}>
+                            <div
+                              className={`flex items-center justify-between p-3 rounded-md hover-elevate cursor-pointer ${isOverdue ? 'bg-destructive/10' : 'bg-muted/30'}`}
+                              data-testid={`building-visit-${visit.id}`}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Clock className={`h-3.5 w-3.5 ${isOverdue ? 'text-destructive' : 'text-muted-foreground'}`} />
+                                  <span className={`text-sm font-medium ${isOverdue ? 'text-destructive' : ''}`}>
+                                    {visit.scheduledDate && format(new Date(visit.scheduledDate), "dd MMM yyyy, HH:mm", { locale: es })}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <User className="h-3 w-3" />
+                                  <span>{getExecutiveName(visit.executiveId)}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {isOverdue && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    Atrasada
+                                  </Badge>
+                                )}
+                                {visit.type === "urgente" && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    Urgente
+                                  </Badge>
+                                )}
+                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                              </div>
+                            </div>
+                          </Link>
+                        );
+                      })}
                     </div>
-                  ))}
-                </div>
+                  );
+                })()}
               </div>
-            )}
-            {buildings?.length === 0 && (
-              <p className="text-center text-muted-foreground py-4">
-                No hay edificios registrados
-              </p>
-            )}
-          </div>
+
+              <div>
+                <h3 className="text-sm font-medium mb-3">Ultima visita completada</h3>
+                {(() => {
+                  const lastCompleted = visits?.filter(
+                    v => v.buildingId === selectedBuilding.id && v.status === "realizada"
+                  ).sort((a, b) => {
+                    if (!a.completedAt || !b.completedAt) return 0;
+                    return compareAsc(new Date(b.completedAt), new Date(a.completedAt));
+                  })[0];
+
+                  if (!lastCompleted) {
+                    return (
+                      <p className="text-sm text-muted-foreground py-2">
+                        Este edificio nunca ha sido visitado
+                      </p>
+                    );
+                  }
+
+                  return (
+                    <div className="flex items-center gap-2 text-sm p-3 rounded-md bg-muted/30">
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      <span>
+                        {lastCompleted.completedAt && format(new Date(lastCompleted.completedAt), "dd MMM yyyy", { locale: es })}
+                      </span>
+                      <span className="text-muted-foreground">por</span>
+                      <span>{getExecutiveName(lastCompleted.executiveId)}</span>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {notVisitedBuildings.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
+                    <XCircle className="h-4 w-4 text-destructive" />
+                    Sin visita ({notVisitedBuildings.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {notVisitedBuildings.map((building) => (
+                      <div
+                        key={building.id}
+                        className="flex items-center gap-3 p-2 rounded-md bg-muted/30 hover-elevate cursor-pointer"
+                        onClick={() => setSelectedBuilding(building)}
+                        data-testid={`building-not-visited-${building.id}`}
+                      >
+                        <Building2 className="h-4 w-4 text-muted-foreground" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{building.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">{building.address}</p>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {visitedBuildings.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    Con visita completada ({visitedBuildings.length})
+                  </h3>
+                  <div className="space-y-2">
+                    {visitedBuildings.map((building) => (
+                      <div
+                        key={building.id}
+                        className="flex items-center gap-3 p-2 rounded-md bg-muted/30 hover-elevate cursor-pointer"
+                        onClick={() => setSelectedBuilding(building)}
+                        data-testid={`building-visited-${building.id}`}
+                      >
+                        <Building2 className="h-4 w-4 text-green-600" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm truncate">{building.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">{building.address}</p>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {buildings?.length === 0 && (
+                <p className="text-center text-muted-foreground py-4">
+                  No hay edificios registrados
+                </p>
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

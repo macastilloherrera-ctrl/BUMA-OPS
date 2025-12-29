@@ -2,7 +2,7 @@ import type { Express, Request, Response } from "express";
 import { storage } from "./storage";
 import { authStorage } from "./replit_integrations/auth/storage";
 
-const DEV_USERS = [
+export const DEV_USERS = [
   {
     id: "dev-gerente-general",
     email: "gg@buma.local",
