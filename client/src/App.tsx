@@ -33,6 +33,7 @@ import DashboardTickets from "@/pages/DashboardTickets";
 import DashboardVisits from "@/pages/DashboardVisits";
 import DashboardOverview from "@/pages/DashboardOverview";
 import Maintainers from "@/pages/Maintainers";
+import CalendarView from "@/pages/CalendarView";
 import DevLogin from "@/pages/DevLogin";
 
 function LoadingScreen() {
@@ -142,6 +143,7 @@ function AuthenticatedApp() {
                 <Route path="/tickets" component={Tickets} />
                 <Route path="/tickets/nuevo" component={NewTicket} />
                 <Route path="/tickets/:id" component={TicketDetail} />
+                <Route path="/calendario" component={CalendarView} />
 
                 <Route path="/edificios" component={Buildings} />
                 <Route path="/edificios/:id" component={BuildingDetail} />

@@ -14,6 +14,7 @@ import {
 import {
   LayoutDashboard,
   Calendar,
+  CalendarDays,
   Ticket,
   Building2,
   Wrench,
@@ -39,6 +40,7 @@ const managerNavItems = [
     items: [
       { path: "/dashboard/tickets", label: "Tickets Semaforo", icon: Ticket },
       { path: "/dashboard/visitas", label: "Panel Visitas", icon: Calendar },
+      { path: "/calendario", label: "Calendario", icon: CalendarDays },
     ]
   },
   {
@@ -58,6 +60,7 @@ const executiveNavItems = [
     items: [
       { path: "/visitas", label: "Agenda de Visitas", icon: Calendar },
       { path: "/tickets", label: "Mis Tickets", icon: Ticket },
+      { path: "/calendario", label: "Calendario", icon: CalendarDays },
     ]
   },
   {
@@ -76,6 +79,7 @@ const generalManagerNavItems = [
       { path: "/dashboard/overview", label: "Panel General", icon: LayoutDashboard },
       { path: "/dashboard/tickets", label: "Tickets Semaforo", icon: Ticket },
       { path: "/dashboard/visitas", label: "Panel Visitas", icon: Calendar },
+      { path: "/calendario", label: "Calendario", icon: CalendarDays },
     ]
   },
   {

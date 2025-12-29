@@ -75,6 +75,12 @@ interface TicketWithDetails {
   approvedQuoteId?: string | null;
   approvedBy?: string | null;
   approvedAt?: string | null;
+  workStartedAt?: string | null;
+  workCompletedAt?: string | null;
+  invoiceNumber?: string | null;
+  invoiceAmount?: string | null;
+  closedAt?: string | null;
+  closedBy?: string | null;
   createdAt?: string | null;
   building?: Building;
   cost?: string | null;
@@ -97,6 +103,13 @@ const quoteSchema = z.object({
 
 type QuoteForm = z.infer<typeof quoteSchema>;
 
+const closureSchema = z.object({
+  invoiceNumber: z.string().optional(),
+  invoiceAmount: z.coerce.number().min(0).optional(),
+});
+
+type ClosureForm = z.infer<typeof closureSchema>;
+
 const ticketTypeLabels: Record<string, { label: string; icon: typeof AlertTriangle; color: string }> = {
   urgencia: { label: "Urgencia", icon: AlertTriangle, color: "text-red-500" },
   planificado: { label: "Planificado", icon: CalendarClock, color: "text-blue-500" },
@@ -109,6 +122,7 @@ export default function TicketDetail() {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState("detalles");
   const [isQuoteDialogOpen, setIsQuoteDialogOpen] = useState(false);
+  const [isClosureDialogOpen, setIsClosureDialogOpen] = useState(false);
 
   const { data: userProfile } = useQuery<UserProfile>({
     queryKey: ["/api/user/profile"],
@@ -145,6 +159,14 @@ export default function TicketDetail() {
     },
   });
 
+  const closureForm = useForm<ClosureForm>({
+    resolver: zodResolver(closureSchema),
+    defaultValues: {
+      invoiceNumber: "",
+      invoiceAmount: 0,
+    },
+  });
+
   const createQuoteMutation = useMutation({
     mutationFn: async (data: QuoteForm) => {
       return apiRequest("POST", `/api/tickets/${id}/quotes`, data);
@@ -174,17 +196,58 @@ export default function TicketDetail() {
     },
   });
 
-  const updateStatusMutation = useMutation({
-    mutationFn: async (status: string) => {
-      return apiRequest("PATCH", `/api/tickets/${id}`, { status });
+  const startWorkMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("PATCH", `/api/tickets/${id}`, {
+        status: "en_curso",
+        workStartedAt: new Date().toISOString(),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
-      toast({ title: "Estado actualizado" });
+      toast({ title: "Trabajo iniciado" });
     },
     onError: () => {
-      toast({ title: "Error al actualizar estado", variant: "destructive" });
+      toast({ title: "Error al iniciar trabajo", variant: "destructive" });
+    },
+  });
+
+  const completeWorkMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("PATCH", `/api/tickets/${id}`, {
+        workCompletedAt: new Date().toISOString(),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+      toast({ title: "Trabajo completado" });
+    },
+    onError: () => {
+      toast({ title: "Error al completar trabajo", variant: "destructive" });
+    },
+  });
+
+  const closeTicketMutation = useMutation({
+    mutationFn: async (data: ClosureForm) => {
+      return apiRequest("PATCH", `/api/tickets/${id}`, {
+        status: "resuelto",
+        invoiceNumber: data.invoiceNumber || null,
+        invoiceAmount: data.invoiceAmount ? String(data.invoiceAmount) : null,
+        closedAt: new Date().toISOString(),
+        closedBy: userProfile?.userId,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+      setIsClosureDialogOpen(false);
+      closureForm.reset();
+      toast({ title: "Ticket cerrado exitosamente" });
+    },
+    onError: () => {
+      toast({ title: "Error al cerrar ticket", variant: "destructive" });
     },
   });
 
@@ -357,34 +420,151 @@ export default function TicketDetail() {
               </CardContent>
             </Card>
 
-            {isManager && ticket.status !== "resuelto" && (
+            {ticket.status !== "resuelto" && (
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Acciones</CardTitle>
+                  <CardTitle className="text-base">Flujo de Trabajo</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="flex gap-2 flex-wrap">
-                    {ticket.status === "pendiente" && (
+                <CardContent className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm">
+                    <div className={`w-3 h-3 rounded-full ${ticket.workStartedAt ? "bg-green-500" : "bg-muted"}`} />
+                    <span className={ticket.workStartedAt ? "font-medium" : "text-muted-foreground"}>
+                      Trabajo iniciado
+                    </span>
+                    {ticket.workStartedAt && (
+                      <span className="text-xs text-muted-foreground ml-auto">
+                        {format(new Date(ticket.workStartedAt), "dd MMM HH:mm", { locale: es })}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <div className={`w-3 h-3 rounded-full ${ticket.workCompletedAt ? "bg-green-500" : "bg-muted"}`} />
+                    <span className={ticket.workCompletedAt ? "font-medium" : "text-muted-foreground"}>
+                      Trabajo completado
+                    </span>
+                    {ticket.workCompletedAt && (
+                      <span className="text-xs text-muted-foreground ml-auto">
+                        {format(new Date(ticket.workCompletedAt), "dd MMM HH:mm", { locale: es })}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 flex-wrap pt-2 border-t">
+                    {ticket.status === "pendiente" && !ticket.workStartedAt && (
                       <Button
                         size="sm"
-                        onClick={() => updateStatusMutation.mutate("en_curso")}
-                        disabled={updateStatusMutation.isPending}
+                        onClick={() => startWorkMutation.mutate()}
+                        disabled={startWorkMutation.isPending}
+                        data-testid="button-start-work"
                       >
                         Iniciar Trabajo
                       </Button>
                     )}
-                    {(ticket.status === "en_curso" || ticket.status === "pendiente") && hasApprovedQuote && (
+                    {ticket.workStartedAt && !ticket.workCompletedAt && (
                       <Button
                         size="sm"
-                        variant="default"
-                        onClick={() => updateStatusMutation.mutate("resuelto")}
-                        disabled={updateStatusMutation.isPending}
+                        variant="secondary"
+                        onClick={() => completeWorkMutation.mutate()}
+                        disabled={completeWorkMutation.isPending}
+                        data-testid="button-complete-work"
                       >
                         <Check className="h-4 w-4 mr-1" />
-                        Cerrar Ticket
+                        Marcar Completado
                       </Button>
                     )}
+                    {isManager && ticket.workCompletedAt && hasApprovedQuote && (
+                      <Dialog open={isClosureDialogOpen} onOpenChange={setIsClosureDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button size="sm" data-testid="button-close-ticket">
+                            <Check className="h-4 w-4 mr-1" />
+                            Cerrar Ticket
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>Cerrar Ticket</DialogTitle>
+                          </DialogHeader>
+                          <Form {...closureForm}>
+                            <form
+                              onSubmit={closureForm.handleSubmit((data) => closeTicketMutation.mutate(data))}
+                              className="space-y-4"
+                            >
+                              <FormField
+                                control={closureForm.control}
+                                name="invoiceNumber"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Numero de Factura (opcional)</FormLabel>
+                                    <FormControl>
+                                      <Input {...field} data-testid="input-invoice-number" />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={closureForm.control}
+                                name="invoiceAmount"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Monto Factura (opcional)</FormLabel>
+                                    <FormControl>
+                                      <Input type="number" {...field} data-testid="input-invoice-amount" />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <div className="flex gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="flex-1"
+                                  onClick={() => setIsClosureDialogOpen(false)}
+                                >
+                                  Cancelar
+                                </Button>
+                                <Button
+                                  type="submit"
+                                  className="flex-1"
+                                  disabled={closeTicketMutation.isPending}
+                                  data-testid="button-confirm-close"
+                                >
+                                  {closeTicketMutation.isPending ? "Cerrando..." : "Cerrar Ticket"}
+                                </Button>
+                              </div>
+                            </form>
+                          </Form>
+                        </DialogContent>
+                      </Dialog>
+                    )}
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {ticket.status === "resuelto" && ticket.closedAt && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Ticket Cerrado</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Check className="h-4 w-4 text-green-500" />
+                    <span>Cerrado el {format(new Date(ticket.closedAt), "dd MMM yyyy HH:mm", { locale: es })}</span>
+                  </div>
+                  {canSeeCosts && ticket.invoiceNumber && (
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">Factura: </span>
+                      <span className="font-medium">{ticket.invoiceNumber}</span>
+                    </div>
+                  )}
+                  {canSeeCosts && ticket.invoiceAmount && (
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">Monto: </span>
+                      <span className="font-medium">{formatCurrency(ticket.invoiceAmount)}</span>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
