@@ -616,8 +616,8 @@ export default function DashboardVisits() {
           ) : (
             <div className="space-y-4">
               {notVisitedThisMonth.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
+                <div className="p-3 rounded-md bg-destructive/5 border border-destructive/20">
+                  <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
                     <XCircle className="h-4 w-4 text-destructive" />
                     Sin visita este mes ({notVisitedThisMonth.length})
                   </h3>
@@ -627,21 +627,31 @@ export default function DashboardVisits() {
                       return (
                         <div
                           key={building.id}
-                          className="flex items-center gap-3 p-2 rounded-md bg-muted/30 hover-elevate cursor-pointer"
-                          onClick={() => setSelectedBuilding(building)}
+                          className="flex items-center gap-3 p-3 rounded-md bg-background"
                           data-testid={`building-not-visited-${building.id}`}
                         >
-                          <Building2 className="h-4 w-4 text-muted-foreground" />
-                          <div className="flex-1 min-w-0">
+                          <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <div 
+                            className="flex-1 min-w-0 cursor-pointer hover-elevate rounded p-1 -m-1"
+                            onClick={() => setSelectedBuilding(building)}
+                          >
                             <p className="font-medium text-sm truncate">{building.name}</p>
                             <p className="text-xs text-muted-foreground truncate">
                               {lastVisit 
-                                ? `Ultima visita: ${format(new Date(lastVisit.completedAt!), "dd MMM yyyy", { locale: es })}`
+                                ? `Ultima: ${format(new Date(lastVisit.completedAt!), "dd MMM yyyy", { locale: es })}`
                                 : "Nunca visitado"
                               }
                             </p>
                           </div>
-                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          <Link 
+                            href={`/visitas/programar?buildingId=${building.id}`}
+                            onClick={() => setShowCoverageDialog(false)}
+                          >
+                            <Button size="sm" data-testid={`button-schedule-${building.id}`}>
+                              <Plus className="h-3.5 w-3.5 mr-1" />
+                              Programar
+                            </Button>
+                          </Link>
                         </div>
                       );
                     })}
@@ -649,8 +659,8 @@ export default function DashboardVisits() {
                 </div>
               )}
               {visitedThisMonth.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-medium text-muted-foreground mb-2 flex items-center gap-2">
+                <div className="p-3 rounded-md bg-green-500/5 border border-green-500/20">
+                  <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-green-600" />
                     Visitados este mes ({visitedThisMonth.length})
                   </h3>
@@ -660,11 +670,11 @@ export default function DashboardVisits() {
                       return (
                         <div
                           key={building.id}
-                          className="flex items-center gap-3 p-2 rounded-md bg-muted/30 hover-elevate cursor-pointer"
+                          className="flex items-center gap-3 p-3 rounded-md bg-background hover-elevate cursor-pointer"
                           onClick={() => setSelectedBuilding(building)}
                           data-testid={`building-visited-${building.id}`}
                         >
-                          <Building2 className="h-4 w-4 text-green-600" />
+                          <Building2 className="h-4 w-4 text-green-600 flex-shrink-0" />
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-sm truncate">{building.name}</p>
                             <p className="text-xs text-muted-foreground truncate">

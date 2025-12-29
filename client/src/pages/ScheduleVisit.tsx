@@ -1,7 +1,8 @@
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { z } from "zod";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,7 +44,11 @@ type ScheduleVisitForm = z.infer<typeof scheduleVisitSchema>;
 
 export default function ScheduleVisit() {
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
   const { toast } = useToast();
+
+  const searchParams = new URLSearchParams(searchString);
+  const preselectedBuildingId = searchParams.get("buildingId") || "";
 
   const { data: userProfile } = useQuery<{ role: string }>({
     queryKey: ["/api/me"],
@@ -63,7 +68,7 @@ export default function ScheduleVisit() {
   const form = useForm<ScheduleVisitForm>({
     resolver: zodResolver(scheduleVisitSchema),
     defaultValues: {
-      buildingId: "",
+      buildingId: preselectedBuildingId,
       type: "rutina",
       executiveId: "",
       scheduledDate: "",
@@ -71,6 +76,12 @@ export default function ScheduleVisit() {
       urgentReason: "",
     },
   });
+
+  useEffect(() => {
+    if (preselectedBuildingId && buildings?.some(b => b.id === preselectedBuildingId)) {
+      form.setValue("buildingId", preselectedBuildingId);
+    }
+  }, [preselectedBuildingId, buildings, form]);
 
   const visitType = form.watch("type");
 
