@@ -47,6 +47,8 @@ import {
   Trash2,
   Edit,
   Tag,
+  ChevronRight,
+  ArrowLeft,
 } from "lucide-react";
 
 interface MaintainerWithCategories extends Maintainer {
@@ -80,6 +82,7 @@ export default function Maintainers() {
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [isMaintainerDialogOpen, setIsMaintainerDialogOpen] = useState(false);
   const [editingMaintainer, setEditingMaintainer] = useState<MaintainerWithCategories | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<MaintainerCategory | null>(null);
 
   const { data: userProfile } = useQuery<UserProfile>({
     queryKey: ["/api/user/profile"],
@@ -198,6 +201,22 @@ export default function Maintainers() {
     maintainerForm.reset();
   };
 
+  const handleAddMaintainerFromCategory = (category: MaintainerCategory) => {
+    maintainerForm.reset({
+      companyName: "",
+      contactName: "",
+      phone: "",
+      phone2: "",
+      email: "",
+      address: "",
+      responseTimeHours: undefined,
+      notes: "",
+      isPreferred: false,
+      categoryIds: [category.id],
+    });
+    setIsMaintainerDialogOpen(true);
+  };
+
   const filteredMaintainers = maintainers?.filter((m) =>
     m.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     m.contactName?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -207,6 +226,245 @@ export default function Maintainers() {
     return categories?.find((c) => c.id === categoryId)?.name || "Desconocida";
   };
 
+  const getMaintainersByCategory = (categoryId: string) => {
+    return maintainers?.filter((m) => m.categoryIds.includes(categoryId)) || [];
+  };
+
+  const getCategoryMaintainerCount = (categoryId: string) => {
+    return maintainers?.filter((m) => m.categoryIds.includes(categoryId)).length || 0;
+  };
+
+  const MaintainerFormDialog = () => (
+    <Dialog open={isMaintainerDialogOpen} onOpenChange={(open) => {
+      if (!open) handleMaintainerDialogClose();
+      else setIsMaintainerDialogOpen(true);
+    }}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>
+            {editingMaintainer ? "Editar Mantenedor" : "Nueva Empresa Mantenedora"}
+          </DialogTitle>
+        </DialogHeader>
+        <ScrollArea className="flex-1 pr-4">
+          <Form {...maintainerForm}>
+            <form onSubmit={maintainerForm.handleSubmit((data) => createMaintainerMutation.mutate(data))} className="space-y-4">
+              <FormField
+                control={maintainerForm.control}
+                name="companyName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre Empresa *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Nombre de la empresa" {...field} data-testid="input-company-name" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={maintainerForm.control}
+                name="categoryIds"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Categorias de Servicio *</FormLabel>
+                    <div className="border rounded-md p-3 bg-muted/30">
+                      <div className="grid grid-cols-2 gap-2">
+                        {categories?.map((category) => (
+                          <div key={category.id} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`cat-${category.id}`}
+                              checked={field.value.includes(category.id)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  field.onChange([...field.value, category.id]);
+                                } else {
+                                  field.onChange(field.value.filter((id) => id !== category.id));
+                                }
+                              }}
+                              data-testid={`checkbox-category-${category.id}`}
+                            />
+                            <label htmlFor={`cat-${category.id}`} className="text-sm cursor-pointer">
+                              {category.name}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={maintainerForm.control}
+                  name="contactName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Contacto</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Persona de contacto" {...field} data-testid="input-contact-name" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={maintainerForm.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Telefono</FormLabel>
+                      <FormControl>
+                        <Input placeholder="+56 9 1234 5678" {...field} data-testid="input-phone" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={maintainerForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input type="email" placeholder="contacto@empresa.cl" {...field} data-testid="input-email" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={maintainerForm.control}
+                name="isPreferred"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 border rounded-md p-3 bg-muted/30">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        data-testid="checkbox-preferred"
+                      />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel className="flex items-center gap-2">
+                        <Star className="h-4 w-4 text-yellow-500" />
+                        Marcar como Proveedor Preferido
+                      </FormLabel>
+                    </div>
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={maintainerForm.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notas</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Notas adicionales..." {...field} data-testid="input-notes" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="flex gap-2 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleMaintainerDialogClose}
+                  className="flex-1"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1"
+                  disabled={createMaintainerMutation.isPending}
+                  data-testid="button-save-maintainer"
+                >
+                  {createMaintainerMutation.isPending ? "Guardando..." : "Guardar"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+
+  const MaintainerCard = ({ maintainer }: { maintainer: MaintainerWithCategories }) => (
+    <Card className="hover-elevate" data-testid={`card-maintainer-${maintainer.id}`}>
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-lg">{maintainer.companyName}</CardTitle>
+            {maintainer.isPreferred && (
+              <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+            )}
+          </div>
+          {isManager && (
+            <div className="flex gap-1">
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => handleEditMaintainer(maintainer)}
+                data-testid={`button-edit-maintainer-${maintainer.id}`}
+              >
+                <Edit className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => deleteMaintainerMutation.mutate(maintainer.id)}
+                data-testid={`button-delete-maintainer-${maintainer.id}`}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {maintainer.contactName && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Building2 className="h-4 w-4 flex-shrink-0" />
+            <span>{maintainer.contactName}</span>
+          </div>
+        )}
+        {maintainer.phone && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Phone className="h-4 w-4 flex-shrink-0" />
+            <span>{maintainer.phone}</span>
+          </div>
+        )}
+        {maintainer.email && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Mail className="h-4 w-4 flex-shrink-0" />
+            <span className="truncate">{maintainer.email}</span>
+          </div>
+        )}
+        {maintainer.categoryIds.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {maintainer.categoryIds.map((catId) => (
+              <Badge key={catId} variant="secondary" className="text-xs">
+                {getCategoryName(catId)}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+
   return (
     <div className="flex flex-col h-full">
       <div className="sticky top-0 bg-background border-b border-border z-10 px-4 py-3 md:px-6">
@@ -214,7 +472,7 @@ export default function Maintainers() {
           <h1 className="text-xl md:text-2xl font-semibold">Mantenedores</h1>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-3">
+        <Tabs value={activeTab} onValueChange={(val) => { setActiveTab(val); setSelectedCategory(null); }} className="mt-3">
           <TabsList>
             <TabsTrigger value="maintainers" data-testid="tab-maintainers">
               <Wrench className="h-4 w-4 mr-2" />
@@ -235,7 +493,7 @@ export default function Maintainers() {
               <div className="relative flex-1 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar mantenedores..."
+                  placeholder="Buscar empresas..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-9"
@@ -243,210 +501,10 @@ export default function Maintainers() {
                 />
               </div>
               {isManager && (
-                <Dialog open={isMaintainerDialogOpen} onOpenChange={(open) => {
-                  if (!open) handleMaintainerDialogClose();
-                  else setIsMaintainerDialogOpen(true);
-                }}>
-                  <DialogTrigger asChild>
-                    <Button size="sm" data-testid="button-add-maintainer">
-                      <Plus className="h-4 w-4 mr-1" />
-                      Agregar
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
-                    <DialogHeader>
-                      <DialogTitle>
-                        {editingMaintainer ? "Editar Mantenedor" : "Nuevo Mantenedor"}
-                      </DialogTitle>
-                    </DialogHeader>
-                    <ScrollArea className="flex-1 pr-4">
-                      <Form {...maintainerForm}>
-                        <form onSubmit={maintainerForm.handleSubmit((data) => createMaintainerMutation.mutate(data))} className="space-y-4">
-                          <FormField
-                            control={maintainerForm.control}
-                            name="companyName"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Nombre Empresa *</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="Nombre de la empresa" {...field} data-testid="input-company-name" />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={maintainerForm.control}
-                            name="contactName"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Nombre Contacto</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="Persona de contacto" {...field} data-testid="input-contact-name" />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <div className="grid grid-cols-2 gap-4">
-                            <FormField
-                              control={maintainerForm.control}
-                              name="phone"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Telefono 1</FormLabel>
-                                  <FormControl>
-                                    <Input placeholder="+56 9 1234 5678" {...field} data-testid="input-phone" />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={maintainerForm.control}
-                              name="phone2"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Telefono 2</FormLabel>
-                                  <FormControl>
-                                    <Input placeholder="+56 9 8765 4321" {...field} data-testid="input-phone-2" />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          </div>
-
-                          <FormField
-                            control={maintainerForm.control}
-                            name="email"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Email</FormLabel>
-                                <FormControl>
-                                  <Input type="email" placeholder="contacto@empresa.cl" {...field} data-testid="input-email" />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={maintainerForm.control}
-                            name="address"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Direccion</FormLabel>
-                                <FormControl>
-                                  <Input placeholder="Direccion de la empresa" {...field} data-testid="input-address" />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={maintainerForm.control}
-                            name="responseTimeHours"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Tiempo de Respuesta (horas)</FormLabel>
-                                <FormControl>
-                                  <Input type="number" min="0" placeholder="24" {...field} data-testid="input-response-time" />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={maintainerForm.control}
-                            name="notes"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Notas</FormLabel>
-                                <FormControl>
-                                  <Textarea placeholder="Notas adicionales..." {...field} data-testid="input-notes" />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={maintainerForm.control}
-                            name="isPreferred"
-                            render={({ field }) => (
-                              <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-                                <FormControl>
-                                  <Checkbox
-                                    checked={field.value}
-                                    onCheckedChange={field.onChange}
-                                    data-testid="checkbox-preferred"
-                                  />
-                                </FormControl>
-                                <div className="space-y-1 leading-none">
-                                  <FormLabel>Proveedor Preferido</FormLabel>
-                                </div>
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={maintainerForm.control}
-                            name="categoryIds"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Categorias</FormLabel>
-                                <div className="grid grid-cols-2 gap-2 mt-2">
-                                  {categories?.map((category) => (
-                                    <div key={category.id} className="flex items-center space-x-2">
-                                      <Checkbox
-                                        checked={field.value.includes(category.id)}
-                                        onCheckedChange={(checked) => {
-                                          if (checked) {
-                                            field.onChange([...field.value, category.id]);
-                                          } else {
-                                            field.onChange(field.value.filter((id) => id !== category.id));
-                                          }
-                                        }}
-                                        data-testid={`checkbox-category-${category.id}`}
-                                      />
-                                      <label className="text-sm">{category.name}</label>
-                                    </div>
-                                  ))}
-                                </div>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <div className="flex gap-2 pt-4">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={handleMaintainerDialogClose}
-                              className="flex-1"
-                            >
-                              Cancelar
-                            </Button>
-                            <Button
-                              type="submit"
-                              className="flex-1"
-                              disabled={createMaintainerMutation.isPending}
-                              data-testid="button-save-maintainer"
-                            >
-                              {createMaintainerMutation.isPending ? "Guardando..." : "Guardar"}
-                            </Button>
-                          </div>
-                        </form>
-                      </Form>
-                    </ScrollArea>
-                  </DialogContent>
-                </Dialog>
+                <Button size="sm" onClick={() => setIsMaintainerDialogOpen(true)} data-testid="button-add-maintainer">
+                  <Plus className="h-4 w-4 mr-1" />
+                  Nueva Empresa
+                </Button>
               )}
             </div>
 
@@ -459,85 +517,29 @@ export default function Maintainers() {
             ) : filteredMaintainers?.length === 0 ? (
               <div className="text-center py-12">
                 <Wrench className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                <p className="text-muted-foreground">No hay mantenedores registrados</p>
+                <p className="text-muted-foreground">No hay empresas registradas</p>
+                {isManager && (
+                  <Button 
+                    variant="outline" 
+                    className="mt-4"
+                    onClick={() => setIsMaintainerDialogOpen(true)}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Agregar primera empresa
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {filteredMaintainers?.map((maintainer) => (
-                  <Card key={maintainer.id} className="hover-elevate" data-testid={`card-maintainer-${maintainer.id}`}>
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <CardTitle className="text-lg">{maintainer.companyName}</CardTitle>
-                          {maintainer.isPreferred && (
-                            <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                          )}
-                        </div>
-                        {isManager && (
-                          <div className="flex gap-1">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => handleEditMaintainer(maintainer)}
-                              data-testid={`button-edit-maintainer-${maintainer.id}`}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => deleteMaintainerMutation.mutate(maintainer.id)}
-                              data-testid={`button-delete-maintainer-${maintainer.id}`}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {maintainer.contactName && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Building2 className="h-4 w-4 flex-shrink-0" />
-                          <span>{maintainer.contactName}</span>
-                        </div>
-                      )}
-                      {maintainer.phone && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Phone className="h-4 w-4 flex-shrink-0" />
-                          <span>{maintainer.phone}</span>
-                        </div>
-                      )}
-                      {maintainer.email && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Mail className="h-4 w-4 flex-shrink-0" />
-                          <span className="truncate">{maintainer.email}</span>
-                        </div>
-                      )}
-                      {maintainer.responseTimeHours && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Clock className="h-4 w-4 flex-shrink-0" />
-                          <span>{maintainer.responseTimeHours}h respuesta</span>
-                        </div>
-                      )}
-                      {maintainer.categoryIds.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-2">
-                          {maintainer.categoryIds.map((catId) => (
-                            <Badge key={catId} variant="secondary" className="text-xs">
-                              {getCategoryName(catId)}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                  <MaintainerCard key={maintainer.id} maintainer={maintainer} />
                 ))}
               </div>
             )}
           </div>
         )}
 
-        {activeTab === "categories" && (
+        {activeTab === "categories" && !selectedCategory && (
           <div className="space-y-4">
             {isManager && (
               <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
@@ -590,10 +592,14 @@ export default function Maintainers() {
               </Dialog>
             )}
 
+            <p className="text-sm text-muted-foreground">
+              Selecciona una categoria para ver las empresas asociadas
+            </p>
+
             {categoriesLoading ? (
               <div className="space-y-2">
                 {[1, 2, 3, 4].map((i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
+                  <Skeleton key={i} className="h-16 w-full" />
                 ))}
               </div>
             ) : categories?.length === 0 ? (
@@ -603,34 +609,118 @@ export default function Maintainers() {
               </div>
             ) : (
               <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-                {categories?.map((category) => (
-                  <Card key={category.id} data-testid={`card-category-${category.id}`}>
-                    <CardContent className="flex items-center justify-between p-4">
-                      <div className="flex items-center gap-2">
-                        <Tag className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">{category.name}</span>
-                        {category.isDefault && (
-                          <Badge variant="outline" className="text-xs">Por defecto</Badge>
-                        )}
-                      </div>
-                      {isManager && !category.isDefault && (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => deleteCategoryMutation.mutate(category.id)}
-                          data-testid={`button-delete-category-${category.id}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
+                {categories?.map((category) => {
+                  const count = getCategoryMaintainerCount(category.id);
+                  return (
+                    <Card 
+                      key={category.id} 
+                      className="hover-elevate cursor-pointer"
+                      onClick={() => setSelectedCategory(category)}
+                      data-testid={`card-category-${category.id}`}
+                    >
+                      <CardContent className="flex items-center justify-between p-4">
+                        <div className="flex items-center gap-3">
+                          <Tag className="h-5 w-5 text-muted-foreground" />
+                          <div>
+                            <span className="font-medium">{category.name}</span>
+                            <p className="text-xs text-muted-foreground">
+                              {count} {count === 1 ? 'empresa' : 'empresas'}
+                            </p>
+                          </div>
+                          {category.isDefault && (
+                            <Badge variant="outline" className="text-xs">Por defecto</Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isManager && !category.isDefault && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteCategoryMutation.mutate(category.id);
+                              }}
+                              data-testid={`button-delete-category-${category.id}`}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </div>
         )}
+
+        {activeTab === "categories" && selectedCategory && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => setSelectedCategory(null)}
+              >
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                Volver
+              </Button>
+              <div className="flex items-center gap-2">
+                <Tag className="h-5 w-5 text-muted-foreground" />
+                <h2 className="text-lg font-semibold">{selectedCategory.name}</h2>
+              </div>
+              {isManager && (
+                <Button 
+                  size="sm" 
+                  className="ml-auto"
+                  onClick={() => handleAddMaintainerFromCategory(selectedCategory)}
+                  data-testid="button-add-maintainer-to-category"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Agregar Empresa
+                </Button>
+              )}
+            </div>
+
+            {(() => {
+              const categoryMaintainers = getMaintainersByCategory(selectedCategory.id);
+              
+              if (categoryMaintainers.length === 0) {
+                return (
+                  <div className="text-center py-12">
+                    <Wrench className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-muted-foreground">
+                      No hay empresas en esta categoria
+                    </p>
+                    {isManager && (
+                      <Button 
+                        variant="outline" 
+                        className="mt-4"
+                        onClick={() => handleAddMaintainerFromCategory(selectedCategory)}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Agregar primera empresa
+                      </Button>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {categoryMaintainers.map((maintainer) => (
+                    <MaintainerCard key={maintainer.id} maintainer={maintainer} />
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        )}
       </div>
+
+      <MaintainerFormDialog />
     </div>
   );
 }
