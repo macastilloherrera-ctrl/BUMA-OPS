@@ -79,6 +79,7 @@ interface BuildingWithExecutive extends Building {
 export default function Buildings() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("todos");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBuilding, setEditingBuilding] = useState<Building | null>(null);
 
@@ -231,10 +232,12 @@ export default function Buildings() {
     form.reset();
   };
 
-  const filteredBuildings = buildings?.filter((b) =>
-    b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    b.address.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredBuildings = buildings?.filter((b) => {
+    const matchesSearch = b.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      b.address.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = statusFilter === "todos" || b.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   const getStatusBadge = (status: string) => {
     const config: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
@@ -680,15 +683,28 @@ export default function Buildings() {
             </DialogContent>
           </Dialog>
         </div>
-        <div className="mt-3 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar edificios..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-            data-testid="input-search-buildings"
-          />
+        <div className="mt-3 flex gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar edificios..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+              data-testid="input-search-buildings"
+            />
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[150px]" data-testid="select-status-filter">
+              <SelectValue placeholder="Estado" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos</SelectItem>
+              <SelectItem value="activo">Activos</SelectItem>
+              <SelectItem value="inactivo">Inactivos</SelectItem>
+              <SelectItem value="en_revision">En Revision</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
