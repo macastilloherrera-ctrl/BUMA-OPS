@@ -548,7 +548,8 @@ export default function NewTicket() {
                         contentType: file.type,
                       }),
                     });
-                    const { uploadURL } = await res.json();
+                    const { uploadURL, objectPath } = await res.json();
+                    (file.meta as Record<string, unknown>).objectPath = objectPath;
                     return {
                       method: "PUT",
                       url: uploadURL,
@@ -558,7 +559,7 @@ export default function NewTicket() {
                   onComplete={(result) => {
                     const newImages = (result.successful || []).map((file) => ({
                       name: file.name,
-                      objectPath: file.response?.body?.objectPath as string || file.name,
+                      objectPath: (file.meta as Record<string, unknown>).objectPath as string || file.name,
                     }));
                     if (newImages.length > 0) {
                       setUploadedImages((prev) => [...prev, ...newImages]);
