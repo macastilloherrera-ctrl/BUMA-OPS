@@ -57,6 +57,8 @@ export const rolePermissions: Record<UserRole, {
   gerente_finanzas: {
     allowedRoutes: [
       "/dashboard/tickets",
+      "/tickets",
+      "/tickets/nuevo",
       "/perfil",
     ],
     canViewCosts: true,
