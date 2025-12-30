@@ -62,6 +62,7 @@ interface DashboardStats {
   critical: number;
   warning: number;
   ok: number;
+  resolved: number;
 }
 
 export default function DashboardTickets() {
@@ -128,12 +129,13 @@ export default function DashboardTickets() {
   });
 
   const getStats = (): DashboardStats => {
-    if (!tickets) return { critical: 0, warning: 0, ok: 0 };
+    if (!tickets) return { critical: 0, warning: 0, ok: 0, resolved: 0 };
     
     return {
-      critical: tickets.filter((t) => t.priority === "rojo" || t.status === "vencido").length,
+      critical: tickets.filter((t) => t.status !== "resuelto" && (t.priority === "rojo" || t.status === "vencido")).length,
       warning: tickets.filter((t) => t.priority === "amarillo" && t.status !== "resuelto").length,
-      ok: tickets.filter((t) => t.priority === "verde" && t.status !== "vencido").length,
+      ok: tickets.filter((t) => t.priority === "verde" && t.status !== "vencido" && t.status !== "resuelto").length,
+      resolved: tickets.filter((t) => t.status === "resuelto").length,
     };
   };
 
@@ -170,7 +172,7 @@ export default function DashboardTickets() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="border-l-4 border-l-red-500">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -209,6 +211,20 @@ export default function DashboardTickets() {
                 </p>
               </div>
               <CheckCircle className="h-10 w-10 text-green-500/30" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-blue-500">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Resueltos</p>
+                <p className="text-4xl font-bold text-blue-500" data-testid="stat-resolved">
+                  {stats.resolved}
+                </p>
+              </div>
+              <CheckCircle className="h-10 w-10 text-blue-500/30" />
             </div>
           </CardContent>
         </Card>

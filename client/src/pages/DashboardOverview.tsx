@@ -31,9 +31,9 @@ export default function DashboardOverview() {
   const isLoading = ticketsLoading || visitsLoading || buildingsLoading;
 
   const ticketStats = {
-    critical: tickets?.filter((t) => t.priority === "rojo" && t.status !== "resuelto").length || 0,
+    critical: tickets?.filter((t) => t.status !== "resuelto" && (t.priority === "rojo" || t.status === "vencido")).length || 0,
     warning: tickets?.filter((t) => t.priority === "amarillo" && t.status !== "resuelto").length || 0,
-    ok: tickets?.filter((t) => t.priority === "verde" && t.status !== "resuelto").length || 0,
+    ok: tickets?.filter((t) => t.priority === "verde" && t.status !== "vencido" && t.status !== "resuelto").length || 0,
     resolved: tickets?.filter((t) => t.status === "resuelto").length || 0,
   };
 
