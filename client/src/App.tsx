@@ -36,6 +36,7 @@ import Maintainers from "@/pages/Maintainers";
 import CalendarView from "@/pages/CalendarView";
 import VisitReport from "@/pages/VisitReport";
 import DevLogin from "@/pages/DevLogin";
+import Executives from "@/pages/Executives";
 
 function LoadingScreen() {
   return (
@@ -152,7 +153,10 @@ function AuthenticatedApp() {
                 <Route path="/equipos" component={CriticalAssets} />
                 
                 {isManager && (
-                  <Route path="/mantenedores" component={Maintainers} />
+                  <>
+                    <Route path="/mantenedores" component={Maintainers} />
+                    <Route path="/ejecutivos" component={Executives} />
+                  </>
                 )}
                 <Route path="/perfil" component={() => <Profile userRole={userRole} />} />
 

@@ -193,6 +193,7 @@ export interface IStorage {
   // Executives
   getExecutivesList(status?: string): Promise<Executive[]>;
   getExecutive(id: string): Promise<Executive | undefined>;
+  getExecutiveWithDetails(id: string): Promise<(Executive & { buildings: Building[]; documents: ExecutiveDocument[] }) | undefined>;
   createExecutive(exec: InsertExecutive): Promise<Executive>;
   updateExecutive(id: string, data: Partial<InsertExecutive>): Promise<Executive | undefined>;
   deactivateExecutive(id: string, terminationDate?: Date): Promise<Executive | undefined>;
@@ -731,6 +732,24 @@ export class DatabaseStorage implements IStorage {
   async getExecutive(id: string): Promise<Executive | undefined> {
     const [exec] = await db.select().from(executives).where(eq(executives.id, id));
     return exec || undefined;
+  }
+
+  async getExecutiveWithDetails(id: string): Promise<(Executive & { buildings: Building[]; documents: ExecutiveDocument[] }) | undefined> {
+    const [exec] = await db.select().from(executives).where(eq(executives.id, id));
+    if (!exec) return undefined;
+    
+    const assignments = await db.select().from(executiveAssignments).where(eq(executiveAssignments.executiveId, id));
+    const docs = await db.select().from(executiveDocuments).where(eq(executiveDocuments.executiveId, id)).orderBy(desc(executiveDocuments.createdAt));
+    
+    let buildingsData: Building[] = [];
+    if (assignments.length > 0) {
+      const buildingIds = assignments.map(a => a.buildingId);
+      buildingsData = await db.select().from(buildings).where(
+        sql`${buildings.id} IN (${sql.join(buildingIds.map(bid => sql`${bid}`), sql`, `)})`
+      );
+    }
+    
+    return { ...exec, buildings: buildingsData, documents: docs };
   }
 
   async createExecutive(exec: InsertExecutive): Promise<Executive> {
