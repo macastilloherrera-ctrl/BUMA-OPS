@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import type { Building, MaintainerCategory, UserProfile, TicketQuote, TicketPhoto } from "@shared/schema";
+import type { Building, MaintainerCategory, UserProfile, TicketQuote, TicketPhoto, TicketWorkCycle } from "@shared/schema";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -117,6 +117,13 @@ const closureSchema = z.object({
 
 type ClosureForm = z.infer<typeof closureSchema>;
 
+const restartSchema = z.object({
+  reason: z.string().min(1, "La razon del reinicio es requerida"),
+  committedCompletionAt: z.string().min(1, "La fecha comprometida es requerida"),
+});
+
+type RestartForm = z.infer<typeof restartSchema>;
+
 const ticketTypeLabels: Record<string, { label: string; icon: typeof AlertTriangle; color: string }> = {
   urgencia: { label: "Urgencia", icon: AlertTriangle, color: "text-red-500" },
   planificado: { label: "Planificado", icon: CalendarClock, color: "text-blue-500" },
@@ -130,6 +137,7 @@ export default function TicketDetail() {
   const [activeTab, setActiveTab] = useState("detalles");
   const [isQuoteDialogOpen, setIsQuoteDialogOpen] = useState(false);
   const [isClosureDialogOpen, setIsClosureDialogOpen] = useState(false);
+  const [isRestartDialogOpen, setIsRestartDialogOpen] = useState(false);
 
   const { data: userProfile } = useQuery<UserProfile>({
     queryKey: ["/api/user/profile"],
@@ -158,6 +166,19 @@ export default function TicketDetail() {
   const { data: photos, isLoading: photosLoading } = useQuery<TicketPhoto[]>({
     queryKey: ["/api/tickets", id, "photos"],
     enabled: !!id,
+  });
+
+  const { data: workHistory } = useQuery<TicketWorkCycle[]>({
+    queryKey: ["/api/tickets", id, "work-history"],
+    enabled: !!id,
+  });
+
+  const restartForm = useForm<RestartForm>({
+    resolver: zodResolver(restartSchema),
+    defaultValues: {
+      reason: "",
+      committedCompletionAt: "",
+    },
   });
 
   const uploadPhotoMutation = useMutation({
@@ -307,13 +328,16 @@ export default function TicketDetail() {
   });
 
   const restartWorkMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("POST", `/api/tickets/${id}/restart-work`);
+    mutationFn: async (data: RestartForm) => {
+      return apiRequest("POST", `/api/tickets/${id}/restart-work`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "quotes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "work-history"] });
+      setIsRestartDialogOpen(false);
+      restartForm.reset();
       toast({ title: "Trabajo reiniciado - ticket listo para nuevo ciclo" });
     },
     onError: () => {
@@ -637,18 +661,137 @@ export default function TicketDetail() {
                   )}
                   {isManager && (
                     <div className="pt-2 border-t">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => restartWorkMutation.mutate()}
-                        disabled={restartWorkMutation.isPending}
-                        data-testid="button-restart-work"
-                      >
-                        <RotateCcw className="h-4 w-4 mr-1" />
-                        {restartWorkMutation.isPending ? "Reiniciando..." : "Reiniciar Trabajo"}
-                      </Button>
+                      <Dialog open={isRestartDialogOpen} onOpenChange={setIsRestartDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            data-testid="button-restart-work"
+                          >
+                            <RotateCcw className="h-4 w-4 mr-1" />
+                            Reiniciar Trabajo
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-lg">
+                          <DialogHeader>
+                            <DialogTitle>Reiniciar Trabajo</DialogTitle>
+                          </DialogHeader>
+                          <Form {...restartForm}>
+                            <form
+                              onSubmit={restartForm.handleSubmit((data) => restartWorkMutation.mutate(data))}
+                              className="space-y-4"
+                            >
+                              <FormField
+                                control={restartForm.control}
+                                name="reason"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Razon del Reinicio</FormLabel>
+                                    <FormControl>
+                                      <Textarea
+                                        placeholder="Describa por que se debe reiniciar el trabajo..."
+                                        {...field}
+                                        data-testid="input-restart-reason"
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={restartForm.control}
+                                name="committedCompletionAt"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Nueva Fecha Comprometida</FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        type="date"
+                                        {...field}
+                                        data-testid="input-restart-date"
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => setIsRestartDialogOpen(false)}
+                                >
+                                  Cancelar
+                                </Button>
+                                <Button
+                                  type="submit"
+                                  disabled={restartWorkMutation.isPending}
+                                  data-testid="button-confirm-restart"
+                                >
+                                  {restartWorkMutation.isPending ? "Reiniciando..." : "Confirmar Reinicio"}
+                                </Button>
+                              </div>
+                            </form>
+                          </Form>
+                        </DialogContent>
+                      </Dialog>
                     </div>
                   )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Work History Timeline */}
+            {workHistory && workHistory.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Historial de Trabajo ({workHistory.length} ciclo{workHistory.length > 1 ? "s" : ""})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {workHistory.map((cycle, index) => (
+                    <div key={cycle.id} className="border-l-2 border-border pl-4 py-2 space-y-2" data-testid={`work-cycle-${cycle.cycleNumber}`}>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">Ciclo {cycle.cycleNumber}</Badge>
+                        {cycle.restartedAt && (
+                          <span className="text-xs text-muted-foreground">
+                            Reiniciado el {format(new Date(cycle.restartedAt), "dd MMM yyyy", { locale: es })}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {cycle.restartReason && (
+                        <div className="text-sm bg-muted/50 p-2 rounded">
+                          <span className="text-muted-foreground">Razon: </span>
+                          <span>{cycle.restartReason}</span>
+                        </div>
+                      )}
+                      
+                      {cycle.committedCompletionAt && (
+                        <div className="text-sm">
+                          <span className="text-muted-foreground">Fecha comprometida: </span>
+                          <span>{format(new Date(cycle.committedCompletionAt), "dd MMM yyyy", { locale: es })}</span>
+                        </div>
+                      )}
+                      
+                      <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                        {cycle.startedAt && (
+                          <div>Inicio: {format(new Date(cycle.startedAt), "dd/MM/yy HH:mm", { locale: es })}</div>
+                        )}
+                        {cycle.completedAt && (
+                          <div>Completado: {format(new Date(cycle.completedAt), "dd/MM/yy HH:mm", { locale: es })}</div>
+                        )}
+                        {cycle.closedAt && (
+                          <div>Cerrado: {format(new Date(cycle.closedAt), "dd/MM/yy HH:mm", { locale: es })}</div>
+                        )}
+                        {canSeeCosts && cycle.invoiceAmount && (
+                          <div>Monto: {formatCurrency(cycle.invoiceAmount)}</div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </CardContent>
               </Card>
             )}
