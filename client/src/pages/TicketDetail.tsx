@@ -86,6 +86,7 @@ interface TicketWithDetails {
   workCompletedAt?: string | null;
   invoiceNumber?: string | null;
   invoiceAmount?: string | null;
+  invoiceDocumentKey?: string | null;
   closedAt?: string | null;
   closedBy?: string | null;
   createdAt?: string | null;
@@ -140,6 +141,8 @@ export default function TicketDetail() {
   const [isRestartDialogOpen, setIsRestartDialogOpen] = useState(false);
   const [quoteAttachmentKey, setQuoteAttachmentKey] = useState<string | null>(null);
   const [quoteAttachmentName, setQuoteAttachmentName] = useState<string | null>(null);
+  const [invoiceDocumentKey, setInvoiceDocumentKey] = useState<string | null>(null);
+  const [invoiceDocumentName, setInvoiceDocumentName] = useState<string | null>(null);
 
   const { data: userProfile } = useQuery<UserProfile>({
     queryKey: ["/api/user/profile"],
@@ -319,6 +322,7 @@ export default function TicketDetail() {
         status: "resuelto",
         invoiceNumber: data.invoiceNumber || null,
         invoiceAmount: data.invoiceAmount ? String(data.invoiceAmount) : null,
+        invoiceDocumentKey: invoiceDocumentKey || null,
         closedAt: new Date().toISOString(),
         closedBy: userProfile?.userId,
       });
@@ -328,6 +332,8 @@ export default function TicketDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
       setIsClosureDialogOpen(false);
       closureForm.reset();
+      setInvoiceDocumentKey(null);
+      setInvoiceDocumentName(null);
       toast({ title: "Ticket cerrado exitosamente" });
     },
     onError: () => {
@@ -617,6 +623,35 @@ export default function TicketDetail() {
                                   </FormItem>
                                 )}
                               />
+                              <div className="space-y-2">
+                                <Label>Documento de Factura (opcional)</Label>
+                                {!invoiceDocumentKey ? (
+                                  <ObjectUploader
+                                    prefix=".private/invoices"
+                                    acceptedFileTypes={["application/pdf", "image/jpeg", "image/png"]}
+                                    onUploadComplete={(key: string, fileName: string) => {
+                                      setInvoiceDocumentKey(key);
+                                      setInvoiceDocumentName(fileName);
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                                    <FileIcon className="h-4 w-4" />
+                                    <span className="text-sm flex-1 truncate">{invoiceDocumentName}</span>
+                                    <Button
+                                      type="button"
+                                      size="icon"
+                                      variant="ghost"
+                                      onClick={() => {
+                                        setInvoiceDocumentKey(null);
+                                        setInvoiceDocumentName(null);
+                                      }}
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
                               <div className="flex gap-2">
                                 <Button
                                   type="button"
@@ -665,6 +700,20 @@ export default function TicketDetail() {
                     <div className="text-sm">
                       <span className="text-muted-foreground">Monto: </span>
                       <span className="font-medium">{formatCurrency(ticket.invoiceAmount)}</span>
+                    </div>
+                  )}
+                  {canSeeCosts && ticket.invoiceDocumentKey && (
+                    <div className="text-sm">
+                      <a
+                        href={`/objects/${ticket.invoiceDocumentKey}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-primary hover:underline"
+                        data-testid="link-invoice-document"
+                      >
+                        <Paperclip className="h-4 w-4" />
+                        Ver documento de factura
+                      </a>
                     </div>
                   )}
                   {isManager && (

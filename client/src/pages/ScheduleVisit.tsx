@@ -58,9 +58,12 @@ export default function ScheduleVisit() {
 
   const isManager = userProfile ? isManagerRole(userProfile.role as any) : false;
 
-  const { data: buildings } = useQuery<Building[]>({
+  const { data: allBuildings } = useQuery<Building[]>({
     queryKey: ["/api/buildings"],
   });
+
+  // Filter buildings for executives - they can only schedule visits in their assigned buildings
+  const buildings = isManager ? allBuildings : allBuildings?.filter(b => b.assignedExecutiveId === (userProfile as any)?.id);
 
   const { data: executives } = useQuery<Array<{ userId: string; displayName: string }>>({
     queryKey: ["/api/users/executives"],

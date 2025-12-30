@@ -308,6 +308,7 @@ export const tickets = pgTable("tickets", {
   workCompletedAt: timestamp("work_completed_at"),
   invoiceNumber: varchar("invoice_number", { length: 100 }),
   invoiceAmount: decimal("invoice_amount", { precision: 12, scale: 2 }),
+  invoiceDocumentKey: text("invoice_document_key"),
   closedAt: timestamp("closed_at"),
   closedBy: varchar("closed_by"),
   committedCompletionAt: timestamp("committed_completion_at"),
