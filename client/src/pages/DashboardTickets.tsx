@@ -61,6 +61,7 @@ interface TicketWithBuilding extends Ticket {
 interface DashboardStats {
   critical: number;
   warning: number;
+  pending: number;
   ok: number;
   resolved: number;
 }
@@ -129,11 +130,12 @@ export default function DashboardTickets() {
   });
 
   const getStats = (): DashboardStats => {
-    if (!tickets) return { critical: 0, warning: 0, ok: 0, resolved: 0 };
+    if (!tickets) return { critical: 0, warning: 0, pending: 0, ok: 0, resolved: 0 };
     
     return {
       critical: tickets.filter((t) => t.status !== "resuelto" && (t.priority === "rojo" || t.status === "vencido")).length,
       warning: tickets.filter((t) => t.priority === "amarillo" && t.status !== "resuelto").length,
+      pending: tickets.filter((t) => (t.status === "pendiente" || t.status === "en_curso" || t.status === "trabajo_completado") && t.priority === "verde").length,
       ok: tickets.filter((t) => t.priority === "verde" && t.status !== "vencido" && t.status !== "resuelto").length,
       resolved: tickets.filter((t) => t.status === "resuelto").length,
     };
@@ -172,7 +174,7 @@ export default function DashboardTickets() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card className="border-l-4 border-l-red-500">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -197,6 +199,20 @@ export default function DashboardTickets() {
                 </p>
               </div>
               <Clock className="h-10 w-10 text-amber-500/30" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-gray-500">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Pendientes</p>
+                <p className="text-4xl font-bold text-gray-500" data-testid="stat-pending">
+                  {stats.pending}
+                </p>
+              </div>
+              <Clock className="h-10 w-10 text-gray-500/30" />
             </div>
           </CardContent>
         </Card>
