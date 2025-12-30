@@ -19,6 +19,7 @@ const visitStatusConfig: Record<VisitStatus, { label: string; variant: "default"
 const ticketStatusConfig: Record<TicketStatus, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   pendiente: { label: "Pendiente", variant: "outline" },
   en_curso: { label: "En Curso", variant: "default" },
+  trabajo_completado: { label: "Trabajo Completado", variant: "secondary" },
   vencido: { label: "Vencido", variant: "destructive" },
   resuelto: { label: "Resuelto", variant: "secondary" },
   reprogramado: { label: "Reprogramado", variant: "outline" },

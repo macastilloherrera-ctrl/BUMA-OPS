@@ -75,7 +75,7 @@ interface TicketWithDetails {
   maintainerId?: string | null;
   description: string;
   priority: "rojo" | "amarillo" | "verde";
-  status: "pendiente" | "en_curso" | "vencido" | "resuelto" | "reprogramado";
+  status: "pendiente" | "en_curso" | "trabajo_completado" | "vencido" | "resuelto" | "reprogramado";
   requiresMaintainerVisit?: boolean;
   requiresExecutiveVisit?: boolean;
   scheduledDate?: string | null;
@@ -299,6 +299,7 @@ export default function TicketDetail() {
   const completeWorkMutation = useMutation({
     mutationFn: async () => {
       return apiRequest("PATCH", `/api/tickets/${id}`, {
+        status: "trabajo_completado",
         workCompletedAt: new Date().toISOString(),
       });
     },
@@ -573,7 +574,7 @@ export default function TicketDetail() {
                         Marcar Completado
                       </Button>
                     )}
-                    {isManager && ticket.workCompletedAt && (hasApprovedQuote || ticket.ticketType === "urgencia") && (
+                    {isManager && (ticket.status === "trabajo_completado" || ticket.workCompletedAt) && (hasApprovedQuote || ticket.ticketType === "urgencia") && (
                       <Dialog open={isClosureDialogOpen} onOpenChange={setIsClosureDialogOpen}>
                         <DialogTrigger asChild>
                           <Button size="sm" data-testid="button-close-ticket">

@@ -52,6 +52,7 @@ export const ticketPriorityEnum = pgEnum("ticket_priority", [
 export const ticketStatusEnum = pgEnum("ticket_status", [
   "pendiente",
   "en_curso",
+  "trabajo_completado",
   "vencido",
   "resuelto",
   "reprogramado"
@@ -266,6 +267,7 @@ export const incidents = pgTable("incidents", {
   visitId: varchar("visit_id").notNull(),
   buildingId: varchar("building_id").notNull(),
   criticalAssetId: varchar("critical_asset_id"),
+  otherAssetDescription: varchar("other_asset_description", { length: 255 }),
   reason: text("reason").notNull(),
   failureType: varchar("failure_type", { length: 100 }).notNull(),
   occurredAt: timestamp("occurred_at").notNull(),
@@ -860,7 +862,7 @@ export type ExecutiveDocument = typeof executiveDocuments.$inferSelect;
 export type UserRole = "gerente_general" | "gerente_operaciones" | "gerente_finanzas" | "ejecutivo_operaciones";
 export type VisitType = "rutina" | "urgente";
 export type TicketPriority = "rojo" | "amarillo" | "verde";
-export type TicketStatus = "pendiente" | "en_curso" | "vencido" | "resuelto" | "reprogramado";
+export type TicketStatus = "pendiente" | "en_curso" | "trabajo_completado" | "vencido" | "resuelto" | "reprogramado";
 export type TicketType = "urgencia" | "planificado" | "mantencion";
 export type ReceiverType = "ejecutivo" | "gerente_operaciones" | "personal_edificio";
 export type QuoteStatus = "pendiente" | "aceptada" | "rechazada";

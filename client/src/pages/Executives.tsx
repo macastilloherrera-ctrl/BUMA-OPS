@@ -341,7 +341,7 @@ export default function Executives() {
 
   const getPhotoUrl = (photoKey: string | null) => {
     if (!photoKey) return null;
-    return `/api/object-storage/public/${photoKey}`;
+    return photoKey.startsWith("/objects/") ? photoKey : `/objects${photoKey.startsWith("/") ? "" : "/"}${photoKey}`;
   };
 
   if (selectedExecutive) {
@@ -380,23 +380,24 @@ export default function Executives() {
                     <ObjectUploader
                       maxFileSize={5 * 1024 * 1024}
                       onGetUploadParameters={async (file) => {
-                        const res = await fetch("/api/object-storage/presigned-url", {
+                        const res = await fetch("/api/uploads/request-url", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({
-                            fileName: file.name,
+                            name: file.name,
+                            size: file.size,
                             contentType: file.type,
-                            prefix: `executives/photos/${selectedExecutive.id}`,
                           }),
                         });
                         const data = await res.json();
-                        return { method: "PUT", url: data.signedUrl };
+                        (file.meta as Record<string, unknown>).objectPath = data.objectPath;
+                        return { method: "PUT", url: data.uploadURL, headers: { "Content-Type": file.type || "application/octet-stream" } };
                       }}
                       onComplete={(result) => {
-                        if (result.successful.length > 0) {
+                        if (result.successful && result.successful.length > 0) {
                           const uploadedFile = result.successful[0];
-                          const key = `executives/photos/${selectedExecutive.id}/${uploadedFile.name}`;
-                          handlePhotoUploadComplete(key);
+                          const objectPath = (uploadedFile.meta as Record<string, unknown>).objectPath as string;
+                          handlePhotoUploadComplete(objectPath);
                         }
                       }}
                     >
@@ -592,23 +593,24 @@ export default function Executives() {
                   <ObjectUploader
                     maxFileSize={10 * 1024 * 1024}
                     onGetUploadParameters={async (file) => {
-                      const res = await fetch("/api/object-storage/presigned-url", {
+                      const res = await fetch("/api/uploads/request-url", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
-                          fileName: file.name,
+                          name: file.name,
+                          size: file.size,
                           contentType: file.type,
-                          prefix: `executives/documents/${selectedExecutive.id}/${selectedDocumentType}`,
                         }),
                       });
                       const data = await res.json();
-                      return { method: "PUT", url: data.signedUrl };
+                      (file.meta as Record<string, unknown>).objectPath = data.objectPath;
+                      return { method: "PUT", url: data.uploadURL, headers: { "Content-Type": file.type || "application/octet-stream" } };
                     }}
                     onComplete={(result) => {
-                      if (result.successful.length > 0) {
+                      if (result.successful && result.successful.length > 0) {
                         const uploadedFile = result.successful[0];
-                        const key = `executives/documents/${selectedExecutive.id}/${selectedDocumentType}/${uploadedFile.name}`;
-                        handleDocumentUploadComplete(key);
+                        const objectPath = (uploadedFile.meta as Record<string, unknown>).objectPath as string;
+                        handleDocumentUploadComplete(objectPath);
                       }
                     }}
                   >
@@ -648,7 +650,7 @@ export default function Executives() {
                           asChild
                           data-testid={`button-download-doc-${doc.id}`}
                         >
-                          <a href={`/api/object-storage/public/${doc.fileKey}`} target="_blank" rel="noreferrer">
+                          <a href={doc.fileKey.startsWith("/objects/") ? doc.fileKey : `/objects${doc.fileKey.startsWith("/") ? "" : "/"}${doc.fileKey}`} target="_blank" rel="noreferrer">
                             <Download className="h-4 w-4" />
                           </a>
                         </Button>

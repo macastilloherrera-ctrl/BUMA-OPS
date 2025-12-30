@@ -57,10 +57,19 @@ const createIncidentFormSchema = (isUrgentVisit: boolean) => z.object({
   criticalAssetId: isUrgentVisit 
     ? z.string().min(1, "Selecciona el equipo critico afectado (obligatorio para visitas urgentes)")
     : z.string().optional(),
+  otherAssetDescription: z.string().optional(),
   providerCalled: z.string().optional(),
   communityActions: z.string().optional(),
   status: z.enum(["pendiente", "en_reparacion", "reparada", "reprogramada"]),
   repairDate: z.string().optional(),
+}).refine((data) => {
+  if (data.criticalAssetId === "otro" && isUrgentVisit) {
+    return !!data.otherAssetDescription && data.otherAssetDescription.length > 0;
+  }
+  return true;
+}, {
+  message: "Describe el equipo afectado",
+  path: ["otherAssetDescription"],
 });
 
 type IncidentFormData = z.infer<ReturnType<typeof createIncidentFormSchema>>;
@@ -102,6 +111,7 @@ export default function IncidentForm() {
         ? new Date(existingIncident.occurredAt).toISOString().slice(0, 16) 
         : new Date().toISOString().slice(0, 16),
       criticalAssetId: existingIncident?.criticalAssetId || "",
+      otherAssetDescription: (existingIncident as any)?.otherAssetDescription || "",
       providerCalled: existingIncident?.providerCalled || "",
       communityActions: existingIncident?.communityActions || "",
       status: (existingIncident?.status as any) || "pendiente",
@@ -110,6 +120,8 @@ export default function IncidentForm() {
         : "",
     },
   });
+  
+  const selectedAssetId = form.watch("criticalAssetId");
 
   const createMutation = useMutation({
     mutationFn: async (data: IncidentFormData) => {
@@ -119,7 +131,8 @@ export default function IncidentForm() {
         buildingId: visit?.buildingId,
         occurredAt: new Date(data.occurredAt).toISOString(),
         repairDate: data.repairDate ? new Date(data.repairDate).toISOString() : null,
-        criticalAssetId: data.criticalAssetId || null,
+        criticalAssetId: data.criticalAssetId === "otro" ? null : (data.criticalAssetId || null),
+        otherAssetDescription: data.criticalAssetId === "otro" ? data.otherAssetDescription : null,
       };
       return apiRequest("POST", "/api/incidents", payload);
     },
@@ -147,7 +160,8 @@ export default function IncidentForm() {
         ...data,
         occurredAt: new Date(data.occurredAt).toISOString(),
         repairDate: data.repairDate ? new Date(data.repairDate).toISOString() : null,
-        criticalAssetId: data.criticalAssetId || null,
+        criticalAssetId: data.criticalAssetId === "otro" ? null : (data.criticalAssetId || null),
+        otherAssetDescription: data.criticalAssetId === "otro" ? data.otherAssetDescription : null,
       };
       return apiRequest("PATCH", `/api/incidents/${existingIncident!.id}`, payload);
     },
@@ -309,12 +323,33 @@ export default function IncidentForm() {
                               {asset.name} ({asset.type})
                             </SelectItem>
                           ))}
+                          <SelectItem value="otro">Otro (especificar)</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+
+                {selectedAssetId === "otro" && (
+                  <FormField
+                    control={form.control}
+                    name="otherAssetDescription"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Descripcion del Equipo Afectado *</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Ej: Porton electrico entrada principal"
+                            {...field}
+                            data-testid="input-other-asset-description"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
               </CardContent>
             </Card>
 
