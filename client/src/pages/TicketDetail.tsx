@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -143,6 +143,7 @@ export default function TicketDetail() {
   const [quoteAttachmentName, setQuoteAttachmentName] = useState<string | null>(null);
   const [invoiceDocumentKey, setInvoiceDocumentKey] = useState<string | null>(null);
   const [invoiceDocumentName, setInvoiceDocumentName] = useState<string | null>(null);
+  const pendingInvoiceKeyRef = useRef<{ key: string; name: string } | null>(null);
 
   const { data: userProfile } = useQuery<UserProfile>({
     queryKey: ["/api/user/profile"],
@@ -338,6 +339,20 @@ export default function TicketDetail() {
     },
     onError: () => {
       toast({ title: "Error al cerrar ticket", variant: "destructive" });
+    },
+  });
+
+  const updateInvoiceDocMutation = useMutation({
+    mutationFn: async (data: { invoiceDocumentKey: string | null }) => {
+      return apiRequest("PATCH", `/api/tickets/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+      toast({ title: "Documento de factura actualizado" });
+    },
+    onError: () => {
+      toast({ title: "Error al actualizar documento", variant: "destructive" });
     },
   });
 
@@ -627,13 +642,30 @@ export default function TicketDetail() {
                                 <Label>Documento de Factura (opcional)</Label>
                                 {!invoiceDocumentKey ? (
                                   <ObjectUploader
-                                    prefix=".private/invoices"
-                                    acceptedFileTypes={["application/pdf", "image/jpeg", "image/png"]}
-                                    onUploadComplete={(key: string, fileName: string) => {
-                                      setInvoiceDocumentKey(key);
-                                      setInvoiceDocumentName(fileName);
+                                    onGetUploadParameters={async (file) => {
+                                      const response = await fetch("/api/uploads/request-url", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({
+                                          fileName: file.name,
+                                          contentType: file.type,
+                                          prefix: ".private/invoices",
+                                        }),
+                                      });
+                                      const data = await response.json();
+                                      pendingInvoiceKeyRef.current = { key: data.objectKey, name: file.name || "documento" };
+                                      return { method: "PUT" as const, url: data.uploadURL };
                                     }}
-                                  />
+                                    onComplete={(result) => {
+                                      if (result.successful && result.successful.length > 0 && pendingInvoiceKeyRef.current) {
+                                        setInvoiceDocumentKey(pendingInvoiceKeyRef.current.key);
+                                        setInvoiceDocumentName(pendingInvoiceKeyRef.current.name);
+                                        pendingInvoiceKeyRef.current = null;
+                                      }
+                                    }}
+                                  >
+                                    Adjuntar Factura
+                                  </ObjectUploader>
                                 ) : (
                                   <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
                                     <FileIcon className="h-4 w-4" />
@@ -702,18 +734,67 @@ export default function TicketDetail() {
                       <span className="font-medium">{formatCurrency(ticket.invoiceAmount)}</span>
                     </div>
                   )}
-                  {canSeeCosts && ticket.invoiceDocumentKey && (
-                    <div className="text-sm">
-                      <a
-                        href={`/objects/${ticket.invoiceDocumentKey}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-primary hover:underline"
-                        data-testid="link-invoice-document"
-                      >
-                        <Paperclip className="h-4 w-4" />
-                        Ver documento de factura
-                      </a>
+                  {canSeeCosts && (
+                    <div className="space-y-2">
+                      <Label className="text-sm text-muted-foreground">Documento de Factura</Label>
+                      {ticket.invoiceDocumentKey ? (
+                        <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                          <Paperclip className="h-4 w-4 flex-shrink-0" />
+                          <span className="text-sm flex-1 truncate">Factura adjunta</span>
+                          <a
+                            href={`/objects/${ticket.invoiceDocumentKey}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            data-testid="button-download-invoice"
+                          >
+                            <Button size="icon" variant="ghost" type="button">
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </a>
+                          {isManager && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => {
+                                if (confirm("¿Eliminar el documento de factura?")) {
+                                  updateInvoiceDocMutation.mutate({ invoiceDocumentKey: null });
+                                }
+                              }}
+                              disabled={updateInvoiceDocMutation.isPending}
+                              data-testid="button-delete-invoice"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      ) : isManager ? (
+                        <ObjectUploader
+                          onGetUploadParameters={async (file) => {
+                            const response = await fetch("/api/uploads/request-url", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                fileName: file.name,
+                                contentType: file.type,
+                                prefix: ".private/invoices",
+                              }),
+                            });
+                            const data = await response.json();
+                            pendingInvoiceKeyRef.current = { key: data.objectKey, name: file.name || "documento" };
+                            return { method: "PUT" as const, url: data.uploadURL };
+                          }}
+                          onComplete={(result) => {
+                            if (result.successful && result.successful.length > 0 && pendingInvoiceKeyRef.current) {
+                              updateInvoiceDocMutation.mutate({ invoiceDocumentKey: pendingInvoiceKeyRef.current.key });
+                              pendingInvoiceKeyRef.current = null;
+                            }
+                          }}
+                        >
+                          Adjuntar Factura
+                        </ObjectUploader>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">Sin documento adjunto</p>
+                      )}
                     </div>
                   )}
                   {isManager && (
