@@ -1805,5 +1805,223 @@ export async function registerRoutes(
     }
   });
 
+  // ========== EXECUTIVES ROUTES ==========
+
+  // Get all executives (with optional status filter)
+  app.get("/api/executives", isAuthenticated, async (req, res) => {
+    try {
+      const status = req.query.status as string | undefined;
+      const execs = await storage.getExecutivesList(status);
+      
+      // For each executive, get their building assignments
+      const execsWithAssignments = await Promise.all(execs.map(async (exec) => {
+        const assignments = await storage.getExecutiveAssignments(exec.id);
+        const buildingIds = assignments.map(a => a.buildingId);
+        const assignedBuildings = await Promise.all(
+          buildingIds.map(id => storage.getBuilding(id))
+        );
+        return {
+          ...exec,
+          assignments,
+          buildings: assignedBuildings.filter(Boolean),
+        };
+      }));
+      
+      res.json(execsWithAssignments);
+    } catch (error) {
+      console.error("Error fetching executives:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Get single executive with full details
+  app.get("/api/executives/:id", isAuthenticated, async (req, res) => {
+    try {
+      const exec = await storage.getExecutive(req.params.id);
+      if (!exec) {
+        return res.status(404).json({ error: "Ejecutivo no encontrado" });
+      }
+      
+      const assignments = await storage.getExecutiveAssignments(exec.id);
+      const documents = await storage.getExecutiveDocuments(exec.id);
+      const buildingIds = assignments.map(a => a.buildingId);
+      const assignedBuildings = await Promise.all(
+        buildingIds.map(id => storage.getBuilding(id))
+      );
+      
+      res.json({
+        ...exec,
+        assignments,
+        documents,
+        buildings: assignedBuildings.filter(Boolean),
+      });
+    } catch (error) {
+      console.error("Error fetching executive:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Create new executive
+  app.post("/api/executives", isAuthenticated, async (req, res) => {
+    try {
+      const { buildingIds, ...execData } = req.body;
+      const insertExecutiveSchema = (await import("@shared/schema")).insertExecutiveSchema;
+      const data = insertExecutiveSchema.parse({
+        ...execData,
+        createdBy: (req.user as any).id,
+      });
+      
+      const exec = await storage.createExecutive(data);
+      
+      // Assign buildings if provided
+      if (buildingIds && Array.isArray(buildingIds) && buildingIds.length > 0) {
+        await storage.replaceExecutiveAssignments(exec.id, buildingIds, (req.user as any).id);
+      }
+      
+      res.status(201).json(exec);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos invalidos", details: error.errors });
+      }
+      console.error("Error creating executive:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Update executive
+  app.patch("/api/executives/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { buildingIds, ...updateData } = req.body;
+      
+      const exec = await storage.updateExecutive(req.params.id, updateData);
+      if (!exec) {
+        return res.status(404).json({ error: "Ejecutivo no encontrado" });
+      }
+      
+      // Update building assignments if provided
+      if (buildingIds && Array.isArray(buildingIds)) {
+        await storage.replaceExecutiveAssignments(exec.id, buildingIds, (req.user as any).id);
+      }
+      
+      res.json(exec);
+    } catch (error) {
+      console.error("Error updating executive:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Deactivate executive (soft delete)
+  app.post("/api/executives/:id/deactivate", isAuthenticated, async (req, res) => {
+    try {
+      const { terminationDate } = req.body;
+      const exec = await storage.deactivateExecutive(
+        req.params.id, 
+        terminationDate ? new Date(terminationDate) : undefined
+      );
+      if (!exec) {
+        return res.status(404).json({ error: "Ejecutivo no encontrado" });
+      }
+      res.json(exec);
+    } catch (error) {
+      console.error("Error deactivating executive:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Reactivate executive
+  app.post("/api/executives/:id/reactivate", isAuthenticated, async (req, res) => {
+    try {
+      const exec = await storage.updateExecutive(req.params.id, { 
+        employmentStatus: "activo",
+        terminationDate: null,
+      });
+      if (!exec) {
+        return res.status(404).json({ error: "Ejecutivo no encontrado" });
+      }
+      res.json(exec);
+    } catch (error) {
+      console.error("Error reactivating executive:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ========== EXECUTIVE DOCUMENTS ROUTES ==========
+
+  // Get executive documents
+  app.get("/api/executives/:id/documents", isAuthenticated, async (req, res) => {
+    try {
+      const documents = await storage.getExecutiveDocuments(req.params.id);
+      res.json(documents);
+    } catch (error) {
+      console.error("Error fetching executive documents:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Create executive document
+  app.post("/api/executives/:id/documents", isAuthenticated, async (req, res) => {
+    try {
+      const insertExecutiveDocumentSchema = (await import("@shared/schema")).insertExecutiveDocumentSchema;
+      const data = insertExecutiveDocumentSchema.parse({
+        ...req.body,
+        executiveId: req.params.id,
+        uploadedBy: (req.user as any).id,
+      });
+      
+      const doc = await storage.createExecutiveDocument(data);
+      res.status(201).json(doc);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos invalidos", details: error.errors });
+      }
+      console.error("Error creating executive document:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Delete executive document
+  app.delete("/api/executives/:id/documents/:docId", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteExecutiveDocument(req.params.docId);
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting executive document:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ========== EXECUTIVE ASSIGNMENTS ROUTES ==========
+
+  // Get executive assignments
+  app.get("/api/executives/:id/assignments", isAuthenticated, async (req, res) => {
+    try {
+      const assignments = await storage.getExecutiveAssignments(req.params.id);
+      res.json(assignments);
+    } catch (error) {
+      console.error("Error fetching executive assignments:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Replace executive assignments
+  app.put("/api/executives/:id/assignments", isAuthenticated, async (req, res) => {
+    try {
+      const { buildingIds } = req.body;
+      if (!Array.isArray(buildingIds)) {
+        return res.status(400).json({ error: "buildingIds debe ser un array" });
+      }
+      
+      const assignments = await storage.replaceExecutiveAssignments(
+        req.params.id, 
+        buildingIds, 
+        (req.user as any).id
+      );
+      res.json(assignments);
+    } catch (error) {
+      console.error("Error replacing executive assignments:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   return httpServer;
 }
