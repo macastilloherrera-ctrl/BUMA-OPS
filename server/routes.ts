@@ -4,6 +4,8 @@ import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { registerDevAuthRoutes, isDevMode } from "./devAuth";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 import {
   insertBuildingSchema,
   insertBuildingStaffSchema,
@@ -21,6 +23,7 @@ import {
   insertTicketPhotoSchema,
   insertTicketCommunicationSchema,
   insertAttachmentSchema,
+  userProfiles,
   type UserRole,
   type UserProfile,
 } from "@shared/schema";
@@ -1116,6 +1119,41 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Datos invalidos", details: error.errors });
       }
       console.error("Error updating ticket:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Escalate ticket to Gerente de Operaciones
+  app.post("/api/tickets/:id/escalate", isAuthenticated, async (req, res) => {
+    try {
+      const ticket = await storage.getTicket(req.params.id);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket no encontrado" });
+      }
+      
+      // Find the Gerente de Operaciones
+      const allProfiles = await db.select().from(userProfiles).where(eq(userProfiles.role, "gerente_operaciones"));
+      const gerenteOps = allProfiles[0];
+      
+      if (!gerenteOps) {
+        return res.status(404).json({ error: "No se encontro Gerente de Operaciones en el sistema" });
+      }
+      
+      // Update ticket: set priority to red and assign to gerente operaciones
+      const updatedTicket = await storage.updateTicket(req.params.id, {
+        priority: "rojo",
+        assignedExecutiveId: gerenteOps.userId,
+      });
+      
+      res.json({
+        ticket: updatedTicket,
+        escalatedTo: {
+          userId: gerenteOps.userId,
+          role: "gerente_operaciones",
+        },
+      });
+    } catch (error) {
+      console.error("Error escalating ticket:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });

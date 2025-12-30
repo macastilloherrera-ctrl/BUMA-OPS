@@ -109,13 +109,13 @@ export default function DashboardTickets() {
 
   const escalateTicketMutation = useMutation({
     mutationFn: async (ticket: TicketWithBuilding) => {
-      return apiRequest("PATCH", `/api/tickets/${ticket.id}`, { priority: "rojo" });
+      return apiRequest("POST", `/api/tickets/${ticket.id}/escalate`, {});
     },
-    onSuccess: (_, ticket) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
       toast({
         title: "Ticket Escalado",
-        description: `El ticket "${ticket.description.slice(0, 30)}..." fue marcado como CRITICO (prioridad roja). Ahora aparece en la seccion de Vencidos/Criticos del dashboard.`,
+        description: "El ticket fue escalado al Gerente de Operaciones con prioridad CRITICA (roja).",
       });
     },
     onError: () => {
@@ -337,7 +337,7 @@ export default function DashboardTickets() {
                               {ticket.priority === "rojo" ? "Ya Escalado" : "Escalar"}
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => setLocation(`/visitas/nueva?buildingId=${ticket.buildingId}&type=urgente&ticketId=${ticket.id}`)}
+                              onClick={() => setLocation(`/visitas/programar?buildingId=${ticket.buildingId}&type=urgente&ticketId=${ticket.id}`)}
                             >
                               <Calendar className="h-4 w-4 mr-2" />
                               Crear Visita Urgente
