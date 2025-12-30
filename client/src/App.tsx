@@ -34,6 +34,7 @@ import DashboardVisits from "@/pages/DashboardVisits";
 import DashboardOverview from "@/pages/DashboardOverview";
 import Maintainers from "@/pages/Maintainers";
 import CalendarView from "@/pages/CalendarView";
+import VisitReport from "@/pages/VisitReport";
 import DevLogin from "@/pages/DevLogin";
 
 function LoadingScreen() {
@@ -139,6 +140,7 @@ function AuthenticatedApp() {
                 <Route path="/visitas/:id" component={VisitDetail} />
                 <Route path="/visitas/:id/en-curso" component={VisitInProgress} />
                 <Route path="/visitas/:id/incidente" component={IncidentForm} />
+                <Route path="/visitas/:id/informe" component={VisitReport} />
 
                 <Route path="/tickets" component={Tickets} />
                 <Route path="/tickets/nuevo" component={NewTicket} />

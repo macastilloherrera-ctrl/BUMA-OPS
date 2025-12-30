@@ -30,7 +30,9 @@ import {
   Save,
   X,
   Ticket,
+  ImagePlus,
 } from "lucide-react";
+import { ObjectUploader } from "@/components/ObjectUploader";
 import type { Visit, Building, VisitChecklistItem, Incident } from "@shared/schema";
 import { Link } from "wouter";
 
@@ -55,6 +57,7 @@ export default function VisitInProgress() {
   const [ticketResponsible, setTicketResponsible] = useState<"ejecutivo" | "proveedor" | "conserjeria" | "comite">("ejecutivo");
   const [ticketResponsibleName, setTicketResponsibleName] = useState("");
   const [ticketDueDate, setTicketDueDate] = useState("");
+  const [ticketImages, setTicketImages] = useState<{ name: string; objectPath: string }[]>([]);
 
   const getCurrentUserName = () => {
     if (user?.firstName && user?.lastName) {
@@ -159,7 +162,7 @@ export default function VisitInProgress() {
       const responsibleName = ticketResponsible === "ejecutivo" 
         ? getCurrentUserName() 
         : ticketResponsibleName.trim();
-      return apiRequest("POST", "/api/tickets", {
+      const response = await apiRequest("POST", "/api/tickets", {
         buildingId: visit.buildingId,
         visitId: id,
         description: findingDescription.trim(),
@@ -169,12 +172,27 @@ export default function VisitInProgress() {
         responsibleName,
         dueDate: ticketDueDate,
       });
+      const ticket = await response.json();
+      
+      if (ticketImages.length > 0 && ticket?.id) {
+        for (const img of ticketImages) {
+          await apiRequest("POST", "/api/ticket-photos", {
+            ticketId: ticket.id,
+            objectPath: img.objectPath,
+            description: img.name,
+          });
+        }
+      }
+      
+      return ticket;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
       toast({
         title: "Ticket creado",
-        description: "El hallazgo ha sido registrado como ticket",
+        description: ticketImages.length > 0 
+          ? `El hallazgo ha sido registrado con ${ticketImages.length} foto(s)`
+          : "El hallazgo ha sido registrado como ticket",
       });
       setShowTicketForm(false);
       setCreateTicket(false);
@@ -184,6 +202,7 @@ export default function VisitInProgress() {
       setTicketResponsible("ejecutivo");
       setTicketResponsibleName("");
       setTicketDueDate("");
+      setTicketImages([]);
     },
     onError: () => {
       toast({
@@ -427,6 +446,70 @@ export default function VisitInProgress() {
                         />
                       </div>
                     )}
+                    
+                    <div className="space-y-2">
+                      <Label className="text-xs flex items-center gap-1">
+                        <ImagePlus className="h-3 w-3" />
+                        Fotos de evidencia (opcional)
+                      </Label>
+                      {ticketImages.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {ticketImages.map((img, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center gap-1 bg-muted px-2 py-1 rounded text-xs"
+                              data-testid={`ticket-image-${idx}`}
+                            >
+                              <span className="truncate max-w-[100px]">{img.name}</span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className="h-4 w-4"
+                                onClick={() => setTicketImages((prev) => prev.filter((_, i) => i !== idx))}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <ObjectUploader
+                        maxNumberOfFiles={5}
+                        maxFileSize={10485760}
+                        onGetUploadParameters={async (file) => {
+                          const res = await fetch("/api/uploads/request-url", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                              name: file.name,
+                              size: file.size,
+                              contentType: file.type,
+                            }),
+                          });
+                          const { uploadURL, objectPath } = await res.json();
+                          (file.meta as Record<string, unknown>).objectPath = objectPath;
+                          return {
+                            method: "PUT",
+                            url: uploadURL,
+                            headers: { "Content-Type": file.type },
+                          };
+                        }}
+                        onComplete={(result) => {
+                          const newImages = (result.successful || []).map((file) => ({
+                            name: file.name,
+                            objectPath: (file.meta as Record<string, unknown>).objectPath as string || file.name,
+                          }));
+                          if (newImages.length > 0) {
+                            setTicketImages((prev) => [...prev, ...newImages]);
+                            toast({ title: `${newImages.length} foto(s) subida(s)` });
+                          }
+                        }}
+                      >
+                        <Camera className="h-3 w-3 mr-1" />
+                        Subir Fotos
+                      </ObjectUploader>
+                    </div>
                   </div>
                 )}
 
@@ -473,6 +556,7 @@ export default function VisitInProgress() {
                       setShowTicketForm(false);
                       setCreateTicket(false);
                       setFindingDescription("");
+                      setTicketImages([]);
                     }}
                   >
                     <X className="h-4 w-4" />
