@@ -59,6 +59,7 @@ import {
   Star,
   Camera,
   Trash2,
+  Download,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -892,7 +893,22 @@ export default function TicketDetail() {
                       alt={photo.description || "Foto del ticket"}
                       className="aspect-square object-cover w-full"
                     />
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                      <Button
+                        variant="secondary"
+                        size="icon"
+                        onClick={() => {
+                          const link = document.createElement('a');
+                          link.href = photo.objectStorageKey;
+                          link.download = photo.description || 'foto';
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
+                        data-testid={`download-photo-${photo.id}`}
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
                       <Button
                         variant="destructive"
                         size="icon"
