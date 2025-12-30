@@ -1079,6 +1079,18 @@ export async function registerRoutes(
       if (patchBody.endDate && typeof patchBody.endDate === 'string') {
         patchBody.endDate = new Date(patchBody.endDate);
       }
+      if (patchBody.workStartedAt && typeof patchBody.workStartedAt === 'string') {
+        patchBody.workStartedAt = new Date(patchBody.workStartedAt);
+      }
+      if (patchBody.workCompletedAt && typeof patchBody.workCompletedAt === 'string') {
+        patchBody.workCompletedAt = new Date(patchBody.workCompletedAt);
+      }
+      if (patchBody.closedAt && typeof patchBody.closedAt === 'string') {
+        patchBody.closedAt = new Date(patchBody.closedAt);
+      }
+      if (patchBody.approvedAt && typeof patchBody.approvedAt === 'string') {
+        patchBody.approvedAt = new Date(patchBody.approvedAt);
+      }
       
       const data = insertTicketSchema.partial().parse(patchBody);
       
