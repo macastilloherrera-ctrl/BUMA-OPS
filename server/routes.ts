@@ -1120,6 +1120,47 @@ export async function registerRoutes(
     }
   });
 
+  // Restart work on a resolved ticket
+  app.post("/api/tickets/:id/restart-work", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const existingTicket = await storage.getTicket(req.params.id);
+      if (!existingTicket) {
+        return res.status(404).json({ error: "Ticket no encontrado" });
+      }
+      
+      if (existingTicket.status !== "resuelto") {
+        return res.status(400).json({ error: "Solo se puede reiniciar trabajo en tickets resueltos" });
+      }
+      
+      // Reset all workflow fields including approvals
+      const ticket = await storage.updateTicket(req.params.id, {
+        status: "pendiente",
+        workStartedAt: null,
+        workCompletedAt: null,
+        closedAt: null,
+        closedBy: null,
+        invoiceNumber: null,
+        invoiceAmount: null,
+        approvedQuoteId: null,
+        approvedBy: null,
+        approvedAt: null,
+      } as any);
+      
+      // Reset any approved quotes back to pending
+      const quotes = await storage.getTicketQuotes(req.params.id);
+      for (const quote of quotes) {
+        if (quote.status === "aceptada") {
+          await storage.updateTicketQuote(quote.id, { status: "pendiente" });
+        }
+      }
+      
+      res.json(ticket);
+    } catch (error) {
+      console.error("Error restarting ticket work:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   // === Incidents ===
   app.get("/api/incidents", isAuthenticated, async (req, res) => {
     try {

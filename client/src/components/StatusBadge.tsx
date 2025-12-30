@@ -13,6 +13,7 @@ const visitStatusConfig: Record<VisitStatus, { label: string; variant: "default"
   en_curso: { label: "En Curso", variant: "default" },
   realizada: { label: "Realizada", variant: "secondary" },
   cancelada: { label: "Cancelada", variant: "secondary" },
+  no_realizada: { label: "No Realizada", variant: "destructive" },
 };
 
 const ticketStatusConfig: Record<TicketStatus, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {

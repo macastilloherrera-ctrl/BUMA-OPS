@@ -60,6 +60,9 @@ import {
   Camera,
   Trash2,
   Download,
+  RotateCcw,
+  Paperclip,
+  FileText as FileIcon,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -235,6 +238,19 @@ export default function TicketDetail() {
     },
   });
 
+  const updateQuoteAttachmentMutation = useMutation({
+    mutationFn: async ({ quoteId, attachmentKey }: { quoteId: string; attachmentKey: string | null }) => {
+      return apiRequest("PATCH", `/api/tickets/${id}/quotes/${quoteId}`, { attachmentKey });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "quotes"] });
+      toast({ title: variables.attachmentKey ? "Documento adjuntado" : "Documento eliminado" });
+    },
+    onError: () => {
+      toast({ title: "Error al actualizar documento", variant: "destructive" });
+    },
+  });
+
   const startWorkMutation = useMutation({
     mutationFn: async () => {
       return apiRequest("PATCH", `/api/tickets/${id}`, {
@@ -287,6 +303,21 @@ export default function TicketDetail() {
     },
     onError: () => {
       toast({ title: "Error al cerrar ticket", variant: "destructive" });
+    },
+  });
+
+  const restartWorkMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", `/api/tickets/${id}/restart-work`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "quotes"] });
+      toast({ title: "Trabajo reiniciado - ticket listo para nuevo ciclo" });
+    },
+    onError: () => {
+      toast({ title: "Error al reiniciar trabajo", variant: "destructive" });
     },
   });
 
@@ -587,7 +618,7 @@ export default function TicketDetail() {
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">Ticket Cerrado</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-2">
+                <CardContent className="space-y-3">
                   <div className="flex items-center gap-2 text-sm">
                     <Check className="h-4 w-4 text-green-500" />
                     <span>Cerrado el {format(new Date(ticket.closedAt), "dd MMM yyyy HH:mm", { locale: es })}</span>
@@ -602,6 +633,20 @@ export default function TicketDetail() {
                     <div className="text-sm">
                       <span className="text-muted-foreground">Monto: </span>
                       <span className="font-medium">{formatCurrency(ticket.invoiceAmount)}</span>
+                    </div>
+                  )}
+                  {isManager && (
+                    <div className="pt-2 border-t">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => restartWorkMutation.mutate()}
+                        disabled={restartWorkMutation.isPending}
+                        data-testid="button-restart-work"
+                      >
+                        <RotateCcw className="h-4 w-4 mr-1" />
+                        {restartWorkMutation.isPending ? "Reiniciando..." : "Reiniciar Trabajo"}
+                      </Button>
                     </div>
                   )}
                 </CardContent>
@@ -807,6 +852,75 @@ export default function TicketDetail() {
                                   <Clock className="h-3 w-3" />
                                   {quote.durationDays} dias
                                 </div>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mt-2 pt-2 border-t">
+                              {quote.attachmentKey ? (
+                                <>
+                                  <div className="flex items-center gap-1 text-sm text-muted-foreground flex-1">
+                                    <FileIcon className="h-4 w-4" />
+                                    <span>Documento adjunto</span>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      const link = document.createElement('a');
+                                      link.href = quote.attachmentKey!;
+                                      link.download = 'cotizacion';
+                                      document.body.appendChild(link);
+                                      link.click();
+                                      document.body.removeChild(link);
+                                    }}
+                                    data-testid={`button-download-quote-doc-${quote.id}`}
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => updateQuoteAttachmentMutation.mutate({ quoteId: quote.id, attachmentKey: null })}
+                                    disabled={updateQuoteAttachmentMutation.isPending}
+                                    data-testid={`button-delete-quote-doc-${quote.id}`}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              ) : (
+                                <ObjectUploader
+                                  maxNumberOfFiles={1}
+                                  maxFileSize={10485760}
+                                  onGetUploadParameters={async (file) => {
+                                    const res = await fetch("/api/uploads/request-url", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        name: file.name,
+                                        size: file.size,
+                                        contentType: file.type,
+                                      }),
+                                    });
+                                    const { uploadURL, objectPath } = await res.json();
+                                    (file.meta as Record<string, unknown>).objectPath = objectPath;
+                                    return {
+                                      method: "PUT",
+                                      url: uploadURL,
+                                      headers: { "Content-Type": file.type },
+                                    };
+                                  }}
+                                  onComplete={(result) => {
+                                    const uploaded = result.successful || [];
+                                    if (uploaded.length > 0) {
+                                      const objectPath = (uploaded[0].meta as Record<string, unknown>).objectPath as string;
+                                      if (objectPath) {
+                                        updateQuoteAttachmentMutation.mutate({ quoteId: quote.id, attachmentKey: objectPath });
+                                      }
+                                    }
+                                  }}
+                                >
+                                  <Paperclip className="h-4 w-4 mr-1" />
+                                  Adjuntar Documento
+                                </ObjectUploader>
                               )}
                             </div>
                           </div>
