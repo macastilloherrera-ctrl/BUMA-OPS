@@ -158,7 +158,11 @@ export default function TicketDetail() {
 
   const uploadPhotoMutation = useMutation({
     mutationFn: async (data: { objectPath: string; description: string; photoType: string }) => {
-      return apiRequest("POST", `/api/tickets/${id}/photos`, data);
+      return apiRequest("POST", `/api/tickets/${id}/photos`, {
+        objectStorageKey: data.objectPath,
+        description: data.description,
+        photoType: data.photoType,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "photos"] });
