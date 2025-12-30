@@ -786,7 +786,7 @@ export default function TicketDetail() {
                         {cycle.closedAt && (
                           <div>Cerrado: {format(new Date(cycle.closedAt), "dd/MM/yy HH:mm", { locale: es })}</div>
                         )}
-                        {canSeeCosts && cycle.invoiceAmount && (
+                        {canSeeCosts && cycle.invoiceAmount && Number(cycle.invoiceAmount) > 0 && (
                           <div>Monto: {formatCurrency(cycle.invoiceAmount)}</div>
                         )}
                       </div>
