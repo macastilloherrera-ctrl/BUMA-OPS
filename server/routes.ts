@@ -1120,6 +1120,28 @@ export async function registerRoutes(
     }
   });
 
+  // Get ticket work history
+  app.get("/api/tickets/:id/work-history", isAuthenticated, async (req, res) => {
+    try {
+      const ticket = await storage.getTicket(req.params.id);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket no encontrado" });
+      }
+      
+      const profile = await storage.getUserProfile(req.user!.id);
+      const hasAccess = await canAccessEntity(req.user!.id, profile, ticket);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "No tienes acceso a este ticket" });
+      }
+      
+      const cycles = await storage.getTicketWorkCycles(req.params.id);
+      res.json(cycles);
+    } catch (error) {
+      console.error("Error fetching work history:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   // Restart work on a resolved ticket
   app.post("/api/tickets/:id/restart-work", isAuthenticated, isManager, async (req, res) => {
     try {
@@ -1131,6 +1153,36 @@ export async function registerRoutes(
       if (existingTicket.status !== "resuelto") {
         return res.status(400).json({ error: "Solo se puede reiniciar trabajo en tickets resueltos" });
       }
+      
+      const { reason, committedCompletionAt } = req.body;
+      if (!reason || !committedCompletionAt) {
+        return res.status(400).json({ error: "Se requiere razon y fecha comprometida" });
+      }
+      
+      // Get current cycle number
+      const existingCycles = await storage.getTicketWorkCycles(req.params.id);
+      const lastCycleNumber = existingCycles.length > 0 
+        ? Math.max(...existingCycles.map(c => c.cycleNumber)) 
+        : 0;
+      
+      // Save the completed cycle before restart
+      await storage.createTicketWorkCycle({
+        ticketId: req.params.id,
+        cycleNumber: lastCycleNumber + 1,
+        startedAt: existingTicket.workStartedAt,
+        completedAt: existingTicket.workCompletedAt,
+        closedAt: existingTicket.closedAt,
+        closedBy: existingTicket.closedBy,
+        invoiceNumber: existingTicket.invoiceNumber,
+        invoiceAmount: existingTicket.invoiceAmount,
+        approvedQuoteId: existingTicket.approvedQuoteId,
+        approvedBy: existingTicket.approvedBy,
+        approvedAt: existingTicket.approvedAt,
+        restartReason: reason,
+        committedCompletionAt: new Date(committedCompletionAt),
+        restartedBy: req.user!.id,
+        restartedAt: new Date(),
+      });
       
       // Reset all workflow fields including approvals
       const ticket = await storage.updateTicket(req.params.id, {
@@ -1144,6 +1196,7 @@ export async function registerRoutes(
         approvedQuoteId: null,
         approvedBy: null,
         approvedAt: null,
+        endDate: new Date(committedCompletionAt),
       } as any);
       
       // Reset any approved quotes back to pending

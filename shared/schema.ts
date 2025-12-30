@@ -342,6 +342,27 @@ export const ticketPhotos = pgTable("ticket_photos", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Ticket Work Cycles table (tracks work history including restarts)
+export const ticketWorkCycles = pgTable("ticket_work_cycles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").notNull(),
+  cycleNumber: integer("cycle_number").notNull().default(1),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  closedAt: timestamp("closed_at"),
+  closedBy: varchar("closed_by"),
+  invoiceNumber: varchar("invoice_number", { length: 100 }),
+  invoiceAmount: decimal("invoice_amount", { precision: 12, scale: 2 }),
+  approvedQuoteId: varchar("approved_quote_id"),
+  approvedBy: varchar("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  restartReason: text("restart_reason"),
+  committedCompletionAt: timestamp("committed_completion_at"),
+  restartedBy: varchar("restarted_by"),
+  restartedAt: timestamp("restarted_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Ticket Communications table
 export const ticketCommunications = pgTable("ticket_communications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -632,6 +653,11 @@ export const insertTicketPhotoSchema = createInsertSchema(ticketPhotos).omit({
   createdAt: true,
 });
 
+export const insertTicketWorkCycleSchema = createInsertSchema(ticketWorkCycles).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertTicketCommunicationSchema = createInsertSchema(ticketCommunications).omit({
   id: true,
   sentAt: true,
@@ -688,6 +714,9 @@ export type TicketQuote = typeof ticketQuotes.$inferSelect;
 
 export type InsertTicketPhoto = z.infer<typeof insertTicketPhotoSchema>;
 export type TicketPhoto = typeof ticketPhotos.$inferSelect;
+
+export type InsertTicketWorkCycle = z.infer<typeof insertTicketWorkCycleSchema>;
+export type TicketWorkCycle = typeof ticketWorkCycles.$inferSelect;
 
 export type InsertTicketCommunication = z.infer<typeof insertTicketCommunicationSchema>;
 export type TicketCommunication = typeof ticketCommunications.$inferSelect;

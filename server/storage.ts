@@ -16,6 +16,7 @@ import {
   tickets,
   ticketQuotes,
   ticketPhotos,
+  ticketWorkCycles,
   ticketCommunications,
   attachments,
   type User,
@@ -51,6 +52,8 @@ import {
   type InsertTicketQuote,
   type TicketPhoto,
   type InsertTicketPhoto,
+  type TicketWorkCycle,
+  type InsertTicketWorkCycle,
   type TicketCommunication,
   type InsertTicketCommunication,
   type Attachment,
@@ -167,6 +170,11 @@ export interface IStorage {
   getTicketPhotos(ticketId: string): Promise<TicketPhoto[]>;
   createTicketPhoto(photo: InsertTicketPhoto): Promise<TicketPhoto>;
   deleteTicketPhoto(id: string): Promise<boolean>;
+
+  // Ticket Work Cycles
+  getTicketWorkCycles(ticketId: string): Promise<TicketWorkCycle[]>;
+  createTicketWorkCycle(cycle: InsertTicketWorkCycle): Promise<TicketWorkCycle>;
+  getLatestWorkCycle(ticketId: string): Promise<TicketWorkCycle | undefined>;
 
   // Ticket Communications
   getTicketCommunications(ticketId: string): Promise<TicketCommunication[]>;
@@ -647,6 +655,21 @@ export class DatabaseStorage implements IStorage {
   async deleteTicketPhoto(id: string): Promise<boolean> {
     await db.delete(ticketPhotos).where(eq(ticketPhotos.id, id));
     return true;
+  }
+
+  // Ticket Work Cycles
+  async getTicketWorkCycles(ticketId: string): Promise<TicketWorkCycle[]> {
+    return db.select().from(ticketWorkCycles).where(eq(ticketWorkCycles.ticketId, ticketId)).orderBy(ticketWorkCycles.cycleNumber);
+  }
+
+  async createTicketWorkCycle(cycle: InsertTicketWorkCycle): Promise<TicketWorkCycle> {
+    const [created] = await db.insert(ticketWorkCycles).values(cycle).returning();
+    return created;
+  }
+
+  async getLatestWorkCycle(ticketId: string): Promise<TicketWorkCycle | undefined> {
+    const [cycle] = await db.select().from(ticketWorkCycles).where(eq(ticketWorkCycles.ticketId, ticketId)).orderBy(desc(ticketWorkCycles.cycleNumber)).limit(1);
+    return cycle || undefined;
   }
 
   // Ticket Communications
