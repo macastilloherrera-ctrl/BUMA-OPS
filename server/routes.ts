@@ -1185,6 +1185,7 @@ export async function registerRoutes(
       });
       
       // Reset all workflow fields including approvals
+      const newCycleNumber = lastCycleNumber + 2; // +1 for archived cycle, +1 for new cycle
       const ticket = await storage.updateTicket(req.params.id, {
         status: "pendiente",
         workStartedAt: null,
@@ -1196,6 +1197,8 @@ export async function registerRoutes(
         approvedQuoteId: null,
         approvedBy: null,
         approvedAt: null,
+        committedCompletionAt: new Date(committedCompletionAt),
+        currentCycleNumber: newCycleNumber,
         endDate: new Date(committedCompletionAt),
       } as any);
       
