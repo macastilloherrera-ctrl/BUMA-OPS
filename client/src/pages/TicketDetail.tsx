@@ -888,7 +888,7 @@ export default function TicketDetail() {
                     data-testid={`photo-${photo.id}`}
                   >
                     <img
-                      src={`/api/object-storage/download?key=${encodeURIComponent(photo.objectStorageKey)}`}
+                      src={photo.objectStorageKey}
                       alt={photo.description || "Foto del ticket"}
                       className="aspect-square object-cover w-full"
                     />
