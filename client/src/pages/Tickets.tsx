@@ -28,11 +28,13 @@ export default function Tickets() {
     
     switch (filter) {
       case "vencidos":
-        return tickets.filter((t) => t.status === "vencido" || t.priority === "rojo");
+        return tickets.filter((t) => t.status !== "resuelto" && (t.status === "vencido" || t.priority === "rojo"));
       case "por_vencer":
         return tickets.filter((t) => t.priority === "amarillo" && t.status !== "resuelto");
       case "pendientes":
-        return tickets.filter((t) => t.status === "pendiente" || t.status === "en_curso");
+        return tickets.filter((t) => (t.status === "pendiente" || t.status === "en_curso" || t.status === "trabajo_completado") && t.priority === "verde");
+      case "resueltos":
+        return tickets.filter((t) => t.status === "resuelto");
       default:
         return tickets;
     }
@@ -55,7 +57,7 @@ export default function Tickets() {
       <div className="flex-1 overflow-auto pb-20 md:pb-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <div className="sticky top-0 bg-background px-4 pt-3">
-            <TabsList className="w-full grid grid-cols-4 h-10">
+            <TabsList className="w-full grid grid-cols-5 h-10">
               <TabsTrigger value="vencidos" data-testid="tab-vencidos">
                 Vencidos
               </TabsTrigger>
@@ -65,13 +67,16 @@ export default function Tickets() {
               <TabsTrigger value="pendientes" data-testid="tab-pendientes">
                 Pendientes
               </TabsTrigger>
+              <TabsTrigger value="resueltos" data-testid="tab-resueltos">
+                Resueltos
+              </TabsTrigger>
               <TabsTrigger value="todos" data-testid="tab-todos">
                 Todos
               </TabsTrigger>
             </TabsList>
           </div>
 
-          {["vencidos", "por_vencer", "pendientes", "todos"].map((tab) => (
+          {["vencidos", "por_vencer", "pendientes", "resueltos", "todos"].map((tab) => (
             <TabsContent key={tab} value={tab} className="px-4 mt-4">
               {isLoading ? (
                 <div className="space-y-3">
