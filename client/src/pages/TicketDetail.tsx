@@ -6,7 +6,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import type { Building, MaintainerCategory, UserProfile, TicketQuote } from "@shared/schema";
+import type { Building, MaintainerCategory, UserProfile, TicketQuote, TicketPhoto } from "@shared/schema";
+import { ObjectUploader } from "@/components/ObjectUploader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,6 +57,8 @@ import {
   DollarSign,
   Clock,
   Star,
+  Camera,
+  Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -146,6 +149,37 @@ export default function TicketDetail() {
   const { data: quotes, isLoading: quotesLoading } = useQuery<TicketQuote[]>({
     queryKey: ["/api/tickets", id, "quotes"],
     enabled: !!id,
+  });
+
+  const { data: photos, isLoading: photosLoading } = useQuery<TicketPhoto[]>({
+    queryKey: ["/api/tickets", id, "photos"],
+    enabled: !!id,
+  });
+
+  const uploadPhotoMutation = useMutation({
+    mutationFn: async (data: { objectPath: string; description: string; photoType: string }) => {
+      return apiRequest("POST", `/api/tickets/${id}/photos`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "photos"] });
+      toast({ title: "Foto subida exitosamente" });
+    },
+    onError: () => {
+      toast({ title: "Error al subir foto", variant: "destructive" });
+    },
+  });
+
+  const deletePhotoMutation = useMutation({
+    mutationFn: async (photoId: string) => {
+      return apiRequest("DELETE", `/api/tickets/${id}/photos/${photoId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "photos"] });
+      toast({ title: "Foto eliminada" });
+    },
+    onError: () => {
+      toast({ title: "Error al eliminar foto", variant: "destructive" });
+    },
   });
 
   const quoteForm = useForm<QuoteForm>({
@@ -792,14 +826,104 @@ export default function TicketDetail() {
             )}
           </TabsContent>
 
-          <TabsContent value="fotos" className="px-4 mt-4">
-            <div className="text-center py-12">
-              <Image className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground">Fotos del ticket</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Funcionalidad de fotos en desarrollo
-              </p>
+          <TabsContent value="fotos" className="px-4 mt-4 space-y-4">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h3 className="text-sm font-medium">Fotos del Ticket</h3>
+              <ObjectUploader
+                maxNumberOfFiles={5}
+                maxFileSize={10485760}
+                onGetUploadParameters={async (file) => {
+                  const res = await fetch("/api/uploads/request-url", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      name: file.name,
+                      size: file.size,
+                      contentType: file.type,
+                    }),
+                  });
+                  const { uploadURL, objectPath } = await res.json();
+                  (file.meta as Record<string, unknown>).objectPath = objectPath;
+                  return {
+                    method: "PUT",
+                    url: uploadURL,
+                    headers: { "Content-Type": file.type },
+                  };
+                }}
+                onComplete={(result) => {
+                  const uploaded = result.successful || [];
+                  for (const file of uploaded) {
+                    const objectPath = (file.meta as Record<string, unknown>).objectPath as string;
+                    if (objectPath) {
+                      uploadPhotoMutation.mutate({
+                        objectPath,
+                        description: file.name,
+                        photoType: "trabajo",
+                      });
+                    }
+                  }
+                }}
+              >
+                <Camera className="h-4 w-4 mr-2" />
+                Subir Fotos
+              </ObjectUploader>
             </div>
+
+            {photosLoading ? (
+              <div className="grid grid-cols-2 gap-3">
+                {[1, 2].map((i) => (
+                  <Skeleton key={i} className="aspect-square rounded-md" />
+                ))}
+              </div>
+            ) : photos && photos.length > 0 ? (
+              <div className="grid grid-cols-2 gap-3">
+                {photos.map((photo) => (
+                  <div
+                    key={photo.id}
+                    className="relative group rounded-md overflow-hidden border"
+                    data-testid={`photo-${photo.id}`}
+                  >
+                    <img
+                      src={`/api/object-storage/download?key=${encodeURIComponent(photo.objectStorageKey)}`}
+                      alt={photo.description || "Foto del ticket"}
+                      className="aspect-square object-cover w-full"
+                    />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        onClick={() => deletePhotoMutation.mutate(photo.id)}
+                        disabled={deletePhotoMutation.isPending}
+                        data-testid={`delete-photo-${photo.id}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {photo.description && (
+                      <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1 truncate">
+                        {photo.description}
+                      </div>
+                    )}
+                    <Badge
+                      variant="secondary"
+                      className="absolute top-1 left-1 text-xs"
+                    >
+                      {photo.photoType === "inicial" ? "Inicial" : 
+                       photo.photoType === "trabajo" ? "Trabajo" : 
+                       photo.photoType === "final" ? "Final" : photo.photoType}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <Image className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground">No hay fotos</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Sube fotos del trabajo realizado
+                </p>
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="comunicacion" className="px-4 mt-4">
