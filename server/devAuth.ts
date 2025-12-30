@@ -22,7 +22,7 @@ export const DEV_USERS = [
     label: "Gerente Operaciones",
   },
   {
-    id: "dev-ejecutivo-a",
+    id: "exec-a-001",
     email: "execa@buma.local",
     firstName: "Ejecutivo",
     lastName: "A",
@@ -31,7 +31,7 @@ export const DEV_USERS = [
     label: "Ejecutivo A",
   },
   {
-    id: "dev-ejecutivo-b",
+    id: "exec-b-001",
     email: "execb@buma.local",
     firstName: "Ejecutivo",
     lastName: "B",
