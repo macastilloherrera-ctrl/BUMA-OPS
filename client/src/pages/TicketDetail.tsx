@@ -652,7 +652,8 @@ export default function TicketDetail() {
                                         }),
                                       });
                                       const data = await response.json();
-                                      pendingInvoiceKeyRef.current = { key: data.objectKey, name: file.name || "documento" };
+                                      const objectKey = data.objectPath?.replace("/objects/", "") || data.objectKey;
+                                      pendingInvoiceKeyRef.current = { key: objectKey, name: file.name || "documento" };
                                       return { method: "PUT" as const, url: data.uploadURL };
                                     }}
                                     onComplete={(result) => {
@@ -778,7 +779,8 @@ export default function TicketDetail() {
                               }),
                             });
                             const data = await response.json();
-                            pendingInvoiceKeyRef.current = { key: data.objectKey, name: file.name || "documento" };
+                            const objectKey = data.objectPath?.replace("/objects/", "") || data.objectKey;
+                            pendingInvoiceKeyRef.current = { key: objectKey, name: file.name || "documento" };
                             return { method: "PUT" as const, url: data.uploadURL };
                           }}
                           onComplete={(result) => {
