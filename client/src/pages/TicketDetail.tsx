@@ -746,50 +746,63 @@ export default function TicketDetail() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <Clock className="h-4 w-4" />
-                    Historial de Trabajo ({workHistory.length} ciclo{workHistory.length > 1 ? "s" : ""})
+                    <RotateCcw className="h-4 w-4" />
+                    Intentos Anteriores ({workHistory.length})
                   </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Este ticket fue reiniciado. A continuacion se muestran los trabajos anteriores que no fueron satisfactorios.
+                  </p>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {workHistory.map((cycle, index) => (
-                    <div key={cycle.id} className="border-l-2 border-border pl-4 py-2 space-y-2" data-testid={`work-cycle-${cycle.cycleNumber}`}>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline">Ciclo {cycle.cycleNumber}</Badge>
-                        {cycle.restartedAt && (
-                          <span className="text-xs text-muted-foreground">
+                    <div key={cycle.id} className="border rounded-md p-3 space-y-3 bg-muted/30" data-testid={`work-cycle-${cycle.cycleNumber}`}>
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <Badge variant="secondary">Intento {cycle.cycleNumber}</Badge>
+                        <Badge variant="outline" className="text-destructive border-destructive/50">
+                          Requirio Reinicio
+                        </Badge>
+                      </div>
+                      
+                      <div className="space-y-2 text-sm">
+                        <div className="font-medium">Trabajo realizado:</div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground pl-2">
+                          {cycle.startedAt && (
+                            <div>Inicio: {format(new Date(cycle.startedAt), "dd/MM/yy HH:mm", { locale: es })}</div>
+                          )}
+                          {cycle.completedAt && (
+                            <div>Completado: {format(new Date(cycle.completedAt), "dd/MM/yy HH:mm", { locale: es })}</div>
+                          )}
+                          {cycle.closedAt && (
+                            <div>Cerrado: {format(new Date(cycle.closedAt), "dd/MM/yy HH:mm", { locale: es })}</div>
+                          )}
+                          {canSeeCosts && cycle.invoiceAmount && Number(cycle.invoiceAmount) > 0 && (
+                            <div>Monto facturado: {formatCurrency(cycle.invoiceAmount)}</div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {cycle.restartedAt && (
+                        <div className="border-t pt-3 space-y-2">
+                          <div className="font-medium text-sm flex items-center gap-2">
+                            <RotateCcw className="h-3 w-3" />
                             Reiniciado el {format(new Date(cycle.restartedAt), "dd MMM yyyy", { locale: es })}
-                          </span>
-                        )}
-                      </div>
-                      
-                      {cycle.restartReason && (
-                        <div className="text-sm bg-muted/50 p-2 rounded">
-                          <span className="text-muted-foreground">Razon: </span>
-                          <span>{cycle.restartReason}</span>
+                          </div>
+                          
+                          {cycle.restartReason && (
+                            <div className="text-sm bg-destructive/10 border border-destructive/20 p-2 rounded">
+                              <span className="font-medium">Motivo del reinicio: </span>
+                              <span>{cycle.restartReason}</span>
+                            </div>
+                          )}
+                          
+                          {cycle.committedCompletionAt && (
+                            <div className="text-sm">
+                              <span className="text-muted-foreground">Nueva fecha comprometida: </span>
+                              <span className="font-medium">{format(new Date(cycle.committedCompletionAt), "dd MMM yyyy", { locale: es })}</span>
+                            </div>
+                          )}
                         </div>
                       )}
-                      
-                      {cycle.committedCompletionAt && (
-                        <div className="text-sm">
-                          <span className="text-muted-foreground">Fecha comprometida: </span>
-                          <span>{format(new Date(cycle.committedCompletionAt), "dd MMM yyyy", { locale: es })}</span>
-                        </div>
-                      )}
-                      
-                      <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                        {cycle.startedAt && (
-                          <div>Inicio: {format(new Date(cycle.startedAt), "dd/MM/yy HH:mm", { locale: es })}</div>
-                        )}
-                        {cycle.completedAt && (
-                          <div>Completado: {format(new Date(cycle.completedAt), "dd/MM/yy HH:mm", { locale: es })}</div>
-                        )}
-                        {cycle.closedAt && (
-                          <div>Cerrado: {format(new Date(cycle.closedAt), "dd/MM/yy HH:mm", { locale: es })}</div>
-                        )}
-                        {canSeeCosts && cycle.invoiceAmount && Number(cycle.invoiceAmount) > 0 && (
-                          <div>Monto: {formatCurrency(cycle.invoiceAmount)}</div>
-                        )}
-                      </div>
                     </div>
                   ))}
                 </CardContent>
