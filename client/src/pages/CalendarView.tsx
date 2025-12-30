@@ -11,6 +11,8 @@ import {
   AlertTriangle,
   CalendarClock,
   Wrench,
+  MapPin,
+  Clock,
 } from "lucide-react";
 import {
   format,
@@ -26,7 +28,7 @@ import {
   isToday,
 } from "date-fns";
 import { es } from "date-fns/locale";
-import type { Building } from "@shared/schema";
+import type { Building, Visit } from "@shared/schema";
 
 interface TicketWithDetails {
   id: string;
@@ -39,6 +41,10 @@ interface TicketWithDetails {
   building?: Building;
 }
 
+interface VisitWithDetails extends Visit {
+  building?: Building;
+}
+
 const ticketTypeIcons: Record<string, typeof AlertTriangle> = {
   urgencia: AlertTriangle,
   planificado: CalendarClock,
@@ -48,9 +54,15 @@ const ticketTypeIcons: Record<string, typeof AlertTriangle> = {
 export default function CalendarView() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
-  const { data: tickets, isLoading } = useQuery<TicketWithDetails[]>({
+  const { data: tickets, isLoading: ticketsLoading } = useQuery<TicketWithDetails[]>({
     queryKey: ["/api/tickets"],
   });
+
+  const { data: visits, isLoading: visitsLoading } = useQuery<VisitWithDetails[]>({
+    queryKey: ["/api/visits"],
+  });
+
+  const isLoading = ticketsLoading || visitsLoading;
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
@@ -67,6 +79,14 @@ export default function CalendarView() {
     });
   };
 
+  const getVisitsForDay = (day: Date) => {
+    if (!visits) return [];
+    return visits.filter((visit) => {
+      if (!visit.scheduledDate) return false;
+      return isSameDay(new Date(visit.scheduledDate), day);
+    });
+  };
+
   const goToPreviousMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
   const goToNextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
   const goToToday = () => setCurrentMonth(new Date());
@@ -79,7 +99,7 @@ export default function CalendarView() {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <CalendarIcon className="h-5 w-5 text-primary" />
-            <h1 className="text-lg font-semibold">Calendario de Tickets</h1>
+            <h1 className="text-lg font-semibold">Calendario</h1>
           </div>
         </div>
       </div>
@@ -134,6 +154,8 @@ export default function CalendarView() {
               <div className="grid grid-cols-7">
                 {days.map((day, index) => {
                   const dayTickets = getTicketsForDay(day);
+                  const dayVisits = getVisitsForDay(day);
+                  const totalItems = dayTickets.length + dayVisits.length;
                   const isCurrentMonth = isSameMonth(day, currentMonth);
                   const isCurrentDay = isToday(day);
 
@@ -156,14 +178,31 @@ export default function CalendarView() {
                         >
                           {format(day, "d")}
                         </span>
-                        {dayTickets.length > 0 && (
+                        {totalItems > 0 && (
                           <Badge variant="secondary" className="text-xs px-1">
-                            {dayTickets.length}
+                            {totalItems}
                           </Badge>
                         )}
                       </div>
                       <div className="space-y-1 overflow-auto max-h-[70px]">
-                        {dayTickets.slice(0, 3).map((ticket) => {
+                        {dayVisits.slice(0, 2).map((visit) => (
+                          <Link key={visit.id} href={`/visitas/${visit.id}`}>
+                            <div
+                              className={`flex items-center gap-1 p-1 rounded text-xs cursor-pointer hover-elevate ${
+                                visit.type === "urgente"
+                                  ? "bg-primary/10 text-primary"
+                                  : "bg-blue-500/10 text-blue-700 dark:text-blue-400"
+                              }`}
+                              data-testid={`calendar-visit-${visit.id}`}
+                            >
+                              <MapPin className="h-3 w-3 flex-shrink-0" />
+                              <span className="truncate">
+                                {visit.building?.name || "Visita"}
+                              </span>
+                            </div>
+                          </Link>
+                        ))}
+                        {dayTickets.slice(0, 2).map((ticket) => {
                           const TypeIcon = ticketTypeIcons[ticket.ticketType] || AlertTriangle;
                           return (
                             <Link key={ticket.id} href={`/tickets/${ticket.id}`}>
@@ -183,9 +222,9 @@ export default function CalendarView() {
                             </Link>
                           );
                         })}
-                        {dayTickets.length > 3 && (
+                        {totalItems > 4 && (
                           <div className="text-xs text-muted-foreground text-center">
-                            +{dayTickets.length - 3} mas
+                            +{totalItems - 4} mas
                           </div>
                         )}
                       </div>
@@ -199,20 +238,34 @@ export default function CalendarView() {
           <div className="mt-6">
             <h3 className="font-medium mb-3">Leyenda</h3>
             <div className="flex flex-wrap gap-4 text-sm">
-              <div className="flex items-center gap-2" data-testid="legend-priority-rojo">
-                <div className="w-4 h-4 bg-destructive/10 rounded" />
-                <span>Prioridad Alta (Rojo)</span>
+              <div className="flex items-center gap-2" data-testid="legend-visit-rutina">
+                <div className="w-4 h-4 bg-blue-500/10 rounded" />
+                <span>Visita Rutina</span>
               </div>
-              <div className="flex items-center gap-2" data-testid="legend-priority-amarillo">
-                <div className="w-4 h-4 bg-accent rounded" />
-                <span>Prioridad Media (Amarillo)</span>
-              </div>
-              <div className="flex items-center gap-2" data-testid="legend-priority-verde">
-                <div className="w-4 h-4 bg-muted rounded" />
-                <span>Prioridad Baja (Verde)</span>
+              <div className="flex items-center gap-2" data-testid="legend-visit-urgente">
+                <div className="w-4 h-4 bg-primary/10 rounded" />
+                <span>Visita Urgente</span>
               </div>
             </div>
             <div className="flex flex-wrap gap-4 text-sm mt-3">
+              <div className="flex items-center gap-2" data-testid="legend-priority-rojo">
+                <div className="w-4 h-4 bg-destructive/10 rounded" />
+                <span>Ticket Alta (Rojo)</span>
+              </div>
+              <div className="flex items-center gap-2" data-testid="legend-priority-amarillo">
+                <div className="w-4 h-4 bg-accent rounded" />
+                <span>Ticket Media (Amarillo)</span>
+              </div>
+              <div className="flex items-center gap-2" data-testid="legend-priority-verde">
+                <div className="w-4 h-4 bg-muted rounded" />
+                <span>Ticket Baja (Verde)</span>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-4 text-sm mt-3">
+              <div className="flex items-center gap-2" data-testid="legend-type-visita">
+                <MapPin className="h-4 w-4" />
+                <span>Visita</span>
+              </div>
               <div className="flex items-center gap-2" data-testid="legend-type-urgencia">
                 <AlertTriangle className="h-4 w-4" />
                 <span>Urgencia</span>
