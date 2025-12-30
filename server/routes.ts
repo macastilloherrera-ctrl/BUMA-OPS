@@ -742,6 +742,7 @@ export async function registerRoutes(
             "Inspeccionar equipos criticos",
             "Consultar novedades con conserjeria",
             "Revisar libro de novedades",
+            "Atencion de residentes",
           ];
       
       for (let i = 0; i < defaultChecklistItems.length; i++) {
