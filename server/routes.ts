@@ -718,10 +718,12 @@ export async function registerRoutes(
         ? req.body.executiveId 
         : req.user!.id;
       
-      const data = insertVisitSchema.parse({
+      const visitData = {
         ...req.body,
         executiveId,
-      });
+        scheduledDate: req.body.scheduledDate ? new Date(req.body.scheduledDate) : undefined,
+      };
+      const data = insertVisitSchema.parse(visitData);
       const visit = await storage.createVisit(data);
       
       // Create default checklist items
