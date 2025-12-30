@@ -107,6 +107,26 @@ export default function DashboardTickets() {
     },
   });
 
+  const escalateTicketMutation = useMutation({
+    mutationFn: async (ticket: TicketWithBuilding) => {
+      return apiRequest("PATCH", `/api/tickets/${ticket.id}`, { priority: "rojo" });
+    },
+    onSuccess: (_, ticket) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+      toast({
+        title: "Ticket Escalado",
+        description: `El ticket "${ticket.description.slice(0, 30)}..." fue marcado como CRITICO (prioridad roja). Ahora aparece en la seccion de Vencidos/Criticos del dashboard.`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "No se pudo escalar el ticket",
+        variant: "destructive",
+      });
+    },
+  });
+
   const getStats = (): DashboardStats => {
     if (!tickets) return { critical: 0, warning: 0, ok: 0 };
     
@@ -310,13 +330,11 @@ export default function DashboardTickets() {
                               Reasignar
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => updateTicketMutation.mutate({
-                                id: ticket.id,
-                                data: { priority: "rojo" },
-                              })}
+                              onClick={() => escalateTicketMutation.mutate(ticket)}
+                              disabled={ticket.priority === "rojo"}
                             >
                               <ArrowUpCircle className="h-4 w-4 mr-2" />
-                              Escalar
+                              {ticket.priority === "rojo" ? "Ya Escalado" : "Escalar"}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => setLocation(`/visitas/nueva?buildingId=${ticket.buildingId}&type=urgente&ticketId=${ticket.id}`)}

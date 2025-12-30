@@ -49,6 +49,8 @@ export default function ScheduleVisit() {
 
   const searchParams = new URLSearchParams(searchString);
   const preselectedBuildingId = searchParams.get("buildingId") || "";
+  const preselectedType = searchParams.get("type") as "rutina" | "urgente" | null;
+  const linkedTicketId = searchParams.get("ticketId") || "";
 
   const { data: userProfile } = useQuery<{ role: string }>({
     queryKey: ["/api/me"],
@@ -69,10 +71,10 @@ export default function ScheduleVisit() {
     resolver: zodResolver(scheduleVisitSchema),
     defaultValues: {
       buildingId: preselectedBuildingId,
-      type: "rutina",
+      type: preselectedType === "urgente" ? "urgente" : "rutina",
       executiveId: "",
       scheduledDate: "",
-      notes: "",
+      notes: linkedTicketId ? `Visita urgente relacionada al ticket #${linkedTicketId.slice(0, 8)}` : "",
       urgentReason: "",
     },
   });
@@ -81,7 +83,10 @@ export default function ScheduleVisit() {
     if (preselectedBuildingId && buildings?.some(b => b.id === preselectedBuildingId)) {
       form.setValue("buildingId", preselectedBuildingId);
     }
-  }, [preselectedBuildingId, buildings, form]);
+    if (preselectedType === "urgente") {
+      form.setValue("type", "urgente");
+    }
+  }, [preselectedBuildingId, preselectedType, buildings, form]);
 
   const visitType = form.watch("type");
 
