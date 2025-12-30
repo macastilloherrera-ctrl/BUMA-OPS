@@ -665,6 +665,130 @@ export const insertTicketCommunicationSchema = createInsertSchema(ticketCommunic
   sentAt: true,
 });
 
+// Employment status enum
+export const employmentStatusEnum = pgEnum("employment_status", [
+  "activo",
+  "inactivo",
+  "licencia",
+  "vacaciones"
+]);
+
+// Document type enum for executives
+export const executiveDocTypeEnum = pgEnum("executive_doc_type", [
+  "cv",
+  "certificado_estudios",
+  "contrato",
+  "cedula_identidad",
+  "certificado_afp",
+  "certificado_salud",
+  "otro"
+]);
+
+// Executives table (detailed personnel records)
+export const executives = pgTable("executives", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // Link to userProfiles if they have system access
+  userProfileId: varchar("user_profile_id"),
+  // Personal information
+  firstName: varchar("first_name", { length: 100 }).notNull(),
+  lastName: varchar("last_name", { length: 100 }).notNull(),
+  rut: varchar("rut", { length: 20 }),
+  birthDate: timestamp("birth_date"),
+  nationality: varchar("nationality", { length: 100 }),
+  address: text("address"),
+  commune: varchar("commune", { length: 100 }),
+  city: varchar("city", { length: 100 }),
+  // Contact information
+  bumaEmail: varchar("buma_email", { length: 255 }),
+  personalEmail: varchar("personal_email", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  emergencyContactName: varchar("emergency_contact_name", { length: 255 }),
+  emergencyContactPhone: varchar("emergency_contact_phone", { length: 50 }),
+  // Employment information
+  position: varchar("position", { length: 100 }).notNull().default("Ejecutivo de Operaciones"),
+  hireDate: timestamp("hire_date"),
+  terminationDate: timestamp("termination_date"),
+  employmentStatus: employmentStatusEnum("employment_status").notNull().default("activo"),
+  // Photo
+  photoKey: varchar("photo_key", { length: 500 }),
+  // Custom fields (JSON for extensibility)
+  customFields: text("custom_fields"),
+  // Notes
+  notes: text("notes"),
+  // Audit
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Executive building assignments (many-to-many)
+export const executiveAssignments = pgTable("executive_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  executiveId: varchar("executive_id").notNull(),
+  buildingId: varchar("building_id").notNull(),
+  isPrimary: boolean("is_primary").notNull().default(false),
+  assignedAt: timestamp("assigned_at").defaultNow(),
+  assignedBy: varchar("assigned_by"),
+});
+
+// Executive documents (CV, certificates, etc.)
+export const executiveDocuments = pgTable("executive_documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  executiveId: varchar("executive_id").notNull(),
+  documentType: executiveDocTypeEnum("document_type").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  fileKey: varchar("file_key", { length: 500 }).notNull(),
+  fileSize: integer("file_size"),
+  mimeType: varchar("mime_type", { length: 100 }),
+  uploadedBy: varchar("uploaded_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Relations for executives
+export const executivesRelations = relations(executives, ({ many, one }) => ({
+  assignments: many(executiveAssignments),
+  documents: many(executiveDocuments),
+  userProfile: one(userProfiles, {
+    fields: [executives.userProfileId],
+    references: [userProfiles.id],
+  }),
+}));
+
+export const executiveAssignmentsRelations = relations(executiveAssignments, ({ one }) => ({
+  executive: one(executives, {
+    fields: [executiveAssignments.executiveId],
+    references: [executives.id],
+  }),
+  building: one(buildings, {
+    fields: [executiveAssignments.buildingId],
+    references: [buildings.id],
+  }),
+}));
+
+export const executiveDocumentsRelations = relations(executiveDocuments, ({ one }) => ({
+  executive: one(executives, {
+    fields: [executiveDocuments.executiveId],
+    references: [executives.id],
+  }),
+}));
+
+// Insert schemas for executives
+export const insertExecutiveSchema = createInsertSchema(executives).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertExecutiveAssignmentSchema = createInsertSchema(executiveAssignments).omit({
+  id: true,
+  assignedAt: true,
+});
+
+export const insertExecutiveDocumentSchema = createInsertSchema(executiveDocuments).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
 export type UserProfile = typeof userProfiles.$inferSelect;
@@ -723,6 +847,15 @@ export type TicketWorkCycle = typeof ticketWorkCycles.$inferSelect;
 export type InsertTicketCommunication = z.infer<typeof insertTicketCommunicationSchema>;
 export type TicketCommunication = typeof ticketCommunications.$inferSelect;
 
+export type InsertExecutive = z.infer<typeof insertExecutiveSchema>;
+export type Executive = typeof executives.$inferSelect;
+
+export type InsertExecutiveAssignment = z.infer<typeof insertExecutiveAssignmentSchema>;
+export type ExecutiveAssignment = typeof executiveAssignments.$inferSelect;
+
+export type InsertExecutiveDocument = z.infer<typeof insertExecutiveDocumentSchema>;
+export type ExecutiveDocument = typeof executiveDocuments.$inferSelect;
+
 // Helper types for frontend
 export type UserRole = "gerente_general" | "gerente_operaciones" | "gerente_finanzas" | "ejecutivo_operaciones";
 export type VisitType = "rutina" | "urgente";
@@ -734,3 +867,5 @@ export type QuoteStatus = "pendiente" | "aceptada" | "rechazada";
 export type CommunicationAudience = "comunidad" | "conserjeria" | "comite";
 export type IncidentStatus = "pendiente" | "en_reparacion" | "reparada" | "reprogramada";
 export type ChecklistType = "rutina" | "emergencia";
+export type EmploymentStatus = "activo" | "inactivo" | "licencia" | "vacaciones";
+export type ExecutiveDocType = "cv" | "certificado_estudios" | "contrato" | "cedula_identidad" | "certificado_afp" | "certificado_salud" | "otro";
