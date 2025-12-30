@@ -506,7 +506,7 @@ export default function TicketDetail() {
                         Marcar Completado
                       </Button>
                     )}
-                    {isManager && ticket.workCompletedAt && hasApprovedQuote && (
+                    {isManager && ticket.workCompletedAt && (hasApprovedQuote || ticket.ticketType === "urgencia") && (
                       <Dialog open={isClosureDialogOpen} onOpenChange={setIsClosureDialogOpen}>
                         <DialogTrigger asChild>
                           <Button size="sm" data-testid="button-close-ticket">
