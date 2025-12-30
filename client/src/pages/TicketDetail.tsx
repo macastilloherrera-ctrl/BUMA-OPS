@@ -647,9 +647,8 @@ export default function TicketDetail() {
                                         method: "POST",
                                         headers: { "Content-Type": "application/json" },
                                         body: JSON.stringify({
-                                          fileName: file.name,
+                                          name: file.name,
                                           contentType: file.type,
-                                          prefix: ".private/invoices",
                                         }),
                                       });
                                       const data = await response.json();
@@ -774,9 +773,8 @@ export default function TicketDetail() {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({
-                                fileName: file.name,
+                                name: file.name,
                                 contentType: file.type,
-                                prefix: ".private/invoices",
                               }),
                             });
                             const data = await response.json();
