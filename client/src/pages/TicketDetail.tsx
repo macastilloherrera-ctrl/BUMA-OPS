@@ -138,6 +138,8 @@ export default function TicketDetail() {
   const [isQuoteDialogOpen, setIsQuoteDialogOpen] = useState(false);
   const [isClosureDialogOpen, setIsClosureDialogOpen] = useState(false);
   const [isRestartDialogOpen, setIsRestartDialogOpen] = useState(false);
+  const [quoteAttachmentKey, setQuoteAttachmentKey] = useState<string | null>(null);
+  const [quoteAttachmentName, setQuoteAttachmentName] = useState<string | null>(null);
 
   const { data: userProfile } = useQuery<UserProfile>({
     queryKey: ["/api/user/profile"],
@@ -232,12 +234,17 @@ export default function TicketDetail() {
 
   const createQuoteMutation = useMutation({
     mutationFn: async (data: QuoteForm) => {
-      return apiRequest("POST", `/api/tickets/${id}/quotes`, data);
+      return apiRequest("POST", `/api/tickets/${id}/quotes`, {
+        ...data,
+        attachmentKey: quoteAttachmentKey,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "quotes"] });
       setIsQuoteDialogOpen(false);
       quoteForm.reset();
+      setQuoteAttachmentKey(null);
+      setQuoteAttachmentName(null);
       toast({ title: "Cotizacion agregada" });
     },
     onError: () => {
@@ -914,12 +921,78 @@ export default function TicketDetail() {
                         )}
                       />
 
+                      <div className="space-y-2">
+                        <Label>Documento de Cotizacion (opcional)</Label>
+                        {quoteAttachmentKey ? (
+                          <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                            <FileIcon className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-sm flex-1 truncate">{quoteAttachmentName || "Documento adjunto"}</span>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => {
+                                setQuoteAttachmentKey(null);
+                                setQuoteAttachmentName(null);
+                              }}
+                              data-testid="button-remove-quote-attachment"
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <ObjectUploader
+                            maxNumberOfFiles={1}
+                            maxFileSize={20971520}
+                            buttonClassName="w-full"
+                            onGetUploadParameters={async (file) => {
+                              const res = await fetch("/api/object-storage/presigned-url", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                credentials: "include",
+                                body: JSON.stringify({
+                                  fileName: file.name,
+                                  contentType: file.type,
+                                }),
+                              });
+                              const { uploadURL, objectPath } = await res.json();
+                              (file.meta as Record<string, unknown>).objectPath = objectPath;
+                              (file.meta as Record<string, unknown>).fileName = file.name;
+                              return {
+                                method: "PUT",
+                                url: uploadURL,
+                                headers: { "Content-Type": file.type },
+                              };
+                            }}
+                            onComplete={(result) => {
+                              const uploaded = result.successful || [];
+                              if (uploaded.length > 0) {
+                                const objectPath = (uploaded[0].meta as Record<string, unknown>).objectPath as string;
+                                const fileName = (uploaded[0].meta as Record<string, unknown>).fileName as string;
+                                if (objectPath) {
+                                  setQuoteAttachmentKey(objectPath);
+                                  setQuoteAttachmentName(fileName);
+                                  toast({ title: "Documento subido exitosamente" });
+                                }
+                              }
+                            }}
+                          >
+                            <Paperclip className="h-4 w-4 mr-2" />
+                            Adjuntar Documento
+                          </ObjectUploader>
+                        )}
+                      </div>
+
                       <div className="flex gap-2">
                         <Button
                           type="button"
                           variant="outline"
                           className="flex-1"
-                          onClick={() => setIsQuoteDialogOpen(false)}
+                          onClick={() => {
+                            setIsQuoteDialogOpen(false);
+                            setQuoteAttachmentKey(null);
+                            setQuoteAttachmentName(null);
+                          }}
                         >
                           Cancelar
                         </Button>
