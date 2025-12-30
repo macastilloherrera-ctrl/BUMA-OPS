@@ -1016,11 +1016,23 @@ export async function registerRoutes(
       // Sanitize cost fields for non-managers
       const sanitizedBody = sanitizeCostFields(req.body, isManager);
       
-      const data = insertTicketSchema.parse({
+      // Convert date strings to Date objects
+      const processedBody = {
         ...sanitizedBody,
         createdBy: req.user!.id,
         assignedExecutiveId: req.body.assignedExecutiveId || req.user!.id,
-      });
+      };
+      if (processedBody.scheduledDate && typeof processedBody.scheduledDate === 'string') {
+        processedBody.scheduledDate = new Date(processedBody.scheduledDate);
+      }
+      if (processedBody.startDate && typeof processedBody.startDate === 'string') {
+        processedBody.startDate = new Date(processedBody.startDate);
+      }
+      if (processedBody.endDate && typeof processedBody.endDate === 'string') {
+        processedBody.endDate = new Date(processedBody.endDate);
+      }
+      
+      const data = insertTicketSchema.parse(processedBody);
       
       // Ensure cost is null for non-managers
       if (!isManager) {
@@ -1056,7 +1068,19 @@ export async function registerRoutes(
         }
       }
       
-      const data = insertTicketSchema.partial().parse(req.body);
+      // Convert date strings to Date objects
+      const patchBody = { ...req.body };
+      if (patchBody.scheduledDate && typeof patchBody.scheduledDate === 'string') {
+        patchBody.scheduledDate = new Date(patchBody.scheduledDate);
+      }
+      if (patchBody.startDate && typeof patchBody.startDate === 'string') {
+        patchBody.startDate = new Date(patchBody.startDate);
+      }
+      if (patchBody.endDate && typeof patchBody.endDate === 'string') {
+        patchBody.endDate = new Date(patchBody.endDate);
+      }
+      
+      const data = insertTicketSchema.partial().parse(patchBody);
       
       // Only managers can update cost and priority
       if (!isManagerUser) {
