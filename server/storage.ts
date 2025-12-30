@@ -19,6 +19,9 @@ import {
   ticketWorkCycles,
   ticketCommunications,
   attachments,
+  executives,
+  executiveAssignments,
+  executiveDocuments,
   type User,
   type UserProfile,
   type InsertUserProfile,
@@ -58,6 +61,12 @@ import {
   type InsertTicketCommunication,
   type Attachment,
   type InsertAttachment,
+  type Executive,
+  type InsertExecutive,
+  type ExecutiveAssignment,
+  type InsertExecutiveAssignment,
+  type ExecutiveDocument,
+  type InsertExecutiveDocument,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, gte, lte, or, sql } from "drizzle-orm";
@@ -180,6 +189,26 @@ export interface IStorage {
   getTicketCommunications(ticketId: string): Promise<TicketCommunication[]>;
   createTicketCommunication(comm: InsertTicketCommunication): Promise<TicketCommunication>;
   acknowledgeTicketCommunication(id: string, acknowledgedBy: string): Promise<TicketCommunication | undefined>;
+
+  // Executives
+  getExecutivesList(status?: string): Promise<Executive[]>;
+  getExecutive(id: string): Promise<Executive | undefined>;
+  createExecutive(exec: InsertExecutive): Promise<Executive>;
+  updateExecutive(id: string, data: Partial<InsertExecutive>): Promise<Executive | undefined>;
+  deactivateExecutive(id: string, terminationDate?: Date): Promise<Executive | undefined>;
+
+  // Executive Assignments
+  getExecutiveAssignments(executiveId: string): Promise<ExecutiveAssignment[]>;
+  getExecutivesByBuilding(buildingId: string): Promise<Executive[]>;
+  createExecutiveAssignment(assignment: InsertExecutiveAssignment): Promise<ExecutiveAssignment>;
+  deleteExecutiveAssignment(id: string): Promise<boolean>;
+  replaceExecutiveAssignments(executiveId: string, buildingIds: string[], assignedBy?: string): Promise<ExecutiveAssignment[]>;
+
+  // Executive Documents
+  getExecutiveDocuments(executiveId: string): Promise<ExecutiveDocument[]>;
+  getExecutiveDocument(id: string): Promise<ExecutiveDocument | undefined>;
+  createExecutiveDocument(doc: InsertExecutiveDocument): Promise<ExecutiveDocument>;
+  deleteExecutiveDocument(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -689,6 +718,105 @@ export class DatabaseStorage implements IStorage {
       .where(eq(ticketCommunications.id, id))
       .returning();
     return updated || undefined;
+  }
+
+  // Executives
+  async getExecutivesList(status?: string): Promise<Executive[]> {
+    if (status) {
+      return db.select().from(executives).where(eq(executives.employmentStatus, status as any)).orderBy(executives.lastName, executives.firstName);
+    }
+    return db.select().from(executives).orderBy(executives.lastName, executives.firstName);
+  }
+
+  async getExecutive(id: string): Promise<Executive | undefined> {
+    const [exec] = await db.select().from(executives).where(eq(executives.id, id));
+    return exec || undefined;
+  }
+
+  async createExecutive(exec: InsertExecutive): Promise<Executive> {
+    const [created] = await db.insert(executives).values(exec).returning();
+    return created;
+  }
+
+  async updateExecutive(id: string, data: Partial<InsertExecutive>): Promise<Executive | undefined> {
+    const [updated] = await db
+      .update(executives)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(executives.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deactivateExecutive(id: string, terminationDate?: Date): Promise<Executive | undefined> {
+    const [updated] = await db
+      .update(executives)
+      .set({ 
+        employmentStatus: "inactivo", 
+        terminationDate: terminationDate || new Date(),
+        updatedAt: new Date() 
+      })
+      .where(eq(executives.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  // Executive Assignments
+  async getExecutiveAssignments(executiveId: string): Promise<ExecutiveAssignment[]> {
+    return db.select().from(executiveAssignments).where(eq(executiveAssignments.executiveId, executiveId));
+  }
+
+  async getExecutivesByBuilding(buildingId: string): Promise<Executive[]> {
+    const assignments = await db.select().from(executiveAssignments).where(eq(executiveAssignments.buildingId, buildingId));
+    if (assignments.length === 0) return [];
+    
+    const executiveIds = assignments.map(a => a.executiveId);
+    return db.select().from(executives).where(
+      sql`${executives.id} IN (${sql.join(executiveIds.map(id => sql`${id}`), sql`, `)})`
+    );
+  }
+
+  async createExecutiveAssignment(assignment: InsertExecutiveAssignment): Promise<ExecutiveAssignment> {
+    const [created] = await db.insert(executiveAssignments).values(assignment).returning();
+    return created;
+  }
+
+  async deleteExecutiveAssignment(id: string): Promise<boolean> {
+    await db.delete(executiveAssignments).where(eq(executiveAssignments.id, id));
+    return true;
+  }
+
+  async replaceExecutiveAssignments(executiveId: string, buildingIds: string[], assignedBy?: string): Promise<ExecutiveAssignment[]> {
+    await db.delete(executiveAssignments).where(eq(executiveAssignments.executiveId, executiveId));
+    
+    if (buildingIds.length === 0) return [];
+    
+    const assignments = buildingIds.map((buildingId, idx) => ({ 
+      executiveId, 
+      buildingId, 
+      isPrimary: idx === 0,
+      assignedBy 
+    }));
+    return db.insert(executiveAssignments).values(assignments).returning();
+  }
+
+  // Executive Documents
+  async getExecutiveDocuments(executiveId: string): Promise<ExecutiveDocument[]> {
+    return db.select().from(executiveDocuments).where(eq(executiveDocuments.executiveId, executiveId)).orderBy(desc(executiveDocuments.createdAt));
+  }
+
+  async getExecutiveDocument(id: string): Promise<ExecutiveDocument | undefined> {
+    const [doc] = await db.select().from(executiveDocuments).where(eq(executiveDocuments.id, id));
+    return doc || undefined;
+  }
+
+  async createExecutiveDocument(doc: InsertExecutiveDocument): Promise<ExecutiveDocument> {
+    const [created] = await db.insert(executiveDocuments).values(doc).returning();
+    return created;
+  }
+
+  async deleteExecutiveDocument(id: string): Promise<boolean> {
+    await db.delete(executiveDocuments).where(eq(executiveDocuments.id, id));
+    return true;
   }
 }
 
