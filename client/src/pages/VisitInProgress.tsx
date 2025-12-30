@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,10 +74,21 @@ export default function VisitInProgress() {
 
   const visitIncident = incidents?.find((i) => i.visitId === id);
 
+  // Initialize checklist state from server data
+  useEffect(() => {
+    if (visit?.checklistItems && Object.keys(checklist).length === 0) {
+      const initialChecklist: Record<string, boolean> = {};
+      visit.checklistItems.forEach((item) => {
+        initialChecklist[item.id] = item.isCompleted;
+      });
+      setChecklist(initialChecklist);
+    }
+  }, [visit?.checklistItems]);
+
   const updateChecklistMutation = useMutation({
-    mutationFn: async (itemId: string) => {
+    mutationFn: async ({ itemId, isCompleted }: { itemId: string; isCompleted: boolean }) => {
       return apiRequest("PATCH", `/api/visits/${id}/checklist/${itemId}`, {
-        isCompleted: !checklist[itemId],
+        isCompleted,
       });
     },
     onSuccess: () => {
@@ -184,11 +195,12 @@ export default function VisitInProgress() {
   });
 
   const toggleChecklistItem = (itemId: string) => {
+    const newValue = !checklist[itemId];
     setChecklist((prev) => ({
       ...prev,
-      [itemId]: !prev[itemId],
+      [itemId]: newValue,
     }));
-    updateChecklistMutation.mutate(itemId);
+    updateChecklistMutation.mutate({ itemId, isCompleted: newValue });
   };
 
   if (isLoading) {
