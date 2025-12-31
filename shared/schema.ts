@@ -368,12 +368,16 @@ export const ticketWorkCycles = pgTable("ticket_work_cycles", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Ticket Communications table
+// Ticket Communications table (Avisos internos)
 export const ticketCommunications = pgTable("ticket_communications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   ticketId: varchar("ticket_id").notNull(),
   audience: communicationAudienceEnum("audience").notNull(),
-  message: text("message").notNull(),
+  communityName: varchar("community_name", { length: 255 }).notNull(),
+  subject: varchar("subject", { length: 255 }).notNull(),
+  problemDescription: text("problem_description").notNull(),
+  actionPlan: text("action_plan").notNull(),
+  message: text("message"),
   sentBy: varchar("sent_by").notNull(),
   sentAt: timestamp("sent_at").defaultNow(),
   acknowledgedBy: varchar("acknowledged_by"),
@@ -666,6 +670,8 @@ export const insertTicketWorkCycleSchema = createInsertSchema(ticketWorkCycles).
 export const insertTicketCommunicationSchema = createInsertSchema(ticketCommunications).omit({
   id: true,
   sentAt: true,
+  acknowledgedBy: true,
+  acknowledgedAt: true,
 });
 
 // Employment status enum

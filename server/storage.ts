@@ -189,6 +189,7 @@ export interface IStorage {
   getTicketCommunications(ticketId: string): Promise<TicketCommunication[]>;
   createTicketCommunication(comm: InsertTicketCommunication): Promise<TicketCommunication>;
   acknowledgeTicketCommunication(id: string, acknowledgedBy: string): Promise<TicketCommunication | undefined>;
+  updateTicketCommunication(id: string, data: { subject: string; problemDescription: string; actionPlan: string }): Promise<TicketCommunication | undefined>;
 
   // Executives
   getExecutivesList(status?: string): Promise<Executive[]>;
@@ -716,6 +717,15 @@ export class DatabaseStorage implements IStorage {
     const [updated] = await db
       .update(ticketCommunications)
       .set({ acknowledgedBy, acknowledgedAt: new Date() })
+      .where(eq(ticketCommunications.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async updateTicketCommunication(id: string, data: { subject: string; problemDescription: string; actionPlan: string }): Promise<TicketCommunication | undefined> {
+    const [updated] = await db
+      .update(ticketCommunications)
+      .set(data)
       .where(eq(ticketCommunications.id, id))
       .returning();
     return updated || undefined;

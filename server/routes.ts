@@ -1805,6 +1805,24 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/tickets/:ticketId/communications/:commId", isAuthenticated, async (req, res) => {
+    try {
+      const { subject, problemDescription, actionPlan } = req.body;
+      const communication = await storage.updateTicketCommunication(req.params.commId, {
+        subject,
+        problemDescription,
+        actionPlan,
+      });
+      if (!communication) {
+        return res.status(404).json({ error: "Aviso no encontrado" });
+      }
+      res.json(communication);
+    } catch (error) {
+      console.error("Error updating communication:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   // ========== EXECUTIVES ROUTES ==========
 
   // Get all executives (with optional status filter)

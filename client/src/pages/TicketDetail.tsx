@@ -187,22 +187,92 @@ export default function TicketDetail() {
     enabled: !!id,
   });
 
-  const [newCommunicationAudience, setNewCommunicationAudience] = useState<"comunidad" | "conserjeria" | "comite">("comunidad");
-  const [newCommunicationMessage, setNewCommunicationMessage] = useState("");
+  const [avisoAudience, setAvisoAudience] = useState<"comunidad" | "conserjeria" | "comite">("comunidad");
+  const [avisoSubject, setAvisoSubject] = useState("");
+  const [avisoProblemDescription, setAvisoProblemDescription] = useState("");
+  const [avisoActionPlan, setAvisoActionPlan] = useState("");
+  const [editingAvisoId, setEditingAvisoId] = useState<string | null>(null);
+  const [showAvisoForm, setShowAvisoForm] = useState(false);
 
-  const createCommunicationMutation = useMutation({
-    mutationFn: async (data: { audience: string; message: string }) => {
+  const createAvisoMutation = useMutation({
+    mutationFn: async (data: { audience: string; communityName: string; subject: string; problemDescription: string; actionPlan: string }) => {
       return apiRequest("POST", `/api/tickets/${id}/communications`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "communications"] });
-      setNewCommunicationMessage("");
-      toast({ title: "Aviso enviado exitosamente" });
+      resetAvisoForm();
+      toast({ title: "Aviso creado exitosamente" });
     },
     onError: () => {
-      toast({ title: "Error al enviar aviso", variant: "destructive" });
+      toast({ title: "Error al crear aviso", variant: "destructive" });
     },
   });
+
+  const updateAvisoMutation = useMutation({
+    mutationFn: async ({ commId, data }: { commId: string; data: { subject: string; problemDescription: string; actionPlan: string } }) => {
+      return apiRequest("PATCH", `/api/tickets/${id}/communications/${commId}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "communications"] });
+      resetAvisoForm();
+      toast({ title: "Aviso actualizado exitosamente" });
+    },
+    onError: () => {
+      toast({ title: "Error al actualizar aviso", variant: "destructive" });
+    },
+  });
+
+  const resetAvisoForm = () => {
+    setAvisoSubject("");
+    setAvisoProblemDescription("");
+    setAvisoActionPlan("");
+    setEditingAvisoId(null);
+    setShowAvisoForm(false);
+  };
+
+  const handleDownloadAviso = (comm: TicketCommunication) => {
+    const content = `
+=====================================
+        AVISO A LA ${comm.audience.toUpperCase()}
+=====================================
+
+Comunidad: ${comm.communityName}
+
+Fecha: ${comm.sentAt ? format(new Date(comm.sentAt), "dd 'de' MMMM 'de' yyyy", { locale: es }) : ""}
+
+ASUNTO: ${comm.subject}
+
+DESCRIPCION DEL PROBLEMA:
+${comm.problemDescription}
+
+ACCIONES A TOMAR:
+${comm.actionPlan}
+
+-------------------------------------
+Atentamente,
+Equipo BUMA Property Management
+=====================================
+    `.trim();
+
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `aviso_${comm.audience}_${format(new Date(), "yyyyMMdd_HHmm")}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleEditAviso = (comm: TicketCommunication) => {
+    setAvisoAudience(comm.audience);
+    setAvisoSubject(comm.subject);
+    setAvisoProblemDescription(comm.problemDescription);
+    setAvisoActionPlan(comm.actionPlan);
+    setEditingAvisoId(comm.id);
+    setShowAvisoForm(true);
+  };
 
   const restartForm = useForm<RestartForm>({
     resolver: zodResolver(restartSchema),
@@ -1446,104 +1516,163 @@ export default function TicketDetail() {
           </TabsContent>
 
           <TabsContent value="comunicacion" className="px-4 mt-4 space-y-4">
-            {isManager && (
+            {showAvisoForm ? (
               <Card>
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-base">Enviar Aviso</CardTitle>
+                  <CardTitle className="text-base">{editingAvisoId ? "Editar Aviso" : "Crear Aviso"}</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Audiencia</Label>
+                    <Label>Dirigido a</Label>
                     <Select 
-                      value={newCommunicationAudience} 
-                      onValueChange={(v) => setNewCommunicationAudience(v as "comunidad" | "conserjeria" | "comite")}
+                      value={avisoAudience} 
+                      onValueChange={(v) => setAvisoAudience(v as "comunidad" | "conserjeria" | "comite")}
+                      disabled={!!editingAvisoId}
                     >
                       <SelectTrigger data-testid="select-audience">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="comunidad">
-                          <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4" />
-                            Comunidad
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="conserjeria">
-                          <div className="flex items-center gap-2">
-                            <UserCheck className="h-4 w-4" />
-                            Conserjeria
-                          </div>
-                        </SelectItem>
-                        <SelectItem value="comite">
-                          <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4" />
-                            Comite
-                          </div>
-                        </SelectItem>
+                        <SelectItem value="comunidad">Comunidad</SelectItem>
+                        <SelectItem value="conserjeria">Conserjeria</SelectItem>
+                        <SelectItem value="comite">Comite</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label>Mensaje</Label>
-                    <Textarea
-                      placeholder="Escribe el mensaje del aviso..."
-                      value={newCommunicationMessage}
-                      onChange={(e) => setNewCommunicationMessage(e.target.value)}
-                      rows={3}
-                      data-testid="input-communication-message"
+                    <Label>Comunidad</Label>
+                    <Input value={ticket?.building?.name || ""} disabled data-testid="input-community-name" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Asunto</Label>
+                    <Input
+                      placeholder="Ej: Corte de agua programado"
+                      value={avisoSubject}
+                      onChange={(e) => setAvisoSubject(e.target.value)}
+                      data-testid="input-aviso-subject"
                     />
                   </div>
-                  <Button
-                    onClick={() => {
-                      if (newCommunicationMessage.trim()) {
-                        createCommunicationMutation.mutate({
-                          audience: newCommunicationAudience,
-                          message: newCommunicationMessage.trim(),
-                        });
-                      }
-                    }}
-                    disabled={!newCommunicationMessage.trim() || createCommunicationMutation.isPending}
-                    className="w-full"
-                    data-testid="button-send-communication"
-                  >
-                    <Send className="h-4 w-4 mr-2" />
-                    {createCommunicationMutation.isPending ? "Enviando..." : "Enviar Aviso"}
-                  </Button>
+                  <div className="space-y-2">
+                    <Label>Descripcion del Problema</Label>
+                    <Textarea
+                      placeholder="Describa el problema o situacion..."
+                      value={avisoProblemDescription}
+                      onChange={(e) => setAvisoProblemDescription(e.target.value)}
+                      rows={3}
+                      data-testid="input-aviso-problem"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Acciones a Tomar</Label>
+                    <Textarea
+                      placeholder="Describa las acciones que se tomaran..."
+                      value={avisoActionPlan}
+                      onChange={(e) => setAvisoActionPlan(e.target.value)}
+                      rows={3}
+                      data-testid="input-aviso-actions"
+                    />
+                  </div>
+                  <div className="p-3 bg-muted rounded-md text-sm text-muted-foreground">
+                    Atentamente,<br />
+                    <strong>Equipo BUMA Property Management</strong>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={resetAvisoForm}
+                      className="flex-1"
+                      data-testid="button-cancel-aviso"
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        if (avisoSubject.trim() && avisoProblemDescription.trim() && avisoActionPlan.trim()) {
+                          if (editingAvisoId) {
+                            updateAvisoMutation.mutate({
+                              commId: editingAvisoId,
+                              data: {
+                                subject: avisoSubject.trim(),
+                                problemDescription: avisoProblemDescription.trim(),
+                                actionPlan: avisoActionPlan.trim(),
+                              },
+                            });
+                          } else {
+                            createAvisoMutation.mutate({
+                              audience: avisoAudience,
+                              communityName: ticket?.building?.name || "",
+                              subject: avisoSubject.trim(),
+                              problemDescription: avisoProblemDescription.trim(),
+                              actionPlan: avisoActionPlan.trim(),
+                            });
+                          }
+                        }
+                      }}
+                      disabled={!avisoSubject.trim() || !avisoProblemDescription.trim() || !avisoActionPlan.trim() || createAvisoMutation.isPending || updateAvisoMutation.isPending}
+                      className="flex-1"
+                      data-testid="button-save-aviso"
+                    >
+                      {createAvisoMutation.isPending || updateAvisoMutation.isPending ? "Guardando..." : "Guardar Aviso"}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
+            ) : (
+              <Button
+                onClick={() => setShowAvisoForm(true)}
+                className="w-full"
+                data-testid="button-new-aviso"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Crear Nuevo Aviso
+              </Button>
             )}
 
             <div className="space-y-3">
-              <h3 className="font-medium text-sm text-muted-foreground">Historial de Avisos</h3>
+              <h3 className="font-medium text-sm text-muted-foreground">Avisos Guardados</h3>
               {communicationsLoading ? (
                 <div className="space-y-2">
                   {[1, 2].map((i) => (
-                    <Skeleton key={i} className="h-20 w-full" />
+                    <Skeleton key={i} className="h-24 w-full" />
                   ))}
                 </div>
               ) : communications && communications.length > 0 ? (
                 <div className="space-y-3">
                   {communications.map((comm) => (
-                    <Card key={comm.id} data-testid={`card-communication-${comm.id}`}>
+                    <Card key={comm.id} data-testid={`card-aviso-${comm.id}`}>
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between gap-2 mb-2">
-                          <Badge variant="outline" className="capitalize">
-                            {comm.audience === "comunidad" && <Users className="h-3 w-3 mr-1" />}
-                            {comm.audience === "conserjeria" && <UserCheck className="h-3 w-3 mr-1" />}
-                            {comm.audience === "comite" && <Users className="h-3 w-3 mr-1" />}
-                            {comm.audience}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {comm.sentAt && format(new Date(comm.sentAt), "dd MMM yyyy HH:mm", { locale: es })}
+                          <div>
+                            <Badge variant="outline" className="capitalize mb-1">
+                              {comm.audience}
+                            </Badge>
+                            <p className="font-medium text-sm">{comm.subject}</p>
+                          </div>
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">
+                            {comm.sentAt && format(new Date(comm.sentAt), "dd MMM yyyy", { locale: es })}
                           </span>
                         </div>
-                        <p className="text-sm whitespace-pre-wrap">{comm.message}</p>
-                        {comm.acknowledgedAt && (
-                          <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
-                            <Check className="h-3 w-3 text-green-500" />
-                            Confirmado el {format(new Date(comm.acknowledgedAt), "dd MMM yyyy HH:mm", { locale: es })}
-                          </div>
-                        )}
+                        <p className="text-sm text-muted-foreground line-clamp-2 mb-3">{comm.problemDescription}</p>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditAviso(comm)}
+                            data-testid={`button-edit-aviso-${comm.id}`}
+                          >
+                            <FileText className="h-4 w-4 mr-1" />
+                            Editar
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDownloadAviso(comm)}
+                            data-testid={`button-download-aviso-${comm.id}`}
+                          >
+                            <Download className="h-4 w-4 mr-1" />
+                            Descargar
+                          </Button>
+                        </div>
                       </CardContent>
                     </Card>
                   ))}
@@ -1553,7 +1682,7 @@ export default function TicketDetail() {
                   <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
                   <p className="text-muted-foreground">No hay avisos</p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {isManager ? "Envía avisos a la comunidad, conserjería o comité" : "Los avisos aparecerán aquí"}
+                    Crea avisos para la comunidad, conserjeria o comite
                   </p>
                 </div>
               )}
