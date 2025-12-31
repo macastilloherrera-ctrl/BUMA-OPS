@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Calendar, Ticket, Building2, User } from "lucide-react";
+import { NotificationBell } from "@/components/NotificationBell";
 
 const navItems = [
   { path: "/visitas", label: "Visitas", icon: Calendar },
@@ -37,6 +38,9 @@ export function MobileNav() {
             </Link>
           );
         })}
+        <div className="flex flex-col items-center justify-center py-2 px-3">
+          <NotificationBell />
+        </div>
       </div>
     </nav>
   );

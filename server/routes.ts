@@ -1043,6 +1043,20 @@ export async function registerRoutes(
       }
       
       const ticket = await storage.createTicket(data);
+      
+      // Create notification for assigned executive (if different from creator)
+      if (ticket.assignedExecutiveId && ticket.assignedExecutiveId !== req.user!.id) {
+        const building = await storage.getBuilding(ticket.buildingId);
+        await storage.createNotification({
+          userId: ticket.assignedExecutiveId,
+          type: "ticket_asignado",
+          title: "Nuevo ticket asignado",
+          message: `Te han asignado el ticket "${ticket.title}" en ${building?.name || "edificio"}`,
+          ticketId: ticket.id,
+          isRead: false,
+        });
+      }
+      
       res.status(201).json(ticket);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1110,6 +1124,22 @@ export async function registerRoutes(
       if (!ticket) {
         return res.status(404).json({ error: "Ticket no encontrado" });
       }
+      
+      // Create notification if assigned executive changed
+      if (data.assignedExecutiveId && 
+          data.assignedExecutiveId !== existingTicket.assignedExecutiveId &&
+          data.assignedExecutiveId !== req.user!.id) {
+        const building = await storage.getBuilding(ticket.buildingId);
+        await storage.createNotification({
+          userId: data.assignedExecutiveId,
+          type: "ticket_derivado",
+          title: "Ticket derivado",
+          message: `Te han derivado el ticket "${ticket.title}" en ${building?.name || "edificio"}`,
+          ticketId: ticket.id,
+          isRead: false,
+        });
+      }
+      
       res.json({
         ...ticket,
         cost: isManagerUser ? ticket.cost : null,
@@ -1144,6 +1174,19 @@ export async function registerRoutes(
         priority: "rojo",
         assignedExecutiveId: gerenteOps.userId,
       });
+      
+      // Create notification for gerente operaciones
+      if (gerenteOps.userId !== req.user!.id) {
+        const building = await storage.getBuilding(ticket.buildingId);
+        await storage.createNotification({
+          userId: gerenteOps.userId,
+          type: "ticket_derivado",
+          title: "Ticket escalado",
+          message: `Se ha escalado el ticket "${ticket.title}" en ${building?.name || "edificio"} a prioridad roja`,
+          ticketId: ticket.id,
+          isRead: false,
+        });
+      }
       
       res.json({
         ticket: updatedTicket,
@@ -2037,6 +2080,55 @@ export async function registerRoutes(
       res.json(assignments);
     } catch (error) {
       console.error("Error replacing executive assignments:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ========== NOTIFICATIONS ROUTES ==========
+
+  // Get user notifications
+  app.get("/api/notifications", isAuthenticated, async (req, res) => {
+    try {
+      const notifications = await storage.getNotifications(req.user!.id);
+      res.json(notifications);
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Get unread notification count
+  app.get("/api/notifications/unread-count", isAuthenticated, async (req, res) => {
+    try {
+      const count = await storage.getUnreadNotificationCount(req.user!.id);
+      res.json({ count });
+    } catch (error) {
+      console.error("Error fetching unread count:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Mark notification as read
+  app.patch("/api/notifications/:id/read", isAuthenticated, async (req, res) => {
+    try {
+      const notification = await storage.markNotificationAsRead(req.params.id);
+      if (!notification) {
+        return res.status(404).json({ error: "Notificacion no encontrada" });
+      }
+      res.json(notification);
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Mark all notifications as read
+  app.patch("/api/notifications/read-all", isAuthenticated, async (req, res) => {
+    try {
+      await storage.markAllNotificationsAsRead(req.user!.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error marking all as read:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });

@@ -109,6 +109,13 @@ export const communicationAudienceEnum = pgEnum("communication_audience", [
   "comite"
 ]);
 
+// Notification type enum
+export const notificationTypeEnum = pgEnum("notification_type", [
+  "ticket_asignado",
+  "ticket_derivado",
+  "ticket_actualizado"
+]);
+
 // User profiles table (extends auth users with role info)
 export const userProfiles = pgTable("user_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -753,6 +760,18 @@ export const executiveDocuments = pgTable("executive_documents", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Notifications table
+export const notifications = pgTable("notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  type: notificationTypeEnum("type").notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  message: text("message").notNull(),
+  ticketId: varchar("ticket_id"),
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Relations for executives
 export const executivesRelations = relations(executives, ({ many, one }) => ({
   assignments: many(executiveAssignments),
@@ -865,6 +884,10 @@ export type ExecutiveAssignment = typeof executiveAssignments.$inferSelect;
 export type InsertExecutiveDocument = z.infer<typeof insertExecutiveDocumentSchema>;
 export type ExecutiveDocument = typeof executiveDocuments.$inferSelect;
 
+export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type Notification = typeof notifications.$inferSelect;
+
 // Helper types for frontend
 export type UserRole = "gerente_general" | "gerente_operaciones" | "gerente_finanzas" | "ejecutivo_operaciones";
 export type VisitType = "rutina" | "urgente";
@@ -878,3 +901,4 @@ export type IncidentStatus = "pendiente" | "en_reparacion" | "reparada" | "repro
 export type ChecklistType = "rutina" | "emergencia";
 export type EmploymentStatus = "activo" | "inactivo" | "licencia" | "vacaciones";
 export type ExecutiveDocType = "cv" | "certificado_estudios" | "contrato" | "cedula_identidad" | "certificado_afp" | "certificado_salud" | "otro";
+export type NotificationType = "ticket_asignado" | "ticket_derivado" | "ticket_actualizado";

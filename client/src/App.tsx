@@ -15,6 +15,7 @@ import type { UserProfile, UserRole } from "@shared/schema";
 import { getRoleHome, canAccessRoute, isManagerRole, isFinanceRole } from "@/lib/roleRoutes";
 
 import { Logo } from "@/components/Logo";
+import { NotificationBell } from "@/components/NotificationBell";
 import Landing from "@/pages/Landing";
 import NotFound from "@/pages/not-found";
 import Visits from "@/pages/Visits";
@@ -113,6 +114,7 @@ function AuthenticatedApp() {
               <span className="text-sm text-muted-foreground" data-testid="text-user-info">
                 Conectado como: {user.email} ({userRole.replace("_", " ")})
               </span>
+              <NotificationBell />
               <ThemeToggle />
             </div>
           </header>
