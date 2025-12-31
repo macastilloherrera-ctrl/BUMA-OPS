@@ -57,7 +57,11 @@ import {
   Phone,
   Mail,
   Calendar,
+  Upload,
+  Download,
 } from "lucide-react";
+import { ObjectUploader } from "@/components/ObjectUploader";
+import type { UppyFile, UploadResult } from "@uppy/core";
 import type { Building, BuildingStaff, BuildingFeature, BuildingFolder, BuildingFile, UserProfile } from "@shared/schema";
 
 const staffFormSchema = z.object({
@@ -216,6 +220,46 @@ export default function BuildingDetail() {
     onError: () => {
       toast({ title: "Error", description: "No se pudo eliminar el archivo", variant: "destructive" });
     },
+  });
+
+  const uploadFileMutation = useMutation({
+    mutationFn: async (data: { fileName: string; objectStorageKey: string; fileType?: string; fileSize?: number }) => {
+      return apiRequest("POST", `/api/building-folders/${selectedFolder?.id}/files`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/building-folders", selectedFolder?.id, "files"] });
+      toast({ title: "Archivo subido exitosamente" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo registrar el archivo", variant: "destructive" });
+    },
+  });
+
+  const handleDownloadFile = async (file: BuildingFile) => {
+    try {
+      const objectPath = file.objectStorageKey.startsWith("/objects/") 
+        ? file.objectStorageKey 
+        : `/objects/${file.objectStorageKey}`;
+      const response = await fetch(objectPath);
+      if (!response.ok) throw new Error("Error al descargar");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = file.fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Error al descargar archivo", variant: "destructive" });
+    }
+  };
+
+  const sortedFiles = files?.slice().sort((a, b) => {
+    const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return dateB - dateA;
   });
 
   const getStatusBadge = (status: string) => {
@@ -696,61 +740,121 @@ export default function BuildingDetail() {
                   <div className="md:col-span-2">
                     {selectedFolder ? (
                       <Card>
-                        <CardHeader>
-                          <CardTitle className="text-base flex items-center gap-2">
-                            <Folder className="h-4 w-4" />
-                            {selectedFolder.name}
-                          </CardTitle>
-                          <CardDescription>
-                            Archivos en esta carpeta
-                          </CardDescription>
+                        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-3">
+                          <div>
+                            <CardTitle className="text-base flex items-center gap-2">
+                              <Folder className="h-4 w-4" />
+                              {selectedFolder.name}
+                            </CardTitle>
+                            <CardDescription>
+                              Archivos en esta carpeta (ordenados por fecha)
+                            </CardDescription>
+                          </div>
                         </CardHeader>
-                        <CardContent>
+                        <CardContent className="space-y-4">
+                          <ObjectUploader
+                            maxNumberOfFiles={1}
+                            maxFileSize={20971520}
+                            onGetUploadParameters={async (file) => {
+                              const res = await fetch("/api/uploads/request-url", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  name: file.name,
+                                  size: file.size,
+                                  contentType: file.type,
+                                }),
+                              });
+                              const { uploadURL, objectPath } = await res.json();
+                              (file.meta as Record<string, unknown>).objectPath = objectPath;
+                              (file.meta as Record<string, unknown>).fileName = file.name;
+                              (file.meta as Record<string, unknown>).fileType = file.type;
+                              (file.meta as Record<string, unknown>).fileSize = file.size;
+                              return {
+                                method: "PUT" as const,
+                                url: uploadURL,
+                                headers: { "Content-Type": file.type || "application/octet-stream" },
+                              };
+                            }}
+                            onComplete={(result) => {
+                              if (result.successful && result.successful.length > 0) {
+                                const uploadedFile = result.successful[0];
+                                const objectPath = (uploadedFile.meta as Record<string, unknown>).objectPath as string;
+                                const fileName = (uploadedFile.meta as Record<string, unknown>).fileName as string;
+                                const fileType = (uploadedFile.meta as Record<string, unknown>).fileType as string;
+                                const fileSize = (uploadedFile.meta as Record<string, unknown>).fileSize as number;
+                                const objectKey = objectPath?.replace("/objects/", "") || "";
+                                uploadFileMutation.mutate({
+                                  fileName: fileName || "documento",
+                                  objectStorageKey: objectKey,
+                                  fileType: fileType,
+                                  fileSize: fileSize,
+                                });
+                              }
+                            }}
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Subir Documento
+                          </ObjectUploader>
+                          
                           {filesLoading ? (
                             <div className="space-y-2">
                               <Skeleton className="h-10 w-full" />
                               <Skeleton className="h-10 w-full" />
                             </div>
-                          ) : files && files.length > 0 ? (
+                          ) : sortedFiles && sortedFiles.length > 0 ? (
                             <div className="space-y-2">
-                              {files.map((file) => (
+                              {sortedFiles.map((file) => (
                                 <div
                                   key={file.id}
                                   className="flex items-center justify-between p-2 border rounded-md"
                                   data-testid={`file-item-${file.id}`}
                                 >
-                                  <div className="flex items-center gap-2">
-                                    <File className="h-4 w-4" />
-                                    <span className="text-sm">{file.fileName}</span>
+                                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                                    <File className="h-4 w-4 shrink-0" />
+                                    <span className="text-sm truncate">{file.fileName}</span>
+                                    <span className="text-xs text-muted-foreground shrink-0">
+                                      {file.createdAt && new Date(file.createdAt).toLocaleDateString("es-CL")}
+                                    </span>
                                   </div>
-                                  <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        data-testid={`button-delete-file-${file.id}`}
-                                      >
-                                        <Trash2 className="h-4 w-4 text-destructive" />
-                                      </Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                      <AlertDialogHeader>
-                                        <AlertDialogTitle>Eliminar archivo</AlertDialogTitle>
-                                        <AlertDialogDescription>
-                                          Esta accion no se puede deshacer.
-                                        </AlertDialogDescription>
-                                      </AlertDialogHeader>
-                                      <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                        <AlertDialogAction
-                                          onClick={() => deleteFileMutation.mutate(file.id)}
-                                          data-testid="button-confirm-delete-file"
+                                  <div className="flex items-center gap-1">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => handleDownloadFile(file)}
+                                      data-testid={`button-download-file-${file.id}`}
+                                    >
+                                      <Download className="h-4 w-4" />
+                                    </Button>
+                                    <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          data-testid={`button-delete-file-${file.id}`}
                                         >
-                                          Eliminar
-                                        </AlertDialogAction>
-                                      </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                  </AlertDialog>
+                                          <Trash2 className="h-4 w-4 text-destructive" />
+                                        </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                          <AlertDialogTitle>Eliminar archivo</AlertDialogTitle>
+                                          <AlertDialogDescription>
+                                            Esta accion no se puede deshacer.
+                                          </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                          <AlertDialogAction
+                                            onClick={() => deleteFileMutation.mutate(file.id)}
+                                            data-testid="button-confirm-delete-file"
+                                          >
+                                            Eliminar
+                                          </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                    </AlertDialog>
+                                  </div>
                                 </div>
                               ))}
                             </div>
