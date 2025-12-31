@@ -6,7 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import type { Building, MaintainerCategory, UserProfile, TicketQuote, TicketPhoto, TicketWorkCycle } from "@shared/schema";
+import type { Building, MaintainerCategory, UserProfile, TicketQuote, TicketPhoto, TicketWorkCycle, TicketCommunication } from "@shared/schema";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -63,6 +63,9 @@ import {
   RotateCcw,
   Paperclip,
   FileText as FileIcon,
+  Send,
+  Users,
+  UserCheck,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -177,6 +180,28 @@ export default function TicketDetail() {
   const { data: workHistory } = useQuery<TicketWorkCycle[]>({
     queryKey: ["/api/tickets", id, "work-history"],
     enabled: !!id,
+  });
+
+  const { data: communications, isLoading: communicationsLoading } = useQuery<TicketCommunication[]>({
+    queryKey: ["/api/tickets", id, "communications"],
+    enabled: !!id,
+  });
+
+  const [newCommunicationAudience, setNewCommunicationAudience] = useState<"comunidad" | "conserjeria" | "comite">("comunidad");
+  const [newCommunicationMessage, setNewCommunicationMessage] = useState("");
+
+  const createCommunicationMutation = useMutation({
+    mutationFn: async (data: { audience: string; message: string }) => {
+      return apiRequest("POST", `/api/tickets/${id}/communications`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "communications"] });
+      setNewCommunicationMessage("");
+      toast({ title: "Aviso enviado exitosamente" });
+    },
+    onError: () => {
+      toast({ title: "Error al enviar aviso", variant: "destructive" });
+    },
   });
 
   const restartForm = useForm<RestartForm>({
@@ -1420,13 +1445,118 @@ export default function TicketDetail() {
             )}
           </TabsContent>
 
-          <TabsContent value="comunicacion" className="px-4 mt-4">
-            <div className="text-center py-12">
-              <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground">Comunicaciones</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Funcionalidad de avisos en desarrollo
-              </p>
+          <TabsContent value="comunicacion" className="px-4 mt-4 space-y-4">
+            {isManager && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Enviar Aviso</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="space-y-2">
+                    <Label>Audiencia</Label>
+                    <Select 
+                      value={newCommunicationAudience} 
+                      onValueChange={(v) => setNewCommunicationAudience(v as "comunidad" | "conserjeria" | "comite")}
+                    >
+                      <SelectTrigger data-testid="select-audience">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="comunidad">
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4" />
+                            Comunidad
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="conserjeria">
+                          <div className="flex items-center gap-2">
+                            <UserCheck className="h-4 w-4" />
+                            Conserjeria
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="comite">
+                          <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4" />
+                            Comite
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Mensaje</Label>
+                    <Textarea
+                      placeholder="Escribe el mensaje del aviso..."
+                      value={newCommunicationMessage}
+                      onChange={(e) => setNewCommunicationMessage(e.target.value)}
+                      rows={3}
+                      data-testid="input-communication-message"
+                    />
+                  </div>
+                  <Button
+                    onClick={() => {
+                      if (newCommunicationMessage.trim()) {
+                        createCommunicationMutation.mutate({
+                          audience: newCommunicationAudience,
+                          message: newCommunicationMessage.trim(),
+                        });
+                      }
+                    }}
+                    disabled={!newCommunicationMessage.trim() || createCommunicationMutation.isPending}
+                    className="w-full"
+                    data-testid="button-send-communication"
+                  >
+                    <Send className="h-4 w-4 mr-2" />
+                    {createCommunicationMutation.isPending ? "Enviando..." : "Enviar Aviso"}
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            <div className="space-y-3">
+              <h3 className="font-medium text-sm text-muted-foreground">Historial de Avisos</h3>
+              {communicationsLoading ? (
+                <div className="space-y-2">
+                  {[1, 2].map((i) => (
+                    <Skeleton key={i} className="h-20 w-full" />
+                  ))}
+                </div>
+              ) : communications && communications.length > 0 ? (
+                <div className="space-y-3">
+                  {communications.map((comm) => (
+                    <Card key={comm.id} data-testid={`card-communication-${comm.id}`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <Badge variant="outline" className="capitalize">
+                            {comm.audience === "comunidad" && <Users className="h-3 w-3 mr-1" />}
+                            {comm.audience === "conserjeria" && <UserCheck className="h-3 w-3 mr-1" />}
+                            {comm.audience === "comite" && <Users className="h-3 w-3 mr-1" />}
+                            {comm.audience}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {comm.sentAt && format(new Date(comm.sentAt), "dd MMM yyyy HH:mm", { locale: es })}
+                          </span>
+                        </div>
+                        <p className="text-sm whitespace-pre-wrap">{comm.message}</p>
+                        {comm.acknowledgedAt && (
+                          <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1">
+                            <Check className="h-3 w-3 text-green-500" />
+                            Confirmado el {format(new Date(comm.acknowledgedAt), "dd MMM yyyy HH:mm", { locale: es })}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-muted-foreground">No hay avisos</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {isManager ? "Envía avisos a la comunidad, conserjería o comité" : "Los avisos aparecerán aquí"}
+                  </p>
+                </div>
+              )}
             </div>
           </TabsContent>
         </Tabs>
