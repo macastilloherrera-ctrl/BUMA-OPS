@@ -12,6 +12,7 @@ import {
   maintainerCategoryLinks,
   visits,
   visitChecklistItems,
+  visitPhotos,
   incidents,
   tickets,
   ticketQuotes,
@@ -48,6 +49,8 @@ import {
   type InsertVisit,
   type VisitChecklistItem,
   type InsertVisitChecklistItem,
+  type VisitPhoto,
+  type InsertVisitPhoto,
   type Incident,
   type InsertIncident,
   type Ticket,
@@ -182,6 +185,11 @@ export interface IStorage {
   getTicketPhotos(ticketId: string): Promise<TicketPhoto[]>;
   createTicketPhoto(photo: InsertTicketPhoto): Promise<TicketPhoto>;
   deleteTicketPhoto(id: string): Promise<boolean>;
+
+  // Visit Photos
+  getVisitPhotos(visitId: string): Promise<VisitPhoto[]>;
+  createVisitPhoto(photo: InsertVisitPhoto): Promise<VisitPhoto>;
+  deleteVisitPhoto(id: string): Promise<boolean>;
 
   // Ticket Work Cycles
   getTicketWorkCycles(ticketId: string): Promise<TicketWorkCycle[]>;
@@ -695,6 +703,21 @@ export class DatabaseStorage implements IStorage {
 
   async deleteTicketPhoto(id: string): Promise<boolean> {
     await db.delete(ticketPhotos).where(eq(ticketPhotos.id, id));
+    return true;
+  }
+
+  // Visit Photos
+  async getVisitPhotos(visitId: string): Promise<VisitPhoto[]> {
+    return db.select().from(visitPhotos).where(eq(visitPhotos.visitId, visitId)).orderBy(desc(visitPhotos.createdAt));
+  }
+
+  async createVisitPhoto(photo: InsertVisitPhoto): Promise<VisitPhoto> {
+    const [created] = await db.insert(visitPhotos).values(photo).returning();
+    return created;
+  }
+
+  async deleteVisitPhoto(id: string): Promise<boolean> {
+    await db.delete(visitPhotos).where(eq(visitPhotos.id, id));
     return true;
   }
 

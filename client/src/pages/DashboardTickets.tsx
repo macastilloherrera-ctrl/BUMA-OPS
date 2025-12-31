@@ -151,9 +151,10 @@ export default function DashboardTickets() {
     });
   };
 
-  const getDaysOverdue = (dueDate: Date | null) => {
-    if (!dueDate) return 0;
-    const days = differenceInDays(new Date(), new Date(dueDate));
+  const getDaysOverdue = (committedDate: Date | string | null, endDate?: Date | string | null) => {
+    const date = committedDate || endDate;
+    if (!date) return 0;
+    const days = differenceInDays(new Date(), new Date(date));
     return days > 0 ? days : 0;
   };
 
@@ -298,8 +299,7 @@ export default function DashboardTickets() {
                     <TableHead>Edificio</TableHead>
                     <TableHead>Dias Atraso</TableHead>
                     <TableHead className="max-w-xs">Descripcion</TableHead>
-                    <TableHead>Responsable</TableHead>
-                    <TableHead>Ejecutivo</TableHead>
+                    <TableHead>Ejecutivo Asignado</TableHead>
                     <TableHead>Fecha Compromiso</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead></TableHead>
@@ -315,9 +315,9 @@ export default function DashboardTickets() {
                         {ticket.building?.name || "—"}
                       </TableCell>
                       <TableCell>
-                        {getDaysOverdue(ticket.dueDate) > 0 ? (
+                        {getDaysOverdue(ticket.committedCompletionAt, ticket.endDate) > 0 ? (
                           <Badge variant="destructive">
-                            {getDaysOverdue(ticket.dueDate)} dias
+                            {getDaysOverdue(ticket.committedCompletionAt, ticket.endDate)} dias
                           </Badge>
                         ) : (
                           <span className="text-muted-foreground">—</span>
@@ -327,18 +327,14 @@ export default function DashboardTickets() {
                         <p className="truncate">{ticket.description}</p>
                       </TableCell>
                       <TableCell>
-                        <div>
-                          <p className="text-sm">{ticket.responsibleName || "—"}</p>
-                          <p className="text-xs text-muted-foreground capitalize">
-                            {ticket.responsibleType}
-                          </p>
-                        </div>
+                        {ticket.executiveName || "Sin asignar"}
                       </TableCell>
                       <TableCell>
-                        {ticket.executiveName || "—"}
-                      </TableCell>
-                      <TableCell>
-                        {ticket.dueDate && format(new Date(ticket.dueDate), "dd MMM yyyy", { locale: es })}
+                        {ticket.committedCompletionAt 
+                          ? format(new Date(ticket.committedCompletionAt), "dd MMM yyyy", { locale: es })
+                          : ticket.endDate 
+                            ? format(new Date(ticket.endDate), "dd MMM yyyy", { locale: es })
+                            : "—"}
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={ticket.status} type="ticket" />

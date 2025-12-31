@@ -268,6 +268,16 @@ export const visitChecklistItems = pgTable("visit_checklist_items", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Visit Photos table
+export const visitPhotos = pgTable("visit_photos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  visitId: varchar("visit_id").notNull(),
+  objectStorageKey: text("object_storage_key").notNull(),
+  description: text("description"),
+  uploadedBy: varchar("uploaded_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Incidents table
 export const incidents = pgTable("incidents", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -497,6 +507,7 @@ export const visitsRelations = relations(visits, ({ one, many }) => ({
     references: [userProfiles.userId],
   }),
   checklistItems: many(visitChecklistItems),
+  photos: many(visitPhotos),
   incidents: many(incidents),
   tickets: many(tickets),
 }));
@@ -504,6 +515,13 @@ export const visitsRelations = relations(visits, ({ one, many }) => ({
 export const visitChecklistItemsRelations = relations(visitChecklistItems, ({ one }) => ({
   visit: one(visits, {
     fields: [visitChecklistItems.visitId],
+    references: [visits.id],
+  }),
+}));
+
+export const visitPhotosRelations = relations(visitPhotos, ({ one }) => ({
+  visit: one(visits, {
+    fields: [visitPhotos.visitId],
     references: [visits.id],
   }),
 }));
@@ -638,6 +656,11 @@ export const insertVisitSchema = createInsertSchema(visits).omit({
 });
 
 export const insertVisitChecklistItemSchema = createInsertSchema(visitChecklistItems).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertVisitPhotoSchema = createInsertSchema(visitPhotos).omit({
   id: true,
   createdAt: true,
 });
@@ -853,6 +876,9 @@ export type Visit = typeof visits.$inferSelect;
 
 export type InsertVisitChecklistItem = z.infer<typeof insertVisitChecklistItemSchema>;
 export type VisitChecklistItem = typeof visitChecklistItems.$inferSelect;
+
+export type InsertVisitPhoto = z.infer<typeof insertVisitPhotoSchema>;
+export type VisitPhoto = typeof visitPhotos.$inferSelect;
 
 export type InsertIncident = z.infer<typeof insertIncidentSchema>;
 export type Incident = typeof incidents.$inferSelect;

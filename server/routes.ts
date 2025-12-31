@@ -17,6 +17,7 @@ import {
   insertMaintainerSchema,
   insertVisitSchema,
   insertVisitChecklistItemSchema,
+  insertVisitPhotoSchema,
   insertIncidentSchema,
   insertTicketSchema,
   insertTicketQuoteSchema,
@@ -928,6 +929,42 @@ export async function registerRoutes(
     }
   });
 
+  // Visit Photos
+  app.get("/api/visits/:id/photos", isAuthenticated, async (req, res) => {
+    try {
+      const photos = await storage.getVisitPhotos(req.params.id);
+      res.json(photos);
+    } catch (error) {
+      console.error("Error getting visit photos:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/visits/:id/photos", isAuthenticated, async (req, res) => {
+    try {
+      const data = insertVisitPhotoSchema.parse({
+        ...req.body,
+        visitId: req.params.id,
+        uploadedBy: req.user!.id,
+      });
+      const photo = await storage.createVisitPhoto(data);
+      res.json(photo);
+    } catch (error) {
+      console.error("Error creating visit photo:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/visits/:id/photos/:photoId", isAuthenticated, async (req, res) => {
+    try {
+      await storage.deleteVisitPhoto(req.params.photoId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting visit photo:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   // === Tickets ===
   app.get("/api/tickets", isAuthenticated, async (req, res) => {
     try {
@@ -955,13 +992,33 @@ export async function registerRoutes(
         );
       }
       
-      // Add building names
+      // Add building names and executive info
       const buildings = await storage.getBuildings();
       const buildingsMap = new Map(buildings.map((b) => [b.id, b]));
+      
+      // Get all executives from HR table to map their names
+      // executives.userProfileId links to userProfiles.id, and we need to match against assignedExecutiveId which is userProfiles.userId
+      const executivesList = await storage.getExecutivesList();
+      const userProfilesList = await storage.getExecutives(); // Returns UserProfile[] (role=ejecutivo_operaciones)
+      
+      // Create a map from userProfile.id to userId
+      const profileIdToUserId = new Map(userProfilesList.map(p => [p.id, p.userId]));
+      
+      // Create a map from userId to executive name
+      const executivesMap = new Map<string, string>();
+      for (const exec of executivesList) {
+        if (exec.userProfileId) {
+          const userId = profileIdToUserId.get(exec.userProfileId);
+          if (userId) {
+            executivesMap.set(userId, `${exec.firstName} ${exec.lastName}`.trim());
+          }
+        }
+      }
       
       const ticketsWithBuilding = tickets.map((t) => ({
         ...t,
         building: buildingsMap.get(t.buildingId),
+        executiveName: t.assignedExecutiveId ? executivesMap.get(t.assignedExecutiveId) || null : null,
         cost: isManager ? t.cost : null,
       }));
       

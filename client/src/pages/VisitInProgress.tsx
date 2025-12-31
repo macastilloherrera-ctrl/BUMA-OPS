@@ -33,7 +33,7 @@ import {
   ImagePlus,
 } from "lucide-react";
 import { ObjectUploader } from "@/components/ObjectUploader";
-import type { Visit, Building, VisitChecklistItem, Incident } from "@shared/schema";
+import type { Visit, Building, VisitChecklistItem, Incident, VisitPhoto } from "@shared/schema";
 import { Link } from "wouter";
 
 interface VisitInProgressData extends Visit {
@@ -75,7 +75,25 @@ export default function VisitInProgress() {
     enabled: !!id,
   });
 
+  const { data: visitPhotos = [] } = useQuery<VisitPhoto[]>({
+    queryKey: ["/api/visits", id, "photos"],
+    enabled: !!id,
+  });
+
   const visitIncident = incidents?.find((i) => i.visitId === id);
+
+  const uploadVisitPhotoMutation = useMutation({
+    mutationFn: async (photo: { objectStorageKey: string; description: string }) => {
+      return apiRequest("POST", `/api/visits/${id}/photos`, photo);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/visits", id, "photos"] });
+      toast({ title: "Foto subida exitosamente" });
+    },
+    onError: () => {
+      toast({ title: "Error al subir foto", variant: "destructive" });
+    },
+  });
 
   // Initialize checklist state from server data
   useEffect(() => {
@@ -316,14 +334,64 @@ export default function VisitInProgress() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Camera className="h-4 w-4" />
-              Fotos y Evidencias
+              Fotos y Evidencias ({visitPhotos.length})
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <Button variant="outline" className="w-full" data-testid="button-add-photo">
+          <CardContent className="space-y-3">
+            {visitPhotos.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {visitPhotos.map((photo) => (
+                  <div
+                    key={photo.id}
+                    className="relative aspect-square rounded-md overflow-hidden bg-muted"
+                  >
+                    <img
+                      src={`/objects/${photo.objectStorageKey}`}
+                      alt={photo.description || "Foto de visita"}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+            <ObjectUploader
+              maxNumberOfFiles={5}
+              maxFileSize={10485760}
+              onGetUploadParameters={async (file) => {
+                const res = await fetch("/api/uploads/request-url", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    name: file.name,
+                    size: file.size,
+                    contentType: file.type,
+                  }),
+                });
+                const { uploadURL, objectPath } = await res.json();
+                (file.meta as Record<string, unknown>).objectPath = objectPath;
+                return {
+                  method: "PUT",
+                  url: uploadURL,
+                  headers: { "Content-Type": file.type },
+                };
+              }}
+              onComplete={(result) => {
+                (result.successful || []).forEach((file) => {
+                  const objectPath = (file.meta as Record<string, unknown>).objectPath as string;
+                  if (objectPath) {
+                    const cleanPath = objectPath.replace(/^\/objects\//, "");
+                    uploadVisitPhotoMutation.mutate({
+                      objectStorageKey: cleanPath,
+                      description: file.name,
+                    });
+                  }
+                });
+              }}
+              buttonClassName="w-full"
+            >
               <Camera className="h-4 w-4 mr-2" />
               Agregar Foto
-            </Button>
+            </ObjectUploader>
           </CardContent>
         </Card>
 
