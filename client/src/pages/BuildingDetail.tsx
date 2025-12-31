@@ -803,8 +803,9 @@ export default function BuildingDetail() {
                               <Skeleton className="h-10 w-full" />
                             </div>
                           ) : sortedFiles && sortedFiles.length > 0 ? (
-                            <div className="space-y-2">
-                              {sortedFiles.map((file) => (
+                            <ScrollArea className="max-h-[400px]">
+                              <div className="space-y-2 pr-4">
+                                {sortedFiles.map((file) => (
                                 <div
                                   key={file.id}
                                   className="flex items-center justify-between p-2 border rounded-md"
@@ -857,7 +858,8 @@ export default function BuildingDetail() {
                                   </div>
                                 </div>
                               ))}
-                            </div>
+                              </div>
+                            </ScrollArea>
                           ) : (
                             <p className="text-sm text-muted-foreground text-center py-8">
                               No hay archivos en esta carpeta
