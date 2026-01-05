@@ -393,6 +393,8 @@ export default function DashboardVisits() {
         </Card>
 
         <Card 
+          className="hover-elevate cursor-pointer"
+          onClick={() => navigate("/visitas?tab=efectuadas")}
           data-testid="card-completed-visits"
         >
           <CardContent className="p-6">
@@ -410,6 +412,8 @@ export default function DashboardVisits() {
         </Card>
 
         <Card 
+          className="hover-elevate cursor-pointer"
+          onClick={() => navigate("/visitas?tab=no_efectuadas")}
           data-testid="card-not-completed-visits"
         >
           <CardContent className="p-6">

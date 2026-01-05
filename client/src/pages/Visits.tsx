@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,7 +17,17 @@ interface VisitWithBuilding extends Visit {
 }
 
 export default function Visits() {
-  const [activeTab, setActiveTab] = useState("agendadas");
+  const searchString = useSearch();
+  const urlParams = new URLSearchParams(searchString);
+  const tabFromUrl = urlParams.get("tab");
+  
+  const [activeTab, setActiveTab] = useState(tabFromUrl || "agendadas");
+  
+  useEffect(() => {
+    if (tabFromUrl && ["agendadas", "atrasadas", "no_efectuadas", "efectuadas"].includes(tabFromUrl)) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [tabFromUrl]);
 
   const { data: visits, isLoading } = useQuery<VisitWithBuilding[]>({
     queryKey: ["/api/visits"],
