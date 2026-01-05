@@ -1412,10 +1412,15 @@ export async function registerRoutes(
       // Sanitize cost fields for non-managers
       const sanitizedBody = sanitizeCostFields(req.body, isManager);
       
-      const data = insertIncidentSchema.parse({
+      // Convert date strings to Date objects
+      const bodyWithDates = {
         ...sanitizedBody,
         createdBy: req.user!.id,
-      });
+        occurredAt: sanitizedBody.occurredAt ? new Date(sanitizedBody.occurredAt) : undefined,
+        repairDate: sanitizedBody.repairDate ? new Date(sanitizedBody.repairDate) : null,
+      };
+      
+      const data = insertIncidentSchema.parse(bodyWithDates);
       
       // Ensure cost is null for non-managers
       if (!isManager) {
@@ -1448,7 +1453,14 @@ export async function registerRoutes(
         return res.status(403).json({ error: "No tienes permiso para modificar este incidente" });
       }
       
-      const data = insertIncidentSchema.partial().parse(req.body);
+      // Convert date strings to Date objects if present
+      const bodyWithDates = {
+        ...req.body,
+        occurredAt: req.body.occurredAt ? new Date(req.body.occurredAt) : undefined,
+        repairDate: req.body.repairDate !== undefined ? (req.body.repairDate ? new Date(req.body.repairDate) : null) : undefined,
+      };
+      
+      const data = insertIncidentSchema.partial().parse(bodyWithDates);
       
       // Only managers can update cost
       if (!isManagerUser) {
