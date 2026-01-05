@@ -150,11 +150,29 @@ export default function DashboardVisits() {
 
   const now = new Date();
   const todayStart = startOfDay(now);
+  const todayEnd = new Date(todayStart);
+  todayEnd.setDate(todayEnd.getDate() + 1);
 
-  const overdueVisits = visits?.filter((v) => 
-    v.status === "atrasada" || 
-    (v.status === "programada" && v.scheduledDate && isBefore(new Date(v.scheduledDate), todayStart))
-  ) || [];
+  // Atrasada: Es el día de la visita, la hora agendada ya pasó, y NO se ha iniciado
+  const overdueVisits = visits?.filter((v) => {
+    if (v.status === "en_curso" || v.status === "realizada" || v.status === "no_realizada" || v.status === "cancelada") return false;
+    if (!v.scheduledDate) return false;
+    const visitDate = new Date(v.scheduledDate);
+    // Es hoy y la hora ya pasó
+    return visitDate >= todayStart && visitDate < todayEnd && visitDate < now;
+  }) || [];
+
+  // No Efectuada: Pasó el día de la visita y NO se inició, O no tiene fecha
+  const notEffectuatedVisits = visits?.filter((v) => {
+    if (v.status === "en_curso" || v.status === "realizada" || v.status === "cancelada") return false;
+    // Si ya está marcada como no_realizada, cuenta
+    if (v.status === "no_realizada") return true;
+    // Sin fecha programada y no iniciada
+    if (!v.scheduledDate) return true;
+    const visitDate = new Date(v.scheduledDate);
+    // El día de la visita ya pasó (es un día anterior a hoy)
+    return visitDate < todayStart;
+  }) || [];
 
   const getStats = () => {
     if (!visits || !buildings) {
@@ -189,20 +207,18 @@ export default function DashboardVisits() {
         new Date(v.completedAt) > thirtyDaysAgo
     ).length;
 
-    // Visitas no efectuadas: marcadas como no_realizada en los últimos 30 días
-    const notCompletedVisits = visits.filter(
-      (v) =>
-        v.status === "no_realizada" &&
-        v.scheduledDate &&
-        new Date(v.scheduledDate) > thirtyDaysAgo
-    ).length;
+    // Visitas no efectuadas: basado en la lógica definida arriba, filtradas por últimos 30 días
+    const notCompletedVisitsCount = notEffectuatedVisits.filter((v) => {
+      if (!v.scheduledDate) return false; // Sin fecha no cuenta en el rango
+      return new Date(v.scheduledDate) > thirtyDaysAgo;
+    }).length;
 
     return {
       totalBuildings: buildings.length,
       visitedThisMonth: recentlyVisitedIds.size,
       overdueVisits: overdueVisits.length,
       completedVisits,
-      notCompletedVisits,
+      notCompletedVisits: notCompletedVisitsCount,
     };
   };
 
