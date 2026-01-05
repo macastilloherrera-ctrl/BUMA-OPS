@@ -614,137 +614,41 @@ export default function DashboardVisits() {
         </CardContent>
       </Card>
 
-      {/* Summary cards below calendar */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Overdue visits summary */}
-        <Card 
-          className="hover-elevate cursor-pointer"
-          onClick={() => setShowOverdueDialog(true)}
-          data-testid="card-overdue-summary"
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
-              Visitas Atrasadas
-              {overdueVisits.length > 0 && (
-                <Badge variant="destructive" className="ml-auto">
-                  {overdueVisits.length}
-                </Badge>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {overdueVisits.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Sin visitas atrasadas</p>
-            ) : (
-              <div className="space-y-2">
-                {overdueVisits.slice(0, 3).map((visit) => (
-                  <div key={visit.id} className="flex items-center justify-between text-sm">
-                    <span className="truncate">{visit.building?.name}</span>
-                    <Badge variant="outline" className="text-xs text-destructive">
-                      {differenceInDays(new Date(), new Date(visit.scheduledDate!))}d
-                    </Badge>
-                  </div>
-                ))}
-                {overdueVisits.length > 3 && (
-                  <p className="text-xs text-muted-foreground text-center">
-                    +{overdueVisits.length - 3} mas
-                  </p>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* No realizadas summary */}
-        {(() => {
-          const noRealizadas = visits?.filter(v => v.status === "no_realizada") || [];
-          return (
-            <Card 
-              className="hover-elevate cursor-pointer"
-              onClick={() => {
-                if (noRealizadas.length > 0) {
-                  navigate(`/visitas/${noRealizadas[0].id}`);
-                }
-              }}
-              data-testid="card-no-realizadas-summary"
-            >
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <XCircle className="h-4 w-4 text-red-600" />
-                  No Realizadas
-                  {noRealizadas.length > 0 && (
-                    <Badge className="ml-auto bg-red-600">
-                      {noRealizadas.length}
-                    </Badge>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {noRealizadas.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Sin visitas por reprogramar</p>
-                ) : (
-                  <div className="space-y-2">
-                    {noRealizadas.slice(0, 3).map((visit) => (
-                      <Link key={visit.id} href={`/visitas/${visit.id}`}>
-                        <div className="flex items-center justify-between text-sm hover-elevate p-1 rounded">
-                          <span className="truncate">{visit.building?.name}</span>
-                          <Badge variant="outline" className="text-xs">
-                            Reprogramar
-                          </Badge>
-                        </div>
-                      </Link>
-                    ))}
-                    {noRealizadas.length > 3 && (
-                      <p className="text-xs text-muted-foreground text-center">
-                        +{noRealizadas.length - 3} mas
-                      </p>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })()}
-
-        {/* Executive workload */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Carga por Ejecutivo
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {!executives ? (
-              <div className="space-y-2">
-                {[1, 2].map((i) => (
-                  <Skeleton key={i} className="h-8 w-full" />
-                ))}
-              </div>
-            ) : executives.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No hay ejecutivos</p>
-            ) : (
-              <div className="space-y-2">
-                {executives.slice(0, 4).map((exec) => (
-                  <div
-                    key={exec.id}
-                    className="flex items-center justify-between text-sm"
-                    data-testid={`exec-workload-${exec.id}`}
-                  >
-                    <span className="truncate">{exec.name}</span>
-                    {exec.pendingVisits > 0 && (
-                      <Badge variant="outline" className="text-xs">
-                        {exec.pendingVisits} pend.
-                      </Badge>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      {/* Executive workload card */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Users className="h-4 w-4" />
+            Carga por Ejecutivo
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!executives ? (
+            <div className="space-y-2">
+              {[1, 2].map((i) => (
+                <Skeleton key={i} className="h-8 w-full" />
+              ))}
+            </div>
+          ) : executives.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No hay ejecutivos</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {executives.map((exec) => (
+                <div
+                  key={exec.id}
+                  className="flex items-center justify-between text-sm p-2 rounded-md bg-muted/50"
+                  data-testid={`exec-workload-${exec.id}`}
+                >
+                  <span className="truncate">{exec.name}</span>
+                  <Badge variant="outline" className="text-xs ml-2">
+                    {exec.pendingVisits} pend.
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Dialog open={showCoverageDialog} onOpenChange={(open) => {
         setShowCoverageDialog(open);
