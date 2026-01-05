@@ -30,11 +30,18 @@ export default function DashboardOverview() {
 
   const isLoading = ticketsLoading || visitsLoading || buildingsLoading;
 
+  const isOverdue = (ticket: TicketType): boolean => {
+    if (ticket.status === "resuelto") return false;
+    const dueDate = ticket.committedCompletionAt || ticket.endDate;
+    if (!dueDate) return false;
+    return new Date(dueDate) < new Date();
+  };
+
   const ticketStats = {
-    critical: tickets?.filter((t) => t.status !== "resuelto" && (t.priority === "rojo" || t.status === "vencido")).length || 0,
-    warning: tickets?.filter((t) => t.priority === "amarillo" && t.status !== "resuelto").length || 0,
-    pending: tickets?.filter((t) => (t.status === "pendiente" || t.status === "en_curso" || t.status === "trabajo_completado") && t.priority === "verde").length || 0,
-    ok: tickets?.filter((t) => t.priority === "verde" && t.status !== "vencido" && t.status !== "resuelto").length || 0,
+    critical: tickets?.filter((t) => t.status === "vencido" || isOverdue(t)).length || 0,
+    warning: tickets?.filter((t) => t.priority === "amarillo" && t.status !== "resuelto" && !isOverdue(t)).length || 0,
+    pending: tickets?.filter((t) => (t.status === "pendiente" || t.status === "en_curso" || t.status === "trabajo_completado") && t.priority !== "rojo" && !isOverdue(t)).length || 0,
+    ok: tickets?.filter((t) => t.priority === "verde" && t.status !== "vencido" && t.status !== "resuelto" && !isOverdue(t)).length || 0,
     resolved: tickets?.filter((t) => t.status === "resuelto").length || 0,
   };
 

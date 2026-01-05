@@ -23,16 +23,23 @@ export default function Tickets() {
     queryKey: ["/api/tickets"],
   });
 
+  const isOverdue = (ticket: TicketWithBuilding): boolean => {
+    if (ticket.status === "resuelto") return false;
+    const dueDate = ticket.committedCompletionAt || ticket.endDate;
+    if (!dueDate) return false;
+    return new Date(dueDate) < new Date();
+  };
+
   const filterTickets = (filter: string) => {
     if (!tickets) return [];
     
     switch (filter) {
       case "vencidos":
-        return tickets.filter((t) => t.status !== "resuelto" && (t.status === "vencido" || t.priority === "rojo"));
+        return tickets.filter((t) => t.status === "vencido" || isOverdue(t));
       case "por_vencer":
-        return tickets.filter((t) => t.priority === "amarillo" && t.status !== "resuelto");
+        return tickets.filter((t) => t.priority === "amarillo" && t.status !== "resuelto" && !isOverdue(t));
       case "pendientes":
-        return tickets.filter((t) => (t.status === "pendiente" || t.status === "en_curso" || t.status === "trabajo_completado") && t.priority === "verde");
+        return tickets.filter((t) => (t.status === "pendiente" || t.status === "en_curso" || t.status === "trabajo_completado") && t.priority === "verde" && !isOverdue(t));
       case "resueltos":
         return tickets.filter((t) => t.status === "resuelto");
       default:
