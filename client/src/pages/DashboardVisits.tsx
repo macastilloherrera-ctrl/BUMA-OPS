@@ -162,6 +162,8 @@ export default function DashboardVisits() {
         totalBuildings: 0,
         visitedThisMonth: 0,
         overdueVisits: 0,
+        completedVisits: 0,
+        notCompletedVisits: 0,
       };
     }
 
@@ -179,10 +181,28 @@ export default function DashboardVisits() {
         .map((v) => v.buildingId)
     );
 
+    // Visitas efectuadas: realizadas en los últimos 30 días
+    const completedVisits = visits.filter(
+      (v) =>
+        v.status === "realizada" &&
+        v.completedAt &&
+        new Date(v.completedAt) > thirtyDaysAgo
+    ).length;
+
+    // Visitas no efectuadas: marcadas como no_realizada en los últimos 30 días
+    const notCompletedVisits = visits.filter(
+      (v) =>
+        v.status === "no_realizada" &&
+        v.scheduledDate &&
+        new Date(v.scheduledDate) > thirtyDaysAgo
+    ).length;
+
     return {
       totalBuildings: buildings.length,
       visitedThisMonth: recentlyVisitedIds.size,
       overdueVisits: overdueVisits.length,
+      completedVisits,
+      notCompletedVisits,
     };
   };
 
@@ -309,7 +329,7 @@ export default function DashboardVisits() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card 
           className="hover-elevate cursor-pointer" 
           onClick={() => setShowCoverageDialog(true)}
@@ -352,6 +372,40 @@ export default function DashboardVisits() {
             </p>
             <p className="text-sm text-muted-foreground mt-1">
               Requieren atencion
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card 
+          data-testid="card-completed-visits"
+        >
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-muted-foreground">Visitas Efectuadas</p>
+              <CheckCircle2 className="h-5 w-5 text-green-500" />
+            </div>
+            <p className="text-3xl font-bold text-green-600" data-testid="stat-completed">
+              {stats.completedVisits}
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Ultimos 30 dias
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card 
+          data-testid="card-not-completed-visits"
+        >
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-muted-foreground">Visitas No Efectuadas</p>
+              <XCircle className="h-5 w-5 text-red-500" />
+            </div>
+            <p className="text-3xl font-bold text-red-600" data-testid="stat-not-completed">
+              {stats.notCompletedVisits}
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Ultimos 30 dias
             </p>
           </CardContent>
         </Card>
