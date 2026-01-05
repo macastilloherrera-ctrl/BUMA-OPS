@@ -30,6 +30,17 @@ export default function Tickets() {
     return new Date(dueDate) < new Date();
   };
 
+  const isDueSoon = (ticket: TicketWithBuilding, days: number = 7): boolean => {
+    if (ticket.status === "resuelto") return false;
+    const dueDate = ticket.committedCompletionAt || ticket.endDate;
+    if (!dueDate) return false;
+    const due = new Date(dueDate);
+    const now = new Date();
+    const futureLimit = new Date();
+    futureLimit.setDate(now.getDate() + days);
+    return due >= now && due <= futureLimit;
+  };
+
   const filterTickets = (filter: string) => {
     if (!tickets) return [];
     
@@ -37,9 +48,9 @@ export default function Tickets() {
       case "vencidos":
         return tickets.filter((t) => t.status === "vencido" || isOverdue(t));
       case "por_vencer":
-        return tickets.filter((t) => t.priority === "amarillo" && t.status !== "resuelto" && !isOverdue(t));
+        return tickets.filter((t) => t.status !== "resuelto" && !isOverdue(t) && isDueSoon(t));
       case "pendientes":
-        return tickets.filter((t) => (t.status === "pendiente" || t.status === "en_curso" || t.status === "trabajo_completado") && t.priority === "verde" && !isOverdue(t));
+        return tickets.filter((t) => t.status !== "resuelto" && !isOverdue(t) && !isDueSoon(t));
       case "resueltos":
         return tickets.filter((t) => t.status === "resuelto");
       default:
