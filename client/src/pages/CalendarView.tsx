@@ -192,7 +192,7 @@ export default function CalendarView() {
                               <div
                                 className={`flex items-center gap-1 p-1 rounded text-xs cursor-pointer hover-elevate ${
                                   isCancelled
-                                    ? "bg-slate-200/50 dark:bg-slate-700/30 text-slate-500 dark:text-slate-400 line-through"
+                                    ? "bg-slate-200/50 dark:bg-slate-700/30 text-slate-500 dark:text-slate-400"
                                     : visit.type === "urgente"
                                     ? "bg-primary/10 text-primary"
                                     : "bg-blue-500/10 text-blue-700 dark:text-blue-400"
@@ -200,7 +200,7 @@ export default function CalendarView() {
                                 data-testid={`calendar-visit-${visit.id}`}
                               >
                                 <MapPin className="h-3 w-3 flex-shrink-0" />
-                                <span className="truncate">
+                                <span className={`truncate ${isCancelled ? "line-through" : ""}`}>
                                   {visit.building?.name || "Visita"}
                                   {isCancelled && ` (${visit.cancellationType === "reagendada" ? "R" : "E"})`}
                                 </span>

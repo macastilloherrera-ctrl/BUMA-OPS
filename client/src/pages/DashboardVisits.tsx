@@ -303,11 +303,9 @@ export default function DashboardVisits() {
 
     const todaysVisits = visits.filter(v => {
       if (!v.scheduledDate) return false;
-      // Excluir visitas canceladas
-      if (v.cancellationType === "reagendada" || v.cancellationType === "eliminada") return false;
       const visitDate = new Date(v.scheduledDate);
-      return visitDate >= today && visitDate < tomorrow && 
-             (v.status === "programada" || v.status === "en_curso");
+      // Include all visits scheduled for today (including cancelled for history visibility)
+      return visitDate >= today && visitDate < tomorrow;
     });
 
     const grouped: { [key: string]: { executive: ExecutiveInfo; visits: VisitWithBuilding[] } } = {};
