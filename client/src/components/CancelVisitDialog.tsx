@@ -52,7 +52,7 @@ export function CancelVisitDialog({ visit, open, onOpenChange }: CancelVisitDial
       title: "Visita marcada para reagendar",
       description: "Ahora puedes programar una nueva visita",
     });
-    navigate(`/visitas/nueva?buildingId=${visit.buildingId}`);
+    navigate(`/visitas/programar?buildingId=${visit.buildingId}`);
   };
 
   const handleDelete = async () => {
