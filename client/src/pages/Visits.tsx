@@ -251,7 +251,7 @@ export default function Visits() {
                       {dateLabel}
                     </h2>
                     <div className="space-y-3">
-                      {dateVisits.map(renderVisitCard)}
+                      {dateVisits.map((visit) => renderVisitCard(visit))}
                     </div>
                   </div>
                 ))}
