@@ -36,6 +36,13 @@ export const visitStatusEnum = pgEnum("visit_status", [
 
 export type VisitStatus = "borrador" | "programada" | "atrasada" | "en_curso" | "realizada" | "no_realizada" | "cancelada";
 
+export const visitCancellationTypeEnum = pgEnum("visit_cancellation_type", [
+  "reagendada",
+  "eliminada"
+]);
+
+export type VisitCancellationType = "reagendada" | "eliminada";
+
 export const incidentStatusEnum = pgEnum("incident_status", [
   "pendiente",
   "en_reparacion",
@@ -253,6 +260,10 @@ export const visits = pgTable("visits", {
   notes: text("notes"),
   urgentReason: text("urgent_reason"),
   checklistType: checklistTypeEnum("checklist_type"),
+  cancellationType: visitCancellationTypeEnum("cancellation_type"),
+  cancellationReason: text("cancellation_reason"),
+  cancelledAt: timestamp("cancelled_at"),
+  cancelledBy: varchar("cancelled_by"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
