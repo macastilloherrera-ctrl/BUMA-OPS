@@ -89,11 +89,44 @@ export default function VisitDetail() {
           <div className="flex-1">
             <h1 className="text-lg font-semibold">Detalle de Visita</h1>
           </div>
-          <StatusBadge status={visit.status} type="visit" />
+          {visit.cancellationType === "eliminada" ? (
+            <Badge variant="destructive">Eliminada</Badge>
+          ) : visit.cancellationType === "reagendada" ? (
+            <Badge variant="outline" className="border-blue-500 text-blue-600 bg-blue-50 dark:bg-blue-950">Reagendada</Badge>
+          ) : (
+            <StatusBadge status={visit.status} type="visit" />
+          )}
         </div>
       </div>
 
       <div className="flex-1 overflow-auto pb-24 md:pb-6 p-4 space-y-4">
+        {(visit.cancellationType === "eliminada" || visit.cancellationType === "reagendada") && (
+          <Card className={visit.cancellationType === "eliminada" ? "border-red-500/50 bg-red-50/50 dark:bg-red-950/20" : "border-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20"}>
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <div className={`p-2 rounded-full ${visit.cancellationType === "eliminada" ? "bg-red-100 dark:bg-red-900/30" : "bg-blue-100 dark:bg-blue-900/30"}`}>
+                  <AlertTriangle className={`h-4 w-4 ${visit.cancellationType === "eliminada" ? "text-red-600" : "text-blue-600"}`} />
+                </div>
+                <div className="flex-1">
+                  <h3 className={`font-medium ${visit.cancellationType === "eliminada" ? "text-red-700 dark:text-red-400" : "text-blue-700 dark:text-blue-400"}`}>
+                    Visita {visit.cancellationType === "eliminada" ? "Eliminada" : "Reagendada"}
+                  </h3>
+                  {visit.cancellationReason && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      <span className="font-medium">Motivo:</span> {visit.cancellationReason}
+                    </p>
+                  )}
+                  {visit.cancelledAt && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {format(new Date(visit.cancelledAt), "dd MMM yyyy 'a las' HH:mm", { locale: es })}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-start justify-between gap-2">

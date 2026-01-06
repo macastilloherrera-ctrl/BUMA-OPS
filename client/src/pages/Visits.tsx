@@ -68,13 +68,13 @@ export default function Visits() {
   }) || [];
 
   // No Efectuadas: Pasó el día de la visita y NO se inició, O ya está marcada como no_realizada
-  // Excluye visitas canceladas (reagendada/eliminada) - estas se muestran en otros lugares
+  // INCLUYE visitas canceladas (reagendada/eliminada) - se muestran con sus badges correspondientes
   const notCompletedVisits = visits?.filter((v) => {
     if (v.status === "en_curso" || v.status === "realizada" || v.status === "cancelada") return false;
-    // Excluir visitas canceladas
-    if (v.cancellationType === "reagendada" || v.cancellationType === "eliminada") return false;
-    // Si ya está marcada como no_realizada, cuenta
+    // Si ya está marcada como no_realizada (incluye canceladas), cuenta
     if (v.status === "no_realizada") return true;
+    // Si tiene cancellationType, cuenta como no efectuada
+    if (v.cancellationType === "reagendada" || v.cancellationType === "eliminada") return true;
     // Sin fecha no cuenta aquí
     if (!v.scheduledDate) return false;
     const visitDate = new Date(v.scheduledDate);
