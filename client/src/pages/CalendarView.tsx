@@ -83,6 +83,8 @@ export default function CalendarView() {
     if (!visits) return [];
     return visits.filter((visit) => {
       if (!visit.scheduledDate) return false;
+      // Excluir visitas canceladas (reagendadas o eliminadas)
+      if (visit.cancellationType === "reagendada" || visit.cancellationType === "eliminada") return false;
       return isSameDay(new Date(visit.scheduledDate), day);
     });
   };

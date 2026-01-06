@@ -156,6 +156,8 @@ export default function DashboardVisits() {
   // Atrasada: Es el día de la visita, la hora agendada ya pasó, y NO se ha iniciado
   const overdueVisits = visits?.filter((v) => {
     if (v.status === "en_curso" || v.status === "realizada" || v.status === "no_realizada" || v.status === "cancelada") return false;
+    // Excluir visitas canceladas
+    if (v.cancellationType === "reagendada" || v.cancellationType === "eliminada") return false;
     if (!v.scheduledDate) return false;
     const visitDate = new Date(v.scheduledDate);
     // Es hoy y la hora ya pasó
@@ -165,6 +167,8 @@ export default function DashboardVisits() {
   // No Efectuada: Pasó el día de la visita y NO se inició, O no tiene fecha
   const notEffectuatedVisits = visits?.filter((v) => {
     if (v.status === "en_curso" || v.status === "realizada" || v.status === "cancelada") return false;
+    // Excluir visitas canceladas (van en su propia sección)
+    if (v.cancellationType === "reagendada" || v.cancellationType === "eliminada") return false;
     // Si ya está marcada como no_realizada, cuenta
     if (v.status === "no_realizada") return true;
     // Sin fecha programada y no iniciada
@@ -238,6 +242,8 @@ export default function DashboardVisits() {
       visits
         .filter(v => {
           if (!v.scheduledDate) return false;
+          // Excluir visitas canceladas
+          if (v.cancellationType === "reagendada" || v.cancellationType === "eliminada") return false;
           const visitDate = new Date(v.scheduledDate);
           return visitDate >= today && visitDate < tomorrow && 
                  (v.status === "programada" || v.status === "en_curso");
@@ -268,6 +274,8 @@ export default function DashboardVisits() {
 
     const todaysVisits = visits.filter(v => {
       if (!v.scheduledDate) return false;
+      // Excluir visitas canceladas
+      if (v.cancellationType === "reagendada" || v.cancellationType === "eliminada") return false;
       const visitDate = new Date(v.scheduledDate);
       return visitDate >= today && visitDate < tomorrow && 
              (v.status === "programada" || v.status === "en_curso");
@@ -537,6 +545,8 @@ export default function DashboardVisits() {
                 const dayDate = addDays(currentWeekStart, dayOffset);
                 const dayVisits = visits?.filter((v) => {
                   if (!v.scheduledDate) return false;
+                  // Excluir visitas canceladas (reagendadas o eliminadas)
+                  if (v.cancellationType === "reagendada" || v.cancellationType === "eliminada") return false;
                   return isSameDay(new Date(v.scheduledDate), dayDate);
                 }).sort((a, b) => {
                   const timeA = new Date(a.scheduledDate!).getTime();
