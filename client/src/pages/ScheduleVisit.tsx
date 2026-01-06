@@ -51,6 +51,9 @@ export default function ScheduleVisit() {
   const preselectedBuildingId = searchParams.get("buildingId") || "";
   const preselectedType = searchParams.get("type") as "rutina" | "urgente" | null;
   const linkedTicketId = searchParams.get("ticketId") || "";
+  const fromVisitId = searchParams.get("fromVisitId") || ""; // Rescheduled from this visit
+  const prefilledNotes = searchParams.get("notes") || "";
+  const prefilledExecutiveId = searchParams.get("executiveId") || "";
 
   const { data: userProfile } = useQuery<{ role: string }>({
     queryKey: ["/api/me"],
@@ -70,14 +73,26 @@ export default function ScheduleVisit() {
     enabled: isManager,
   });
 
+  // Determine initial notes value based on context
+  const getInitialNotes = () => {
+    if (prefilledNotes) {
+      // Rescheduling - use original visit notes
+      return prefilledNotes;
+    }
+    if (linkedTicketId) {
+      return `Visita urgente relacionada al ticket #${linkedTicketId.slice(0, 8)}`;
+    }
+    return "";
+  };
+
   const form = useForm<ScheduleVisitForm>({
     resolver: zodResolver(scheduleVisitSchema),
     defaultValues: {
       buildingId: preselectedBuildingId,
-      type: preselectedType === "urgente" ? "urgente" : "rutina",
-      executiveId: "",
+      type: preselectedType === "urgente" ? "urgente" : preselectedType === "rutina" ? "rutina" : "rutina",
+      executiveId: prefilledExecutiveId,
       scheduledDate: "",
-      notes: linkedTicketId ? `Visita urgente relacionada al ticket #${linkedTicketId.slice(0, 8)}` : "",
+      notes: getInitialNotes(),
       urgentReason: "",
     },
   });
@@ -152,6 +167,21 @@ export default function ScheduleVisit() {
       <div className="flex-1 overflow-auto pb-20 md:pb-6 p-4">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {fromVisitId && (
+              <Card className="border-blue-500/50 bg-blue-50/50 dark:bg-blue-950/20">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <Calendar className="h-5 w-5 text-blue-600" />
+                    <div>
+                      <p className="font-medium text-blue-700 dark:text-blue-400">Reagendando Visita</p>
+                      <p className="text-sm text-muted-foreground">
+                        Los datos de la visita original han sido copiados. Solo necesitas seleccionar la nueva fecha.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">

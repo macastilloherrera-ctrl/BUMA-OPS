@@ -52,7 +52,19 @@ export function CancelVisitDialog({ visit, open, onOpenChange }: CancelVisitDial
       title: "Visita marcada para reagendar",
       description: "Ahora puedes programar una nueva visita",
     });
-    navigate(`/visitas/programar?buildingId=${visit.buildingId}`);
+    // Pass original visit data to preserve history when rescheduling
+    const params = new URLSearchParams({
+      buildingId: visit.buildingId,
+      type: visit.type,
+      fromVisitId: visit.id,
+    });
+    if (visit.notes) {
+      params.set("notes", visit.notes);
+    }
+    if (visit.executiveId) {
+      params.set("executiveId", visit.executiveId);
+    }
+    navigate(`/visitas/programar?${params.toString()}`);
   };
 
   const handleDelete = async () => {
