@@ -7,7 +7,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/StatusBadge";
-import { Plus, Calendar, MapPin, Clock, CheckCircle2, XCircle, AlertTriangle } from "lucide-react";
+import { CancelVisitDialog } from "@/components/CancelVisitDialog";
+import { Plus, Calendar, MapPin, Clock, CheckCircle2, XCircle, AlertTriangle, MoreVertical, Trash2 } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Visit, Building } from "@shared/schema";
 import { format, isToday, isTomorrow, isBefore, startOfDay, parseISO, compareAsc } from "date-fns";
 import { es } from "date-fns/locale";
@@ -22,12 +24,21 @@ export default function Visits() {
   const tabFromUrl = urlParams.get("tab");
   
   const [activeTab, setActiveTab] = useState(tabFromUrl || "agendadas");
+  const [selectedVisit, setSelectedVisit] = useState<VisitWithBuilding | null>(null);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
   
   useEffect(() => {
     if (tabFromUrl && ["agendadas", "atrasadas", "no_efectuadas", "efectuadas"].includes(tabFromUrl)) {
       setActiveTab(tabFromUrl);
     }
   }, [tabFromUrl]);
+
+  const handleCancelClick = (e: React.MouseEvent, visit: VisitWithBuilding) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedVisit(visit);
+    setShowCancelDialog(true);
+  };
 
   const { data: visits, isLoading } = useQuery<VisitWithBuilding[]>({
     queryKey: ["/api/visits"],
@@ -98,7 +109,7 @@ export default function Visits() {
     return groups;
   };
 
-  const renderVisitCard = (visit: VisitWithBuilding) => (
+  const renderVisitCard = (visit: VisitWithBuilding, showCancelButton = true) => (
     <Link key={visit.id} href={`/visitas/${visit.id}`}>
       <Card className="hover-elevate cursor-pointer" data-testid={`card-visit-${visit.id}`}>
         <CardContent className="p-4">
@@ -134,6 +145,25 @@ export default function Visits() {
                 )}
               </div>
             </div>
+            {showCancelButton && visit.status !== "realizada" && visit.status !== "no_realizada" && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>
+                  <Button variant="ghost" size="icon" data-testid={`button-visit-menu-${visit.id}`}>
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem 
+                    onClick={(e) => handleCancelClick(e, visit)}
+                    className="text-destructive"
+                    data-testid={`button-cancel-visit-${visit.id}`}
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Cancelar visita
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -278,6 +308,23 @@ export default function Visits() {
                               )}
                             </div>
                           </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>
+                              <Button variant="ghost" size="icon" data-testid={`button-visit-menu-overdue-${visit.id}`}>
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem 
+                                onClick={(e) => handleCancelClick(e, visit)}
+                                className="text-destructive"
+                                data-testid={`button-cancel-visit-overdue-${visit.id}`}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Cancelar visita
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </CardContent>
                     </Card>
@@ -314,6 +361,16 @@ export default function Visits() {
                               <Badge variant="destructive" className="text-xs">
                                 No Efectuada
                               </Badge>
+                              {visit.cancellationType === "reagendada" && (
+                                <Badge variant="outline" className="text-xs border-blue-500 text-blue-600">
+                                  Reagendada
+                                </Badge>
+                              )}
+                              {visit.cancellationType === "eliminada" && (
+                                <Badge variant="outline" className="text-xs border-red-500 text-red-600">
+                                  Eliminada
+                                </Badge>
+                              )}
                             </div>
                             <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
                               <MapPin className="h-3.5 w-3.5" />
@@ -329,6 +386,11 @@ export default function Visits() {
                                 </span>
                               </div>
                             </div>
+                            {visit.cancellationReason && (
+                              <p className="text-sm text-muted-foreground mt-2 italic">
+                                Motivo: {visit.cancellationReason}
+                              </p>
+                            )}
                           </div>
                         </div>
                       </CardContent>
@@ -392,6 +454,17 @@ export default function Visits() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {selectedVisit && (
+        <CancelVisitDialog
+          visit={selectedVisit}
+          open={showCancelDialog}
+          onOpenChange={(open) => {
+            setShowCancelDialog(open);
+            if (!open) setSelectedVisit(null);
+          }}
+        />
+      )}
     </div>
   );
 }
