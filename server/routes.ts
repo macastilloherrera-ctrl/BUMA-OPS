@@ -895,6 +895,52 @@ export async function registerRoutes(
     }
   });
 
+  const cancelVisitSchema = z.object({
+    cancellationType: z.enum(["reagendada", "eliminada"]),
+    cancellationReason: z.string().optional().transform((v) => v?.trim() || null),
+  });
+
+  app.patch("/api/visits/:id/cancel", isAuthenticated, async (req, res) => {
+    try {
+      const parseResult = cancelVisitSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: "Datos invalidos" });
+      }
+      const { cancellationType, cancellationReason } = parseResult.data;
+
+      if (cancellationType === "eliminada" && !cancellationReason) {
+        return res.status(400).json({ error: "Debe proporcionar un motivo para eliminar la visita" });
+      }
+
+      const existingVisit = await storage.getVisit(req.params.id);
+      if (!existingVisit) {
+        return res.status(404).json({ error: "Visita no encontrada" });
+      }
+
+      const profile = await storage.getUserProfile(req.user!.id);
+      const hasAccess = await canAccessEntity(req.user!.id, profile, existingVisit);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "No tienes permiso para cancelar esta visita" });
+      }
+
+      if (existingVisit.status === "realizada") {
+        return res.status(400).json({ error: "No se pueden cancelar visitas ya realizadas" });
+      }
+
+      const visit = await storage.updateVisit(req.params.id, {
+        status: "no_realizada",
+        cancellationType,
+        cancellationReason,
+        cancelledAt: new Date(),
+        cancelledBy: req.user!.id,
+      });
+      res.json(visit);
+    } catch (error) {
+      console.error("Error cancelling visit:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   app.patch("/api/visits/:id/checklist/:itemId", isAuthenticated, async (req, res) => {
     try {
       // Verify visit exists
