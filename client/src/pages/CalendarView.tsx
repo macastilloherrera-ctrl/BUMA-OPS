@@ -83,8 +83,6 @@ export default function CalendarView() {
     if (!visits) return [];
     return visits.filter((visit) => {
       if (!visit.scheduledDate) return false;
-      // Excluir visitas canceladas (reagendadas o eliminadas)
-      if (visit.cancellationType === "reagendada" || visit.cancellationType === "eliminada") return false;
       return isSameDay(new Date(visit.scheduledDate), day);
     });
   };
@@ -187,23 +185,29 @@ export default function CalendarView() {
                         )}
                       </div>
                       <div className="space-y-1 overflow-auto max-h-[70px]">
-                        {dayVisits.slice(0, 2).map((visit) => (
-                          <Link key={visit.id} href={`/visitas/${visit.id}`}>
-                            <div
-                              className={`flex items-center gap-1 p-1 rounded text-xs cursor-pointer hover-elevate ${
-                                visit.type === "urgente"
-                                  ? "bg-primary/10 text-primary"
-                                  : "bg-blue-500/10 text-blue-700 dark:text-blue-400"
-                              }`}
-                              data-testid={`calendar-visit-${visit.id}`}
-                            >
-                              <MapPin className="h-3 w-3 flex-shrink-0" />
-                              <span className="truncate">
-                                {visit.building?.name || "Visita"}
-                              </span>
-                            </div>
-                          </Link>
-                        ))}
+                        {dayVisits.slice(0, 2).map((visit) => {
+                          const isCancelled = visit.cancellationType === "reagendada" || visit.cancellationType === "eliminada";
+                          return (
+                            <Link key={visit.id} href={`/visitas/${visit.id}`}>
+                              <div
+                                className={`flex items-center gap-1 p-1 rounded text-xs cursor-pointer hover-elevate ${
+                                  isCancelled
+                                    ? "bg-slate-200/50 dark:bg-slate-700/30 text-slate-500 dark:text-slate-400 line-through"
+                                    : visit.type === "urgente"
+                                    ? "bg-primary/10 text-primary"
+                                    : "bg-blue-500/10 text-blue-700 dark:text-blue-400"
+                                }`}
+                                data-testid={`calendar-visit-${visit.id}`}
+                              >
+                                <MapPin className="h-3 w-3 flex-shrink-0" />
+                                <span className="truncate">
+                                  {visit.building?.name || "Visita"}
+                                  {isCancelled && ` (${visit.cancellationType === "reagendada" ? "R" : "E"})`}
+                                </span>
+                              </div>
+                            </Link>
+                          );
+                        })}
                         {dayTickets.slice(0, 2).map((ticket) => {
                           const TypeIcon = ticketTypeIcons[ticket.ticketType] || AlertTriangle;
                           return (
@@ -247,6 +251,10 @@ export default function CalendarView() {
               <div className="flex items-center gap-2" data-testid="legend-visit-urgente">
                 <div className="w-4 h-4 bg-primary/10 rounded" />
                 <span>Visita Urgente</span>
+              </div>
+              <div className="flex items-center gap-2" data-testid="legend-visit-cancelled">
+                <div className="w-4 h-4 bg-slate-200/50 dark:bg-slate-700/30 rounded" />
+                <span className="line-through text-slate-500">Cancelada (R/E)</span>
               </div>
             </div>
             <div className="flex flex-wrap gap-4 text-sm mt-3">

@@ -52,7 +52,29 @@ interface ExecutiveInfo {
   displayName: string;
 }
 
-const getStatusColor = (status: VisitStatus, scheduledDate?: Date | string | null) => {
+const getStatusColor = (status: VisitStatus, scheduledDate?: Date | string | null, cancellationType?: string | null) => {
+  // Handle cancelled visits first
+  if (cancellationType === "reagendada") {
+    return {
+      bg: "bg-slate-100 dark:bg-slate-800/50",
+      border: "border-slate-400",
+      text: "text-slate-500 dark:text-slate-400",
+      label: "Reagendada",
+      isOverdue: false,
+      isCancelled: true
+    };
+  }
+  if (cancellationType === "eliminada") {
+    return {
+      bg: "bg-slate-200 dark:bg-slate-700/50",
+      border: "border-slate-500",
+      text: "text-slate-600 dark:text-slate-300",
+      label: "Eliminada",
+      isOverdue: false,
+      isCancelled: true
+    };
+  }
+
   const today = startOfDay(new Date());
   const visitDate = scheduledDate ? startOfDay(new Date(scheduledDate)) : null;
   const isOverdue = visitDate && isBefore(visitDate, today) && status === "programada";
@@ -64,7 +86,8 @@ const getStatusColor = (status: VisitStatus, scheduledDate?: Date | string | nul
         border: "border-green-500",
         text: "text-green-700 dark:text-green-300",
         label: "Ejecutada",
-        isOverdue: false
+        isOverdue: false,
+        isCancelled: false
       };
     case "programada":
       if (isOverdue) {
@@ -73,7 +96,8 @@ const getStatusColor = (status: VisitStatus, scheduledDate?: Date | string | nul
           border: "border-red-300",
           text: "text-red-600 dark:text-red-300",
           label: "Atrasada",
-          isOverdue: true
+          isOverdue: true,
+          isCancelled: false
         };
       }
       return {
@@ -81,7 +105,8 @@ const getStatusColor = (status: VisitStatus, scheduledDate?: Date | string | nul
         border: "border-amber-500",
         text: "text-amber-700 dark:text-amber-300",
         label: "Programada",
-        isOverdue: false
+        isOverdue: false,
+        isCancelled: false
       };
     case "atrasada":
       return {
@@ -89,7 +114,8 @@ const getStatusColor = (status: VisitStatus, scheduledDate?: Date | string | nul
         border: "border-red-300",
         text: "text-red-600 dark:text-red-300",
         label: "Atrasada",
-        isOverdue: true
+        isOverdue: true,
+        isCancelled: false
       };
     case "no_realizada":
       return {
@@ -97,7 +123,8 @@ const getStatusColor = (status: VisitStatus, scheduledDate?: Date | string | nul
         border: "border-red-600",
         text: "text-red-800 dark:text-red-200",
         label: "No Realizada",
-        isOverdue: false
+        isOverdue: false,
+        isCancelled: false
       };
     case "en_curso":
       return {
@@ -105,7 +132,8 @@ const getStatusColor = (status: VisitStatus, scheduledDate?: Date | string | nul
         border: "border-blue-500",
         text: "text-blue-700 dark:text-blue-300",
         label: "En Curso",
-        isOverdue: false
+        isOverdue: false,
+        isCancelled: false
       };
     default:
       return {
@@ -113,7 +141,8 @@ const getStatusColor = (status: VisitStatus, scheduledDate?: Date | string | nul
         border: "border-muted-foreground/20",
         text: "text-muted-foreground",
         label: status,
-        isOverdue: false
+        isOverdue: false,
+        isCancelled: false
       };
   }
 };
@@ -529,6 +558,14 @@ export default function DashboardVisits() {
               <div className="w-3 h-3 rounded-sm bg-blue-100 dark:bg-blue-900/30 border border-blue-500" />
               <span className="text-xs">En Curso</span>
             </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm bg-slate-100 dark:bg-slate-800/50 border border-slate-400" />
+              <span className="text-xs">Reagendada</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm bg-slate-200 dark:bg-slate-700/50 border border-slate-500" />
+              <span className="text-xs">Eliminada</span>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="p-2 sm:p-4">
@@ -545,8 +582,6 @@ export default function DashboardVisits() {
                 const dayDate = addDays(currentWeekStart, dayOffset);
                 const dayVisits = visits?.filter((v) => {
                   if (!v.scheduledDate) return false;
-                  // Excluir visitas canceladas (reagendadas o eliminadas)
-                  if (v.cancellationType === "reagendada" || v.cancellationType === "eliminada") return false;
                   return isSameDay(new Date(v.scheduledDate), dayDate);
                 }).sort((a, b) => {
                   const timeA = new Date(a.scheduledDate!).getTime();
@@ -585,29 +620,32 @@ export default function DashboardVisits() {
                         <p className="text-xs text-muted-foreground text-center py-2">-</p>
                       )}
                       {dayVisits.map((visit) => {
-                        const statusColors = getStatusColor(visit.status as VisitStatus, visit.scheduledDate);
+                        const statusColors = getStatusColor(visit.status as VisitStatus, visit.scheduledDate, visit.cancellationType);
                         const isNoRealizada = visit.status === "no_realizada";
+                        const isCancelled = visit.cancellationType === "reagendada" || visit.cancellationType === "eliminada";
                         
                         return (
                           <div
                             key={visit.id}
-                            onClick={() => {
-                              if (isNoRealizada) {
-                                navigate(`/visitas/${visit.id}`);
-                              } else {
-                                navigate(`/visitas/${visit.id}`);
-                              }
-                            }}
-                            className={`p-1.5 sm:p-2 rounded-md border-l-4 cursor-pointer hover-elevate ${statusColors.bg} ${statusColors.border}`}
+                            onClick={() => navigate(`/visitas/${visit.id}`)}
+                            className={`p-1.5 sm:p-2 rounded-md border-l-4 cursor-pointer hover-elevate ${statusColors.bg} ${statusColors.border} ${isCancelled ? "opacity-75" : ""}`}
                             data-testid={`calendar-visit-${visit.id}`}
                           >
-                            <div className={`text-xs font-medium truncate ${statusColors.text}`}>
+                            <div className={`text-xs font-medium truncate ${statusColors.text} ${isCancelled ? "line-through" : ""}`}>
                               {visit.building?.name || "Edificio"}
                             </div>
                             <div className="text-xs text-muted-foreground">
                               {format(new Date(visit.scheduledDate!), "HH:mm")}
                             </div>
-                            {isNoRealizada && (
+                            {isCancelled && (
+                              <Badge 
+                                variant="secondary" 
+                                className="text-xs mt-1 py-0"
+                              >
+                                {visit.cancellationType === "reagendada" ? "Reagendada" : "Eliminada"}
+                              </Badge>
+                            )}
+                            {isNoRealizada && !isCancelled && (
                               <Badge 
                                 variant="destructive" 
                                 className="text-xs mt-1 py-0"
