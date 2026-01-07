@@ -357,7 +357,13 @@ export default function DashboardTickets() {
                             : "—"}
                       </TableCell>
                       <TableCell>
-                        <StatusBadge status={ticket.status} type="ticket" />
+                        <StatusBadge 
+                          status={ticket.status} 
+                          type="ticket"
+                          invoiceNumber={ticket.invoiceNumber}
+                          invoiceAmount={ticket.invoiceAmount}
+                          invoiceDocumentKey={ticket.invoiceDocumentKey}
+                        />
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>

@@ -129,7 +129,13 @@ export default function Tickets() {
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1 flex-wrap">
                                 <PriorityBadge priority={ticket.priority} />
-                                <StatusBadge status={ticket.status} type="ticket" />
+                                <StatusBadge 
+                                  status={ticket.status} 
+                                  type="ticket"
+                                  invoiceNumber={ticket.invoiceNumber}
+                                  invoiceAmount={ticket.invoiceAmount}
+                                  invoiceDocumentKey={ticket.invoiceDocumentKey}
+                                />
                               </div>
                               <p className="text-sm font-medium line-clamp-2 mb-2">
                                 {ticket.description}

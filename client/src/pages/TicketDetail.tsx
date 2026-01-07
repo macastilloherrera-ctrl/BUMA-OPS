@@ -542,7 +542,13 @@ Equipo BUMA Property Management
           </div>
           <div className="flex gap-2">
             <PriorityBadge priority={ticket.priority} />
-            <StatusBadge status={ticket.status} type="ticket" />
+            <StatusBadge 
+              status={ticket.status} 
+              type="ticket"
+              invoiceNumber={ticket.invoiceNumber}
+              invoiceAmount={ticket.invoiceAmount}
+              invoiceDocumentKey={ticket.invoiceDocumentKey}
+            />
           </div>
         </div>
       </div>
