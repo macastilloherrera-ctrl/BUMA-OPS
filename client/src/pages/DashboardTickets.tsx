@@ -181,7 +181,7 @@ export default function DashboardTickets() {
   const stats = getStats();
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="h-full overflow-auto p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h1 className="text-2xl font-semibold">Panel de Tickets</h1>
         <Button
