@@ -70,7 +70,7 @@ export default function DashboardTickets() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [buildingFilter, setBuildingFilter] = useState<string>("all");
-  const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  const [classificationFilter, setClassificationFilter] = useState<string>("all");
   const [reassignDialogOpen, setReassignDialogOpen] = useState(false);
   const [dateDialogOpen, setDateDialogOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<TicketWithBuilding | null>(null);
@@ -166,8 +166,18 @@ export default function DashboardTickets() {
     
     return tickets.filter((t) => {
       if (buildingFilter !== "all" && t.buildingId !== buildingFilter) return false;
-      if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
-      return t.status !== "resuelto";
+      if (t.status === "resuelto") return false;
+      
+      if (classificationFilter === "vencido") {
+        return t.status === "vencido" || isOverdue(t);
+      }
+      if (classificationFilter === "por_vencer") {
+        return !isOverdue(t) && isDueSoon(t);
+      }
+      if (classificationFilter === "pendiente") {
+        return !isOverdue(t) && !isDueSoon(t);
+      }
+      return true;
     });
   };
 
@@ -285,15 +295,15 @@ export default function DashboardTickets() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                <SelectTrigger className="w-32" data-testid="filter-priority">
-                  <SelectValue placeholder="Prioridad" />
+              <Select value={classificationFilter} onValueChange={setClassificationFilter}>
+                <SelectTrigger className="w-36" data-testid="filter-classification">
+                  <SelectValue placeholder="Estado" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todas</SelectItem>
-                  <SelectItem value="rojo">Critico</SelectItem>
-                  <SelectItem value="amarillo">Por Vencer</SelectItem>
-                  <SelectItem value="verde">Al Dia</SelectItem>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="vencido">Vencidos</SelectItem>
+                  <SelectItem value="por_vencer">Por Vencer</SelectItem>
+                  <SelectItem value="pendiente">Pendientes</SelectItem>
                 </SelectContent>
               </Select>
             </div>
