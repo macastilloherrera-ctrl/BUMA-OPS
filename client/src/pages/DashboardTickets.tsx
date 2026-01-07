@@ -166,6 +166,11 @@ export default function DashboardTickets() {
     
     return tickets.filter((t) => {
       if (buildingFilter !== "all" && t.buildingId !== buildingFilter) return false;
+      
+      if (classificationFilter === "resuelto") {
+        return t.status === "resuelto";
+      }
+      
       if (t.status === "resuelto") return false;
       
       if (classificationFilter === "vencido") {
@@ -176,6 +181,9 @@ export default function DashboardTickets() {
       }
       if (classificationFilter === "pendiente") {
         return !isOverdue(t) && !isDueSoon(t);
+      }
+      if (classificationFilter === "al_dia") {
+        return false;
       }
       return true;
     });
@@ -304,6 +312,8 @@ export default function DashboardTickets() {
                   <SelectItem value="vencido">Vencidos</SelectItem>
                   <SelectItem value="por_vencer">Por Vencer</SelectItem>
                   <SelectItem value="pendiente">Pendientes</SelectItem>
+                  <SelectItem value="al_dia">Al Dia</SelectItem>
+                  <SelectItem value="resuelto">Resueltos</SelectItem>
                 </SelectContent>
               </Select>
             </div>
