@@ -41,7 +41,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Building2, Plus, MapPin, User, Search, Pencil, Trash2, UserPlus, Settings2 } from "lucide-react";
 import type { Building, UserProfile, BuildingStaff, BuildingFeature } from "@shared/schema";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 
 const staffSchema = z.object({
   fullName: z.string().min(1, "Nombre requerido"),
@@ -154,6 +154,22 @@ export default function Buildings() {
       })));
     }
   }, [existingFeatures, editingBuilding, form]);
+
+  const searchString = useSearch();
+  useEffect(() => {
+    if (searchString && buildings) {
+      const params = new URLSearchParams(searchString);
+      const editId = params.get("edit");
+      if (editId) {
+        const buildingToEdit = buildings.find(b => b.id === editId);
+        if (buildingToEdit) {
+          setEditingBuilding(buildingToEdit);
+          setIsDialogOpen(true);
+          window.history.replaceState({}, '', '/buildings');
+        }
+      }
+    }
+  }, [searchString, buildings]);
 
   const createBuildingMutation = useMutation({
     mutationFn: async (data: BuildingForm) => {

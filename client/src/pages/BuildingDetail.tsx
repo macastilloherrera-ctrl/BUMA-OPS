@@ -312,7 +312,7 @@ export default function BuildingDetail() {
             {getStatusBadge(building.status)}
           </div>
           {isManager && (
-            <Link href={`/buildings`}>
+            <Link href={`/buildings?edit=${building.id}`}>
               <Button variant="outline" size="sm" data-testid="button-edit-building">
                 <Pencil className="h-4 w-4 mr-1" />
                 Editar
