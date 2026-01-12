@@ -7,6 +7,7 @@ interface StatusBadgeProps {
   invoiceNumber?: string | null;
   invoiceAmount?: string | null;
   invoiceDocumentKey?: string | null;
+  invoiceStatus?: "none" | "pending" | "submitted" | null;
 }
 
 const visitStatusConfig: Record<VisitStatus, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -35,19 +36,37 @@ const incidentStatusConfig: Record<IncidentStatus, { label: string; variant: "de
   reprogramada: { label: "Reprogramada", variant: "outline" },
 };
 
-export function StatusBadge({ status, type = "visit", invoiceNumber, invoiceAmount, invoiceDocumentKey }: StatusBadgeProps) {
+export function StatusBadge({ status, type = "visit", invoiceNumber, invoiceAmount, invoiceDocumentKey, invoiceStatus }: StatusBadgeProps) {
   let config;
   if (type === "visit") {
     config = visitStatusConfig[status as VisitStatus];
   } else if (type === "ticket") {
     config = ticketStatusConfig[status as TicketStatus];
     
-    if (status === "resuelto" && invoiceNumber && invoiceAmount && !invoiceDocumentKey) {
-      return (
-        <Badge variant="outline" className="text-xs text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700">
-          Resuelto - Sin factura cargada
-        </Badge>
-      );
+    // Show invoice status for resolved tickets
+    if (status === "resuelto") {
+      if (invoiceStatus === "submitted" && invoiceNumber) {
+        // Has invoice submitted
+        return (
+          <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+            Resuelto
+          </Badge>
+        );
+      } else if (invoiceStatus === "pending") {
+        // Invoice pending
+        return (
+          <Badge variant="outline" className="text-xs text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700">
+            Resuelto - Factura pendiente
+          </Badge>
+        );
+      } else if (invoiceStatus === "none") {
+        // No invoice needed
+        return (
+          <Badge variant="secondary" className="text-xs">
+            Resuelto
+          </Badge>
+        );
+      }
     }
   } else {
     config = incidentStatusConfig[status as IncidentStatus];

@@ -176,6 +176,7 @@ export default function Tickets() {
                                   invoiceNumber={ticket.invoiceNumber}
                                   invoiceAmount={ticket.invoiceAmount}
                                   invoiceDocumentKey={ticket.invoiceDocumentKey}
+                                  invoiceStatus={ticket.invoiceStatus}
                                 />
                               </div>
                               <p className="text-sm font-medium line-clamp-2 mb-2">

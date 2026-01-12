@@ -395,6 +395,7 @@ export default function DashboardTickets() {
                           invoiceNumber={ticket.invoiceNumber}
                           invoiceAmount={ticket.invoiceAmount}
                           invoiceDocumentKey={ticket.invoiceDocumentKey}
+                          invoiceStatus={ticket.invoiceStatus}
                         />
                       </TableCell>
                       <TableCell>
