@@ -696,7 +696,7 @@ Equipo BUMA Property Management
                         Marcar Completado
                       </Button>
                     )}
-                    {isManager && (ticket.status === "trabajo_completado" || ticket.workCompletedAt) && (hasApprovedQuote || ticket.ticketType === "urgencia") && (
+                    {isManager && (ticket.status === "trabajo_completado" || ticket.workCompletedAt) && (
                       <Dialog open={isClosureDialogOpen} onOpenChange={setIsClosureDialogOpen}>
                         <DialogTrigger asChild>
                           <Button size="sm" data-testid="button-close-ticket">
