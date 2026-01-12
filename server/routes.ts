@@ -5,7 +5,7 @@ import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { registerDevAuthRoutes, isDevMode } from "./devAuth";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import {
   insertBuildingSchema,
   insertBuildingStaffSchema,
@@ -186,6 +186,35 @@ export async function registerRoutes(
       res.json(executivesWithNames);
     } catch (error) {
       console.error("Error getting executives:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Get managers for escalation dialog
+  app.get("/api/users/managers", isAuthenticated, async (req, res) => {
+    try {
+      const allProfiles = await db.select().from(userProfiles)
+        .where(or(
+          eq(userProfiles.role, "gerente_general"),
+          eq(userProfiles.role, "gerente_operaciones")
+        ));
+      
+      const { DEV_USERS } = await import("./devAuth");
+      const managersWithNames = allProfiles.map((profile) => {
+        const devUser = DEV_USERS.find((u) => u.id === profile.userId);
+        return {
+          userId: profile.userId,
+          role: profile.role,
+          displayName: devUser 
+            ? `${devUser.firstName} ${devUser.lastName}` 
+            : profile.userId.split("@")[0] || profile.userId,
+          roleName: profile.role === "gerente_general" ? "Gerente General" : "Gerente de Operaciones",
+        };
+      });
+      
+      res.json(managersWithNames);
+    } catch (error) {
+      console.error("Error getting managers:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
@@ -1386,7 +1415,7 @@ export async function registerRoutes(
     }
   });
 
-  // Escalate ticket to Gerente de Operaciones
+  // Escalate ticket to a manager (user can choose who)
   app.post("/api/tickets/:id/escalate", isAuthenticated, async (req, res) => {
     try {
       const ticket = await storage.getTicket(req.params.id);
@@ -1394,43 +1423,50 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Ticket no encontrado" });
       }
       
-      const { reason } = req.body;
+      const { reason, targetUserId } = req.body;
       
-      // Find the Gerente de Operaciones
-      const allProfiles = await db.select().from(userProfiles).where(eq(userProfiles.role, "gerente_operaciones"));
-      const gerenteOps = allProfiles[0];
+      let targetProfile;
       
-      if (!gerenteOps) {
-        return res.status(404).json({ error: "No se encontro Gerente de Operaciones en el sistema" });
+      if (targetUserId) {
+        targetProfile = await storage.getUserProfile(targetUserId);
+        if (!targetProfile) {
+          return res.status(404).json({ error: "Usuario destino no encontrado" });
+        }
+        if (targetProfile.role !== "gerente_general" && targetProfile.role !== "gerente_operaciones") {
+          return res.status(400).json({ error: "Solo se puede escalar a gerentes" });
+        }
+      } else {
+        const allProfiles = await db.select().from(userProfiles).where(eq(userProfiles.role, "gerente_operaciones"));
+        targetProfile = allProfiles[0];
+        if (!targetProfile) {
+          return res.status(404).json({ error: "No se encontro Gerente de Operaciones en el sistema" });
+        }
       }
       
       const previousAssigneeId = ticket.assignedExecutiveId;
       
-      // Update ticket: set priority to red, mark as escalated, and assign to gerente operaciones
       const updatedTicket = await storage.updateTicket(req.params.id, {
         priority: "rojo",
-        assignedExecutiveId: gerenteOps.userId,
+        assignedExecutiveId: targetProfile.userId,
         isEscalated: true,
         escalatedAt: new Date(),
         escalatedBy: req.user!.id,
       });
       
-      // Record escalation in assignment history
       await storage.createTicketAssignmentHistory({
         ticketId: ticket.id,
-        assignedToId: gerenteOps.userId,
+        assignedToId: targetProfile.userId,
         assignedById: req.user!.id,
-        assignedToRole: "gerente_operaciones",
+        assignedToRole: targetProfile.role,
         previousAssigneeId,
-        reason: reason || "Escalado a Gerente de Operaciones",
+        reason: reason || `Escalado a ${targetProfile.role === "gerente_general" ? "Gerente General" : "Gerente de Operaciones"}`,
         isEscalation: true,
       });
       
-      // Create notification for gerente operaciones
-      if (gerenteOps.userId !== req.user!.id) {
+      if (targetProfile.userId !== req.user!.id) {
         const building = await storage.getBuilding(ticket.buildingId);
         await storage.createNotification({
-          userId: gerenteOps.userId,
+          userId: targetProfile.userId,
           type: "ticket_derivado",
           title: "Ticket escalado",
           message: `Se ha escalado el ticket "${ticket.title}" en ${building?.name || "edificio"} a prioridad roja`,
@@ -1442,8 +1478,8 @@ export async function registerRoutes(
       res.json({
         ticket: updatedTicket,
         escalatedTo: {
-          userId: gerenteOps.userId,
-          role: "gerente_operaciones",
+          userId: targetProfile.userId,
+          role: targetProfile.role,
         },
       });
     } catch (error) {

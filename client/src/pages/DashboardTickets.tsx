@@ -73,8 +73,11 @@ export default function DashboardTickets() {
   const [classificationFilter, setClassificationFilter] = useState<string>("all");
   const [reassignDialogOpen, setReassignDialogOpen] = useState(false);
   const [dateDialogOpen, setDateDialogOpen] = useState(false);
+  const [escalateDialogOpen, setEscalateDialogOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<TicketWithBuilding | null>(null);
   const [selectedExecutive, setSelectedExecutive] = useState<string>("");
+  const [selectedManager, setSelectedManager] = useState<string>("");
+  const [escalateReason, setEscalateReason] = useState<string>("");
   const [newDueDate, setNewDueDate] = useState<string>("");
 
   const { data: tickets, isLoading } = useQuery<TicketWithBuilding[]>({
@@ -87,6 +90,10 @@ export default function DashboardTickets() {
 
   const { data: executives } = useQuery<(UserProfile & { name: string })[]>({
     queryKey: ["/api/users/executives"],
+  });
+
+  const { data: managers } = useQuery<{ userId: string; role: string; displayName: string; roleName: string }[]>({
+    queryKey: ["/api/users/managers"],
   });
 
   const updateTicketMutation = useMutation({
@@ -110,14 +117,18 @@ export default function DashboardTickets() {
   });
 
   const escalateTicketMutation = useMutation({
-    mutationFn: async (ticket: TicketWithBuilding) => {
-      return apiRequest("POST", `/api/tickets/${ticket.id}/escalate`, {});
+    mutationFn: async ({ ticketId, targetUserId, reason }: { ticketId: string; targetUserId: string; reason?: string }) => {
+      return apiRequest("POST", `/api/tickets/${ticketId}/escalate`, { targetUserId, reason });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+      setEscalateDialogOpen(false);
+      setSelectedTicket(null);
+      setSelectedManager("");
+      setEscalateReason("");
       toast({
         title: "Ticket Escalado",
-        description: "El ticket fue escalado al Gerente de Operaciones con prioridad CRITICA (roja).",
+        description: "El ticket fue escalado con prioridad CRITICA (roja).",
       });
     },
     onError: () => {
@@ -404,7 +415,12 @@ export default function DashboardTickets() {
                               Reasignar
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={() => escalateTicketMutation.mutate(ticket)}
+                              onClick={() => {
+                                setSelectedTicket(ticket);
+                                setSelectedManager("");
+                                setEscalateReason("");
+                                setEscalateDialogOpen(true);
+                              }}
                               disabled={ticket.isEscalated === true}
                             >
                               <ArrowUpCircle className="h-4 w-4 mr-2" />
@@ -526,6 +542,63 @@ export default function DashboardTickets() {
               data-testid="button-confirm-date"
             >
               Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={escalateDialogOpen} onOpenChange={setEscalateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Escalar Ticket</DialogTitle>
+            <DialogDescription>
+              Selecciona a quien deseas escalar este ticket. El ticket sera marcado con prioridad CRITICA (roja).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Escalar a</Label>
+              <Select value={selectedManager} onValueChange={setSelectedManager}>
+                <SelectTrigger data-testid="select-manager-escalate">
+                  <SelectValue placeholder="Seleccionar gerente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {managers?.map((manager) => (
+                    <SelectItem key={manager.userId} value={manager.userId}>
+                      {manager.displayName} ({manager.roleName})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Motivo (opcional)</Label>
+              <Input
+                placeholder="Razon del escalamiento..."
+                value={escalateReason}
+                onChange={(e) => setEscalateReason(e.target.value)}
+                data-testid="input-escalate-reason"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEscalateDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (selectedTicket && selectedManager) {
+                  escalateTicketMutation.mutate({
+                    ticketId: selectedTicket.id,
+                    targetUserId: selectedManager,
+                    reason: escalateReason || undefined,
+                  });
+                }
+              }}
+              disabled={!selectedManager || escalateTicketMutation.isPending}
+              data-testid="button-confirm-escalate"
+            >
+              {escalateTicketMutation.isPending ? "Escalando..." : "Escalar"}
             </Button>
           </DialogFooter>
         </DialogContent>
