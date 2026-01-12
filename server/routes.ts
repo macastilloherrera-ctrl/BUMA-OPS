@@ -1597,19 +1597,28 @@ export async function registerRoutes(
       
       const history = await storage.getTicketAssignmentHistory(req.params.id);
       
+      // Get user names from DEV_USERS
+      const { DEV_USERS } = await import("./devAuth");
+      
+      const getUserName = (userId: string): string => {
+        const devUser = DEV_USERS.find((u) => u.id === userId);
+        if (devUser) {
+          return `${devUser.firstName} ${devUser.lastName}`.trim();
+        }
+        return userId.split("-")[0] || "Usuario";
+      };
+      
       // Enrich with user names
       const enrichedHistory = await Promise.all(history.map(async (entry) => {
         const assignedTo = await storage.getUserProfile(entry.assignedToId);
         const assignedBy = await storage.getUserProfile(entry.assignedById);
-        const previousAssignee = entry.previousAssigneeId 
-          ? await storage.getUserProfile(entry.previousAssigneeId)
-          : null;
         
         return {
           ...entry,
-          assignedToName: assignedTo?.displayName || "Usuario desconocido",
-          assignedByName: assignedBy?.displayName || "Usuario desconocido",
-          previousAssigneeName: previousAssignee?.displayName || null,
+          assignedToName: getUserName(entry.assignedToId),
+          assignedByName: getUserName(entry.assignedById),
+          previousAssigneeName: entry.previousAssigneeId ? getUserName(entry.previousAssigneeId) : null,
+          assignedToRole: assignedTo?.role || entry.assignedToRole,
         };
       }));
       
