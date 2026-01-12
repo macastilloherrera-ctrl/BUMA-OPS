@@ -169,6 +169,13 @@ const restartSchema = z.object({
 
 type RestartForm = z.infer<typeof restartSchema>;
 
+const reassignSchema = z.object({
+  assigneeId: z.string().min(1, "Debe seleccionar un responsable"),
+  reason: z.string().optional(),
+});
+
+type ReassignForm = z.infer<typeof reassignSchema>;
+
 const ticketTypeLabels: Record<string, { label: string; icon: typeof AlertTriangle; color: string }> = {
   urgencia: { label: "Urgencia", icon: AlertTriangle, color: "text-red-500" },
   planificado: { label: "Planificado", icon: CalendarClock, color: "text-blue-500" },
@@ -191,6 +198,7 @@ export default function TicketDetail() {
   const [closeWithInvoice, setCloseWithInvoice] = useState(false);
   const [isRestartDialogOpen, setIsRestartDialogOpen] = useState(false);
   const [isWorkCompletionDialogOpen, setIsWorkCompletionDialogOpen] = useState(false);
+  const [isReassignDialogOpen, setIsReassignDialogOpen] = useState(false);
   const [workCompletionInvoiceKey, setWorkCompletionInvoiceKey] = useState<string | null>(null);
   const [workCompletionInvoiceName, setWorkCompletionInvoiceName] = useState<string | null>(null);
   const pendingWorkCompletionKeyRef = useRef<{ key: string; name: string } | null>(null);
@@ -257,6 +265,17 @@ export default function TicketDetail() {
   const { data: communications, isLoading: communicationsLoading } = useQuery<TicketCommunication[]>({
     queryKey: ["/api/tickets", id, "communications"],
     enabled: !!id,
+  });
+
+  interface AssignableUser {
+    id: string;
+    firstName: string;
+    lastName: string;
+    role: string;
+  }
+
+  const { data: assignableUsers } = useQuery<AssignableUser[]>({
+    queryKey: ["/api/users/assignable"],
   });
 
   const [avisoAudience, setAvisoAudience] = useState<"comunidad" | "conserjeria" | "comite">("comunidad");
@@ -351,6 +370,14 @@ Equipo BUMA Property Management
     defaultValues: {
       reason: "",
       committedCompletionAt: "",
+    },
+  });
+
+  const reassignForm = useForm<ReassignForm>({
+    resolver: zodResolver(reassignSchema),
+    defaultValues: {
+      assigneeId: "",
+      reason: "",
     },
   });
 
@@ -576,6 +603,23 @@ Equipo BUMA Property Management
     },
     onError: () => {
       toast({ title: "Error al reiniciar trabajo", variant: "destructive" });
+    },
+  });
+
+  const reassignMutation = useMutation({
+    mutationFn: async (data: ReassignForm) => {
+      return apiRequest("POST", `/api/tickets/${id}/reassign`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "assignment-history"] });
+      setIsReassignDialogOpen(false);
+      reassignForm.reset();
+      toast({ title: "Ticket derivado exitosamente" });
+    },
+    onError: () => {
+      toast({ title: "Error al derivar ticket", variant: "destructive" });
     },
   });
 
@@ -877,6 +921,92 @@ Equipo BUMA Property Management
                       >
                         Iniciar Trabajo
                       </Button>
+                    )}
+                    {(ticket.status === "pendiente" || ticket.status === "en_curso") && (
+                      <Dialog open={isReassignDialogOpen} onOpenChange={setIsReassignDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            data-testid="button-reassign"
+                          >
+                            <Users className="h-4 w-4 mr-1" />
+                            Derivar
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>Derivar Ticket</DialogTitle>
+                            <DialogDescription>
+                              Asigna este ticket a otro ejecutivo o gerente.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <Form {...reassignForm}>
+                            <form
+                              onSubmit={reassignForm.handleSubmit((data) => reassignMutation.mutate(data))}
+                              className="space-y-4"
+                            >
+                              <FormField
+                                control={reassignForm.control}
+                                name="assigneeId"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Nuevo Responsable</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value}>
+                                      <FormControl>
+                                        <SelectTrigger data-testid="select-reassign-user">
+                                          <SelectValue placeholder="Seleccionar usuario..." />
+                                        </SelectTrigger>
+                                      </FormControl>
+                                      <SelectContent>
+                                        {assignableUsers?.filter((u) => u.id !== userProfile?.userId).map((user) => (
+                                          <SelectItem key={user.id} value={user.id} data-testid={`option-reassign-${user.id}`}>
+                                            {user.firstName} {user.lastName} ({user.role === "gerente_general" ? "Gerente General" : user.role === "gerente_operaciones" ? "Gerente Operaciones" : "Ejecutivo"})
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <FormField
+                                control={reassignForm.control}
+                                name="reason"
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Motivo (opcional)</FormLabel>
+                                    <FormControl>
+                                      <Textarea
+                                        placeholder="Describe el motivo de la derivación..."
+                                        {...field}
+                                        data-testid="textarea-reassign-reason"
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                              <DialogFooter>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => setIsReassignDialogOpen(false)}
+                                >
+                                  Cancelar
+                                </Button>
+                                <Button
+                                  type="submit"
+                                  disabled={reassignMutation.isPending}
+                                  data-testid="button-confirm-reassign"
+                                >
+                                  Derivar
+                                </Button>
+                              </DialogFooter>
+                            </form>
+                          </Form>
+                        </DialogContent>
+                      </Dialog>
                     )}
                     {ticket.workStartedAt && !ticket.workCompletedAt && (
                       <Dialog open={isWorkCompletionDialogOpen} onOpenChange={setIsWorkCompletionDialogOpen}>

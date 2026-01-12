@@ -190,6 +190,29 @@ export async function registerRoutes(
     }
   });
 
+  // Get all assignable users (executives and managers) for reassignment
+  app.get("/api/users/assignable", isAuthenticated, async (req, res) => {
+    try {
+      const allProfiles = await db.select().from(userProfiles);
+      
+      const { DEV_USERS } = await import("./devAuth");
+      const usersWithNames = allProfiles.map((profile) => {
+        const devUser = DEV_USERS.find((u) => u.id === profile.userId);
+        return {
+          id: profile.userId,
+          firstName: devUser?.firstName || profile.userId.split("-")[0] || "Usuario",
+          lastName: devUser?.lastName || "",
+          role: profile.role,
+        };
+      });
+      
+      res.json(usersWithNames);
+    } catch (error) {
+      console.error("Error getting assignable users:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   // Get managers for escalation dialog
   app.get("/api/users/managers", isAuthenticated, async (req, res) => {
     try {
