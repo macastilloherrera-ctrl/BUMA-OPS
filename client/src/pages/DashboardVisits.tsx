@@ -626,7 +626,7 @@ export default function DashboardVisits() {
                         return (
                           <div
                             key={visit.id}
-                            onClick={() => navigate(`/visitas/${visit.id}`)}
+                            onClick={() => navigate(`/visitas/${visit.id}?from=dashboard`)}
                             className={`p-1.5 sm:p-2 rounded-md border-l-4 cursor-pointer hover-elevate ${statusColors.bg} ${statusColors.border} ${isCancelled ? "opacity-75" : ""}`}
                             data-testid={`calendar-visit-${visit.id}`}
                           >
@@ -634,7 +634,7 @@ export default function DashboardVisits() {
                               {visit.building?.name || "Edificio"}
                             </div>
                             <div className="text-xs text-muted-foreground">
-                              {format(new Date(visit.scheduledDate!), "HH:mm")}
+                              {format(new Date(visit.scheduledDate!), "HH:mm")} - {getExecutiveName(visit.executiveId)}
                             </div>
                             {isCancelled && (
                               <Badge 

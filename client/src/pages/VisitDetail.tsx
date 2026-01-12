@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useParams, useLocation } from "wouter";
+import { useParams, useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,7 +34,12 @@ interface VisitDetailData extends Visit {
 export default function VisitDetail() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
   const { toast } = useToast();
+
+  const params = new URLSearchParams(searchString);
+  const fromDashboard = params.get("from") === "dashboard";
+  const backUrl = fromDashboard ? "/dashboard/visitas" : "/visitas";
 
   const { data: visit, isLoading } = useQuery<VisitDetailData>({
     queryKey: ["/api/visits", id],
@@ -82,7 +87,7 @@ export default function VisitDetail() {
       <div className="sticky top-0 bg-background border-b border-border z-10 px-4 py-3">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" asChild>
-            <Link href="/visitas">
+            <Link href={backUrl}>
               <ArrowLeft className="h-5 w-5" />
             </Link>
           </Button>
