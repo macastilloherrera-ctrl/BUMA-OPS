@@ -41,6 +41,7 @@ Plataforma interna de operaciones para gestionar visitas a terreno, tickets oper
 - Crear tickets desde hallazgos
 - Sugerir equipos criticos
 - Capturar fotos en visitas
+- Derivar tickets a otros ejecutivos/gerentes con historial completo
 
 ### Gerentes (Desktop-First)
 - Dashboard semaforo de tickets (rojo/amarillo/verde)

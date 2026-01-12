@@ -1643,37 +1643,55 @@ Equipo BUMA Property Management
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
                     <Users className="h-4 w-4" />
-                    Historial de Asignaciones ({assignmentHistory.length})
+                    Historial de Derivaciones ({assignmentHistory.length})
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    {assignmentHistory.map((entry, index) => (
-                      <div key={entry.id} className={`flex items-start gap-3 ${index > 0 ? 'border-t pt-3' : ''}`}>
-                        <div className={`w-2 h-2 rounded-full mt-2 ${entry.isEscalation ? 'bg-destructive' : 'bg-primary'}`} />
-                        <div className="flex-1 space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-medium text-sm">{entry.assignedToName}</span>
-                            {entry.isEscalation && (
-                              <Badge variant="destructive" className="text-xs">Escalado</Badge>
+                  <div className="space-y-4">
+                    {assignmentHistory.slice().reverse().map((entry, index) => (
+                      <div key={entry.id} className={`p-3 rounded-lg border ${entry.isEscalation ? 'border-destructive/30 bg-destructive/5' : 'border-border bg-muted/30'}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            {entry.isEscalation ? (
+                              <Badge variant="destructive" className="text-xs">Escalamiento</Badge>
+                            ) : index === assignmentHistory.length - 1 ? (
+                              <Badge variant="outline" className="text-xs">Asignación Inicial</Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-xs">Derivación</Badge>
                             )}
-                            <span className="text-xs text-muted-foreground">
-                              {format(new Date(entry.createdAt), "dd MMM yyyy HH:mm", { locale: es })}
-                            </span>
                           </div>
-                          {entry.previousAssigneeName && (
-                            <div className="text-xs text-muted-foreground">
-                              Anterior: {entry.previousAssigneeName}
+                          <span className="text-xs text-muted-foreground">
+                            {format(new Date(entry.createdAt), "dd MMM yyyy - HH:mm", { locale: es })}
+                          </span>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          {entry.previousAssigneeName ? (
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="text-muted-foreground">De:</span>
+                              <span className="font-medium">{entry.previousAssigneeName}</span>
+                              <span className="text-muted-foreground mx-1">→</span>
+                              <span className="text-muted-foreground">A:</span>
+                              <span className="font-medium text-primary">{entry.assignedToName}</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="text-muted-foreground">Asignado a:</span>
+                              <span className="font-medium text-primary">{entry.assignedToName}</span>
                             </div>
                           )}
+                          
+                          <div className="text-xs text-muted-foreground flex items-center gap-1">
+                            <UserCheck className="h-3 w-3" />
+                            Realizado por: {entry.assignedByName}
+                          </div>
+                          
                           {entry.reason && (
-                            <div className="text-sm text-muted-foreground">
-                              {entry.reason}
+                            <div className="mt-2 p-2 bg-background rounded border text-sm">
+                              <span className="text-muted-foreground font-medium">Motivo: </span>
+                              <span>{entry.reason}</span>
                             </div>
                           )}
-                          <div className="text-xs text-muted-foreground">
-                            Por: {entry.assignedByName}
-                          </div>
                         </div>
                       </div>
                     ))}
