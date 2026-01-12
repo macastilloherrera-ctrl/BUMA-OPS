@@ -455,7 +455,7 @@ Equipo BUMA Property Management
         payload.invoiceNumber = invoiceData.invoiceNumber;
       }
       if (invoiceData?.invoiceAmount && invoiceData.invoiceAmount > 0) {
-        payload.invoiceAmount = invoiceData.invoiceAmount;
+        payload.invoiceAmount = String(invoiceData.invoiceAmount);
       }
       if (invoiceData?.invoiceDocumentKey) {
         payload.invoiceDocumentKey = invoiceData.invoiceDocumentKey;
