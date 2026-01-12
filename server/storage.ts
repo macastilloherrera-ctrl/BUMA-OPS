@@ -147,7 +147,7 @@ export interface IStorage {
   updateIncident(id: string, data: Partial<InsertIncident>): Promise<Incident | undefined>;
 
   // Tickets
-  getTickets(filters?: { buildingId?: string; executiveId?: string; status?: string }): Promise<Ticket[]>;
+  getTickets(filters?: { buildingId?: string; executiveId?: string; status?: string; visitId?: string }): Promise<Ticket[]>;
   getTicket(id: string): Promise<Ticket | undefined>;
   createTicket(ticket: InsertTicket): Promise<Ticket>;
   updateTicket(id: string, data: Partial<InsertTicket>): Promise<Ticket | undefined>;
@@ -513,7 +513,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Tickets
-  async getTickets(filters?: { buildingId?: string; executiveId?: string; status?: string }): Promise<Ticket[]> {
+  async getTickets(filters?: { buildingId?: string; executiveId?: string; status?: string; visitId?: string }): Promise<Ticket[]> {
     const conditions: any[] = [];
     
     if (filters?.buildingId) {
@@ -529,6 +529,9 @@ export class DatabaseStorage implements IStorage {
     }
     if (filters?.status) {
       conditions.push(eq(tickets.status, filters.status as any));
+    }
+    if (filters?.visitId) {
+      conditions.push(eq(tickets.visitId, filters.visitId));
     }
     
     if (conditions.length > 0) {

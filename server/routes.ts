@@ -1147,10 +1147,11 @@ export async function registerRoutes(
       const profile = await storage.getUserProfile(req.user!.id);
       const isManager = isManagerRole(profile);
       
-      const filters: { buildingId?: string; status?: string } = {};
+      const filters: { buildingId?: string; status?: string; visitId?: string } = {};
       
       if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
       if (req.query.status) filters.status = req.query.status as string;
+      if (req.query.visitId) filters.visitId = req.query.visitId as string;
       
       let tickets = await storage.getTickets(filters);
       

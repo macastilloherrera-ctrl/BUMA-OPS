@@ -38,7 +38,7 @@ export default function VisitReport() {
   });
 
   const { data: tickets } = useQuery<TicketType[]>({
-    queryKey: ["/api/tickets", { visitId: id }],
+    queryKey: [`/api/tickets?visitId=${id}`],
     enabled: !!id,
   });
 
@@ -47,7 +47,7 @@ export default function VisitReport() {
     enabled: !!id,
   });
 
-  const visitTickets = tickets?.filter((t) => t.visitId === id) || [];
+  const visitTickets = tickets || [];
   const visitIncident = incidents?.find((i) => i.visitId === id);
 
   const formatDate = (date: string | Date | null) => {
