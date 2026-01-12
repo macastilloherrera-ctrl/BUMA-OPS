@@ -714,6 +714,69 @@ Equipo BUMA Property Management
               </CardContent>
             </Card>
 
+            {/* Invoice Information Section */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <FileText className="h-4 w-4" />
+                  Facturación
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {ticket.invoiceNumber || ticket.invoiceAmount ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                        Con Factura
+                      </Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      {ticket.invoiceNumber && (
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">N° Factura</p>
+                          <p className="text-sm font-medium">{ticket.invoiceNumber}</p>
+                        </div>
+                      )}
+                      {canSeeCosts && ticket.invoiceAmount && (
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Monto</p>
+                          <p className="text-sm font-medium">{formatCurrency(ticket.invoiceAmount)}</p>
+                        </div>
+                      )}
+                      {ticket.workCompletedAt && (
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Fecha de Carga</p>
+                          <p className="text-sm font-medium">
+                            {format(new Date(ticket.workCompletedAt), "dd MMM yyyy HH:mm", { locale: es })}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    {ticket.invoiceDocumentKey && (
+                      <div className="pt-2 border-t">
+                        <a
+                          href={`/objects/${ticket.invoiceDocumentKey}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+                          data-testid="link-download-invoice"
+                        >
+                          <Download className="h-4 w-4" />
+                          Descargar Factura
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-muted-foreground">
+                      Sin Factura
+                    </Badge>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             {ticket.status !== "resuelto" && (
               <Card>
                 <CardHeader className="pb-3">
