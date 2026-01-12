@@ -1196,29 +1196,23 @@ export async function registerRoutes(
       const buildings = await storage.getBuildings();
       const buildingsMap = new Map(buildings.map((b) => [b.id, b]));
       
-      // Get all executives from HR table to map their names
-      // executives.userProfileId links to userProfiles.id, and we need to match against assignedExecutiveId which is userProfiles.userId
-      const executivesList = await storage.getExecutivesList();
-      const userProfilesList = await storage.getExecutives(); // Returns UserProfile[] (role=ejecutivo_operaciones)
+      // Get user names from DEV_USERS (includes executives AND managers)
+      const { DEV_USERS } = await import("./devAuth");
       
-      // Create a map from userProfile.id to userId
-      const profileIdToUserId = new Map(userProfilesList.map(p => [p.id, p.userId]));
-      
-      // Create a map from userId to executive name
-      const executivesMap = new Map<string, string>();
-      for (const exec of executivesList) {
-        if (exec.userProfileId) {
-          const userId = profileIdToUserId.get(exec.userProfileId);
-          if (userId) {
-            executivesMap.set(userId, `${exec.firstName} ${exec.lastName}`.trim());
-          }
+      const getUserDisplayName = (userId: string | null | undefined): string | null => {
+        if (!userId) return null;
+        const devUser = DEV_USERS.find((u) => u.id === userId);
+        if (devUser) {
+          return `${devUser.firstName} ${devUser.lastName}`.trim();
         }
-      }
+        // Fallback: try to get from executives HR table
+        return userId.split("-")[0] || null;
+      };
       
       const ticketsWithBuilding = tickets.map((t) => ({
         ...t,
         building: buildingsMap.get(t.buildingId),
-        executiveName: t.assignedExecutiveId ? executivesMap.get(t.assignedExecutiveId) || null : null,
+        executiveName: getUserDisplayName(t.assignedExecutiveId),
         cost: isManager ? t.cost : null,
       }));
       
