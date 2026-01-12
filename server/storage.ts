@@ -862,16 +862,48 @@ export class DatabaseStorage implements IStorage {
   }
 
   async replaceExecutiveAssignments(executiveId: string, buildingIds: string[], assignedBy?: string): Promise<ExecutiveAssignment[]> {
+    // Get current assignments to know which buildings to clear
+    const currentAssignments = await db.select().from(executiveAssignments).where(eq(executiveAssignments.executiveId, executiveId));
+    const currentBuildingIds = currentAssignments.map(a => a.buildingId);
+    
+    // Delete old assignments
     await db.delete(executiveAssignments).where(eq(executiveAssignments.executiveId, executiveId));
+    
+    // Get the executive's userId for building assignment
+    const [executive] = await db.select().from(executives).where(eq(executives.id, executiveId));
+    const userId = executive?.userProfileId;
+    
+    // Clear assignedExecutiveId from buildings that are no longer assigned
+    for (const oldBuildingId of currentBuildingIds) {
+      if (!buildingIds.includes(oldBuildingId)) {
+        const [building] = await db.select().from(buildings).where(eq(buildings.id, oldBuildingId));
+        if (building && building.assignedExecutiveId === userId) {
+          await db.update(buildings)
+            .set({ assignedExecutiveId: null, updatedAt: new Date() })
+            .where(eq(buildings.id, oldBuildingId));
+        }
+      }
+    }
     
     if (buildingIds.length === 0) return [];
     
+    // Create new assignments and update building's assignedExecutiveId
     const assignments = buildingIds.map((buildingId, idx) => ({ 
       executiveId, 
       buildingId, 
       isPrimary: idx === 0,
       assignedBy 
     }));
+    
+    // Update each building's assignedExecutiveId to this executive's userId
+    if (userId) {
+      for (const buildingId of buildingIds) {
+        await db.update(buildings)
+          .set({ assignedExecutiveId: userId, updatedAt: new Date() })
+          .where(eq(buildings.id, buildingId));
+      }
+    }
+    
     return db.insert(executiveAssignments).values(assignments).returning();
   }
 

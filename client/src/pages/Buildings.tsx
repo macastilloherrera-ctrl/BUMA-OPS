@@ -64,7 +64,6 @@ const buildingSchema = z.object({
   contactPhone: z.string().optional(),
   communityEmail: z.string().email("Email invalido").optional().or(z.literal("")),
   status: z.enum(["activo", "inactivo", "en_revision"]),
-  assignedExecutiveId: z.string().optional(),
   departmentCount: z.coerce.number().min(0).default(0),
   elevatorCount: z.coerce.number().min(0).default(0),
   gateCount: z.coerce.number().min(0).default(0),
@@ -105,7 +104,6 @@ export default function Buildings() {
       contactPhone: "",
       communityEmail: "",
       status: "activo",
-      assignedExecutiveId: "",
       departmentCount: 0,
       elevatorCount: 0,
       gateCount: 0,
@@ -226,7 +224,6 @@ export default function Buildings() {
       contactPhone: building.contactPhone || "",
       communityEmail: building.communityEmail || "",
       status: building.status,
-      assignedExecutiveId: building.assignedExecutiveId || "",
       departmentCount: building.departmentCount || 0,
       elevatorCount: building.elevatorCount || 0,
       gateCount: building.gateCount || 0,
@@ -416,31 +413,6 @@ export default function Buildings() {
                         )}
                       />
                     </div>
-
-                    <FormField
-                      control={form.control}
-                      name="assignedExecutiveId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Ejecutivo Asignado</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger data-testid="select-executive">
-                                <SelectValue placeholder="Seleccionar ejecutivo" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {executives?.map((exec) => (
-                                <SelectItem key={exec.id} value={exec.userId}>
-                                  {exec.userId}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
 
                     <Accordion type="multiple" className="w-full" defaultValue={["counts"]}>
                       <AccordionItem value="counts">
