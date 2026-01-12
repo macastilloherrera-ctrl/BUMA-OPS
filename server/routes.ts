@@ -1293,6 +1293,24 @@ export async function registerRoutes(
       
       const ticket = await storage.createTicket(data);
       
+      // If requiresExecutiveVisit is true, automatically create a supervision visit
+      if (ticket.requiresExecutiveVisit && ticket.assignedExecutiveId && ticket.startDate) {
+        try {
+          await storage.createVisit({
+            buildingId: ticket.buildingId,
+            executiveId: ticket.assignedExecutiveId,
+            type: "urgente",
+            status: "programada",
+            scheduledDate: ticket.startDate,
+            notes: `Visita de supervisión para ticket: ${ticket.description?.substring(0, 100) || "Sin descripción"}`,
+            checklistType: "emergencia",
+          });
+        } catch (visitError) {
+          console.error("Error creating supervision visit:", visitError);
+          // Don't fail ticket creation if visit creation fails
+        }
+      }
+      
       // Record initial assignment in history
       if (ticket.assignedExecutiveId) {
         const assigneeProfile = await storage.getUserProfile(ticket.assignedExecutiveId);
