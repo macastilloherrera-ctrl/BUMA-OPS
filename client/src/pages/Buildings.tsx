@@ -837,10 +837,15 @@ export default function Buildings() {
                   ) : null}
                   <div className="flex gap-2 pt-2">
                     <Button
+                      type="button"
                       variant="outline"
                       size="sm"
                       className="flex-1"
-                      onClick={() => handleEdit(building)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleEdit(building);
+                      }}
                       data-testid={`button-edit-${building.id}`}
                     >
                       <Pencil className="h-3.5 w-3.5 mr-1" />
