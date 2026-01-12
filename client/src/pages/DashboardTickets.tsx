@@ -405,10 +405,10 @@ export default function DashboardTickets() {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => escalateTicketMutation.mutate(ticket)}
-                              disabled={ticket.priority === "rojo"}
+                              disabled={ticket.isEscalated === true}
                             >
                               <ArrowUpCircle className="h-4 w-4 mr-2" />
-                              {ticket.priority === "rojo" ? "Ya Escalado" : "Escalar"}
+                              {ticket.isEscalated ? "Ya Escalado" : "Escalar"}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => setLocation(`/visitas/programar?buildingId=${ticket.buildingId}&type=urgente&ticketId=${ticket.id}`)}
@@ -419,7 +419,7 @@ export default function DashboardTickets() {
                             <DropdownMenuItem
                               onClick={() => {
                                 setSelectedTicket(ticket);
-                                setNewDueDate(ticket.dueDate ? format(new Date(ticket.dueDate), "yyyy-MM-dd") : "");
+                                setNewDueDate(ticket.committedCompletionAt ? format(new Date(ticket.committedCompletionAt), "yyyy-MM-dd") : "");
                                 setDateDialogOpen(true);
                               }}
                             >
@@ -515,7 +515,7 @@ export default function DashboardTickets() {
                   updateTicketMutation.mutate({
                     id: selectedTicket.id,
                     data: {
-                      dueDate: new Date(newDueDate),
+                      committedCompletionAt: new Date(newDueDate),
                       status: "reprogramado",
                     },
                   });

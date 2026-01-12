@@ -1406,10 +1406,13 @@ export async function registerRoutes(
       
       const previousAssigneeId = ticket.assignedExecutiveId;
       
-      // Update ticket: set priority to red and assign to gerente operaciones
+      // Update ticket: set priority to red, mark as escalated, and assign to gerente operaciones
       const updatedTicket = await storage.updateTicket(req.params.id, {
         priority: "rojo",
         assignedExecutiveId: gerenteOps.userId,
+        isEscalated: true,
+        escalatedAt: new Date(),
+        escalatedBy: req.user!.id,
       });
       
       // Record escalation in assignment history
