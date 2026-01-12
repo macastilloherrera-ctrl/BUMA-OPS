@@ -287,6 +287,17 @@ export default function VisitReport() {
           </Card>
         )}
 
+        {visit.completionObservations && (
+          <Card data-testid="card-completion-observations">
+            <CardHeader>
+              <CardTitle>Observaciones Finales</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="whitespace-pre-wrap">{visit.completionObservations}</p>
+            </CardContent>
+          </Card>
+        )}
+
         {visit.notes && (
           <Card data-testid="card-notes">
             <CardHeader>

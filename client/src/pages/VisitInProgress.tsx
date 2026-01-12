@@ -48,6 +48,7 @@ export default function VisitInProgress() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [notes, setNotes] = useState("");
+  const [completionObservations, setCompletionObservations] = useState("");
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
   const [showTicketForm, setShowTicketForm] = useState(false);
   const [createTicket, setCreateTicket] = useState(false);
@@ -119,7 +120,7 @@ export default function VisitInProgress() {
 
   const completeVisitMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("PATCH", `/api/visits/${id}/complete`, { notes });
+      return apiRequest("PATCH", `/api/visits/${id}/complete`, { notes, completionObservations });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/visits"] });
@@ -650,6 +651,24 @@ export default function VisitInProgress() {
               onChange={(e) => setNotes(e.target.value)}
               className="min-h-24"
               data-testid="input-visit-notes"
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Observaciones Finales</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Ingresa tus observaciones para el cierre de la visita (se incluiran en el informe)
+            </p>
+          </CardHeader>
+          <CardContent>
+            <Textarea
+              placeholder="Resumen del trabajo realizado, pendientes, recomendaciones..."
+              value={completionObservations}
+              onChange={(e) => setCompletionObservations(e.target.value)}
+              className="min-h-24"
+              data-testid="input-completion-observations"
             />
           </CardContent>
         </Card>

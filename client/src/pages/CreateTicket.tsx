@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowLeft, Ticket } from "lucide-react";
 import type { Building } from "@shared/schema";
 import { Link } from "wouter";
@@ -36,6 +37,7 @@ const createTicketSchema = z.object({
   responsibleType: z.enum(["ejecutivo", "proveedor", "conserjeria", "comite"]),
   responsibleName: z.string().optional(),
   dueDate: z.string().min(1, "Selecciona fecha de compromiso"),
+  requiresInvoice: z.boolean().default(false),
 });
 
 type CreateTicketForm = z.infer<typeof createTicketSchema>;
@@ -67,6 +69,7 @@ export default function CreateTicket() {
       responsibleType: "ejecutivo",
       responsibleName: "",
       dueDate: "",
+      requiresInvoice: false,
     },
   });
 
@@ -273,6 +276,28 @@ export default function CreateTicket() {
                         />
                       </FormControl>
                       <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="requiresInvoice"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          data-testid="checkbox-requires-invoice"
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>Requiere Factura</FormLabel>
+                        <p className="text-sm text-muted-foreground">
+                          Marcar si este trabajo requerira factura al completarse
+                        </p>
+                      </div>
                     </FormItem>
                   )}
                 />

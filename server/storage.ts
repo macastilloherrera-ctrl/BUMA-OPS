@@ -19,6 +19,7 @@ import {
   ticketPhotos,
   ticketWorkCycles,
   ticketCommunications,
+  ticketAssignmentHistory,
   attachments,
   executives,
   executiveAssignments,
@@ -73,6 +74,8 @@ import {
   type InsertExecutiveDocument,
   type Notification,
   type InsertNotification,
+  type TicketAssignmentHistory,
+  type InsertTicketAssignmentHistory,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, gte, lte, or, sql } from "drizzle-orm";
@@ -126,6 +129,7 @@ export interface IStorage {
   // Visits
   getVisits(executiveId?: string): Promise<Visit[]>;
   getVisit(id: string): Promise<Visit | undefined>;
+  getVisitsByGroupId(groupId: string): Promise<Visit[]>;
   createVisit(visit: InsertVisit): Promise<Visit>;
   updateVisit(id: string, data: Partial<InsertVisit>): Promise<Visit | undefined>;
   updateVisitNotes(id: string, notes: string): Promise<Visit | undefined>;
@@ -229,6 +233,10 @@ export interface IStorage {
   createNotification(notification: InsertNotification): Promise<Notification>;
   markNotificationAsRead(id: string): Promise<Notification | undefined>;
   markAllNotificationsAsRead(userId: string): Promise<void>;
+
+  // Ticket Assignment History
+  getTicketAssignmentHistory(ticketId: string): Promise<TicketAssignmentHistory[]>;
+  createTicketAssignmentHistory(history: InsertTicketAssignmentHistory): Promise<TicketAssignmentHistory>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -422,6 +430,12 @@ export class DatabaseStorage implements IStorage {
   async getVisit(id: string): Promise<Visit | undefined> {
     const [visit] = await db.select().from(visits).where(eq(visits.id, id));
     return visit || undefined;
+  }
+
+  async getVisitsByGroupId(groupId: string): Promise<Visit[]> {
+    return db.select().from(visits)
+      .where(or(eq(visits.visitGroupId, groupId), eq(visits.id, groupId)))
+      .orderBy(desc(visits.scheduledDate));
   }
 
   async createVisit(visit: InsertVisit): Promise<Visit> {
@@ -910,6 +924,19 @@ export class DatabaseStorage implements IStorage {
     await db.update(notifications)
       .set({ isRead: true })
       .where(eq(notifications.userId, userId));
+  }
+
+  // Ticket Assignment History
+  async getTicketAssignmentHistory(ticketId: string): Promise<TicketAssignmentHistory[]> {
+    return db.select()
+      .from(ticketAssignmentHistory)
+      .where(eq(ticketAssignmentHistory.ticketId, ticketId))
+      .orderBy(desc(ticketAssignmentHistory.createdAt));
+  }
+
+  async createTicketAssignmentHistory(history: InsertTicketAssignmentHistory): Promise<TicketAssignmentHistory> {
+    const [created] = await db.insert(ticketAssignmentHistory).values(history).returning();
+    return created;
   }
 }
 

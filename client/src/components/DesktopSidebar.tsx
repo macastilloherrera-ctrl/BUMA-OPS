@@ -21,6 +21,7 @@ import {
   Users,
   LogOut,
   HardHat,
+  ClipboardList,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -46,7 +47,8 @@ const managerNavItems = [
   {
     group: "Operaciones",
     items: [
-      { path: "/tickets", label: "Tickets", icon: Ticket },
+      { path: "/tickets", label: "Todos los Tickets", icon: Ticket },
+      { path: "/tickets?mine=true", label: "Mis Tickets", icon: ClipboardList },
       { path: "/visitas", label: "Visitas", icon: Calendar },
     ]
   },
@@ -92,7 +94,8 @@ const generalManagerNavItems = [
   {
     group: "Operaciones",
     items: [
-      { path: "/tickets", label: "Tickets", icon: Ticket },
+      { path: "/tickets", label: "Todos los Tickets", icon: Ticket },
+      { path: "/tickets?mine=true", label: "Mis Tickets", icon: ClipboardList },
       { path: "/visitas", label: "Visitas", icon: Calendar },
     ]
   },

@@ -260,6 +260,9 @@ export const visits = pgTable("visits", {
   notes: text("notes"),
   urgentReason: text("urgent_reason"),
   checklistType: checklistTypeEnum("checklist_type"),
+  completionObservations: text("completion_observations"),
+  visitGroupId: varchar("visit_group_id"),
+  originalScheduledDate: timestamp("original_scheduled_date"),
   cancellationType: visitCancellationTypeEnum("cancellation_type"),
   cancellationReason: text("cancellation_reason"),
   cancelledAt: timestamp("cancelled_at"),
@@ -324,6 +327,7 @@ export const tickets = pgTable("tickets", {
   assignedExecutiveId: varchar("assigned_executive_id"),
   requiresMaintainerVisit: boolean("requires_maintainer_visit").default(false),
   requiresExecutiveVisit: boolean("requires_executive_visit").default(false),
+  requiresInvoice: boolean("requires_invoice").default(false),
   scheduledDate: timestamp("scheduled_date"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
@@ -395,6 +399,26 @@ export const ticketWorkCycles = pgTable("ticket_work_cycles", {
   restartedAt: timestamp("restarted_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// Ticket Assignment History table (for escalation tracking)
+export const ticketAssignmentHistory = pgTable("ticket_assignment_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ticketId: varchar("ticket_id").notNull(),
+  assignedToId: varchar("assigned_to_id").notNull(),
+  assignedById: varchar("assigned_by_id").notNull(),
+  assignedToRole: userRoleEnum("assigned_to_role").notNull(),
+  previousAssigneeId: varchar("previous_assignee_id"),
+  reason: text("reason"),
+  isEscalation: boolean("is_escalation").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertTicketAssignmentHistorySchema = createInsertSchema(ticketAssignmentHistory).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertTicketAssignmentHistory = z.infer<typeof insertTicketAssignmentHistorySchema>;
+export type TicketAssignmentHistory = typeof ticketAssignmentHistory.$inferSelect;
 
 // Ticket Communications table (Avisos internos)
 export const ticketCommunications = pgTable("ticket_communications", {

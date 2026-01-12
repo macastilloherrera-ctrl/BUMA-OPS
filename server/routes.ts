@@ -836,6 +836,7 @@ export async function registerRoutes(
 
   const completeVisitSchema = z.object({
     notes: z.string().optional().transform((v) => v?.trim() || ""),
+    completionObservations: z.string().optional().transform((v) => v?.trim() || null),
   });
 
   app.patch("/api/visits/:id/complete", isAuthenticated, async (req, res) => {
@@ -844,7 +845,7 @@ export async function registerRoutes(
       if (!parseResult.success) {
         return res.status(400).json({ error: "Datos inválidos" });
       }
-      const { notes } = parseResult.data;
+      const { notes, completionObservations } = parseResult.data;
 
       const existingVisit = await storage.getVisit(req.params.id);
       if (!existingVisit) {
@@ -887,6 +888,7 @@ export async function registerRoutes(
         status: "realizada",
         completedAt: new Date(),
         notes,
+        completionObservations,
       });
       res.json(visit);
     } catch (error) {
@@ -927,16 +929,115 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No se pueden cancelar visitas ya realizadas" });
       }
 
-      const visit = await storage.updateVisit(req.params.id, {
+      const updateData: any = {
         status: "no_realizada",
         cancellationType,
         cancellationReason,
         cancelledAt: new Date(),
         cancelledBy: req.user!.id,
-      });
+      };
+
+      if (cancellationType === "reagendada" && !existingVisit.visitGroupId) {
+        updateData.visitGroupId = existingVisit.id;
+        if (!existingVisit.originalScheduledDate) {
+          updateData.originalScheduledDate = existingVisit.scheduledDate;
+        }
+      }
+
+      const visit = await storage.updateVisit(req.params.id, updateData);
       res.json(visit);
     } catch (error) {
       console.error("Error cancelling visit:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  const rescheduleVisitSchema = z.object({
+    newScheduledDate: z.string(),
+    cancellationReason: z.string().optional().transform((v) => v?.trim() || null),
+  });
+
+  app.post("/api/visits/:id/reschedule", isAuthenticated, async (req, res) => {
+    try {
+      const parseResult = rescheduleVisitSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: "Datos invalidos" });
+      }
+      const { newScheduledDate, cancellationReason } = parseResult.data;
+
+      const existingVisit = await storage.getVisit(req.params.id);
+      if (!existingVisit) {
+        return res.status(404).json({ error: "Visita no encontrada" });
+      }
+
+      const profile = await storage.getUserProfile(req.user!.id);
+      const hasAccess = await canAccessEntity(req.user!.id, profile, existingVisit);
+      if (!hasAccess) {
+        return res.status(403).json({ error: "No tienes permiso para reagendar esta visita" });
+      }
+
+      if (existingVisit.status === "realizada") {
+        return res.status(400).json({ error: "No se pueden reagendar visitas ya realizadas" });
+      }
+
+      const visitGroupId = existingVisit.visitGroupId || existingVisit.id;
+      const originalScheduledDate = existingVisit.originalScheduledDate || existingVisit.scheduledDate;
+
+      await storage.updateVisit(req.params.id, {
+        status: "no_realizada",
+        cancellationType: "reagendada",
+        cancellationReason,
+        cancelledAt: new Date(),
+        cancelledBy: req.user!.id,
+        visitGroupId,
+        originalScheduledDate,
+      });
+
+      const newVisitData = {
+        buildingId: existingVisit.buildingId,
+        executiveId: existingVisit.executiveId,
+        type: existingVisit.type,
+        status: "programada" as const,
+        scheduledDate: new Date(newScheduledDate),
+        urgentReason: existingVisit.urgentReason,
+        checklistType: existingVisit.checklistType,
+        visitGroupId,
+        originalScheduledDate,
+      };
+
+      const newVisit = await storage.createVisit(newVisitData);
+
+      const oldChecklistItems = await storage.getVisitChecklistItems(req.params.id);
+      for (const item of oldChecklistItems) {
+        await storage.createVisitChecklistItem({
+          visitId: newVisit.id,
+          itemName: item.itemName,
+          isCompleted: false,
+          order: item.order,
+        });
+      }
+
+      res.status(201).json(newVisit);
+    } catch (error) {
+      console.error("Error rescheduling visit:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/visits/group/:groupId", isAuthenticated, async (req, res) => {
+    try {
+      const visits = await storage.getVisitsByGroupId(req.params.groupId);
+      const buildings = await storage.getBuildings();
+      const buildingsMap = new Map(buildings.map((b) => [b.id, b]));
+      
+      const visitsWithBuilding = visits.map((v) => ({
+        ...v,
+        building: buildingsMap.get(v.buildingId),
+      }));
+      
+      res.json(visitsWithBuilding);
+    } catch (error) {
+      console.error("Error getting visit group:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
@@ -1122,11 +1223,26 @@ export async function registerRoutes(
       // Sanitize cost fields for non-managers
       const sanitizedBody = sanitizeCostFields(req.body, isManager);
       
+      // Determine assigned executive
+      // If manager creates ticket and no assignee specified, assign to building's executive
+      // If executive creates ticket, they are the assignee
+      let assignedExecutiveId = req.body.assignedExecutiveId;
+      if (!assignedExecutiveId) {
+        if (isManager) {
+          // Manager creating ticket - assign to building's executive
+          const building = await storage.getBuilding(req.body.buildingId);
+          assignedExecutiveId = building?.assignedExecutiveId || req.user!.id;
+        } else {
+          // Executive creating ticket - they are the assignee
+          assignedExecutiveId = req.user!.id;
+        }
+      }
+      
       // Convert date strings to Date objects
       const processedBody = {
         ...sanitizedBody,
         createdBy: req.user!.id,
-        assignedExecutiveId: req.body.assignedExecutiveId || req.user!.id,
+        assignedExecutiveId,
       };
       if (processedBody.scheduledDate && typeof processedBody.scheduledDate === 'string') {
         processedBody.scheduledDate = new Date(processedBody.scheduledDate);
@@ -1146,6 +1262,20 @@ export async function registerRoutes(
       }
       
       const ticket = await storage.createTicket(data);
+      
+      // Record initial assignment in history
+      if (ticket.assignedExecutiveId) {
+        const assigneeProfile = await storage.getUserProfile(ticket.assignedExecutiveId);
+        await storage.createTicketAssignmentHistory({
+          ticketId: ticket.id,
+          assignedToId: ticket.assignedExecutiveId,
+          assignedById: req.user!.id,
+          assignedToRole: assigneeProfile?.role || "ejecutivo_operaciones",
+          previousAssigneeId: null,
+          reason: isManager ? "Asignacion automatica al ejecutivo del edificio" : "Asignacion automatica al creador",
+          isEscalation: false,
+        });
+      }
       
       // Create notification for assigned executive (if different from creator)
       if (ticket.assignedExecutiveId && ticket.assignedExecutiveId !== req.user!.id) {
@@ -1264,6 +1394,8 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Ticket no encontrado" });
       }
       
+      const { reason } = req.body;
+      
       // Find the Gerente de Operaciones
       const allProfiles = await db.select().from(userProfiles).where(eq(userProfiles.role, "gerente_operaciones"));
       const gerenteOps = allProfiles[0];
@@ -1272,10 +1404,23 @@ export async function registerRoutes(
         return res.status(404).json({ error: "No se encontro Gerente de Operaciones en el sistema" });
       }
       
+      const previousAssigneeId = ticket.assignedExecutiveId;
+      
       // Update ticket: set priority to red and assign to gerente operaciones
       const updatedTicket = await storage.updateTicket(req.params.id, {
         priority: "rojo",
         assignedExecutiveId: gerenteOps.userId,
+      });
+      
+      // Record escalation in assignment history
+      await storage.createTicketAssignmentHistory({
+        ticketId: ticket.id,
+        assignedToId: gerenteOps.userId,
+        assignedById: req.user!.id,
+        assignedToRole: "gerente_operaciones",
+        previousAssigneeId,
+        reason: reason || "Escalado a Gerente de Operaciones",
+        isEscalation: true,
       });
       
       // Create notification for gerente operaciones
@@ -1300,6 +1445,96 @@ export async function registerRoutes(
       });
     } catch (error) {
       console.error("Error escalating ticket:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Reassign ticket to another executive (with history tracking)
+  app.post("/api/tickets/:id/reassign", isAuthenticated, async (req, res) => {
+    try {
+      const ticket = await storage.getTicket(req.params.id);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket no encontrado" });
+      }
+      
+      const { assigneeId, reason } = req.body;
+      
+      if (!assigneeId) {
+        return res.status(400).json({ error: "Debe especificar un responsable" });
+      }
+      
+      const assigneeProfile = await storage.getUserProfile(assigneeId);
+      if (!assigneeProfile) {
+        return res.status(404).json({ error: "Usuario no encontrado" });
+      }
+      
+      const previousAssigneeId = ticket.assignedExecutiveId;
+      
+      // Update ticket assignment
+      const updatedTicket = await storage.updateTicket(req.params.id, {
+        assignedExecutiveId: assigneeId,
+      });
+      
+      // Record in assignment history
+      await storage.createTicketAssignmentHistory({
+        ticketId: ticket.id,
+        assignedToId: assigneeId,
+        assignedById: req.user!.id,
+        assignedToRole: assigneeProfile.role,
+        previousAssigneeId,
+        reason: reason || "Reasignacion manual",
+        isEscalation: false,
+      });
+      
+      // Create notification for new assignee
+      if (assigneeId !== req.user!.id) {
+        const building = await storage.getBuilding(ticket.buildingId);
+        await storage.createNotification({
+          userId: assigneeId,
+          type: "ticket_derivado",
+          title: "Ticket reasignado",
+          message: `Te han reasignado el ticket "${ticket.title}" en ${building?.name || "edificio"}`,
+          ticketId: ticket.id,
+          isRead: false,
+        });
+      }
+      
+      res.json(updatedTicket);
+    } catch (error) {
+      console.error("Error reassigning ticket:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Get ticket assignment history
+  app.get("/api/tickets/:id/assignment-history", isAuthenticated, async (req, res) => {
+    try {
+      const ticket = await storage.getTicket(req.params.id);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket no encontrado" });
+      }
+      
+      const history = await storage.getTicketAssignmentHistory(req.params.id);
+      
+      // Enrich with user names
+      const enrichedHistory = await Promise.all(history.map(async (entry) => {
+        const assignedTo = await storage.getUserProfile(entry.assignedToId);
+        const assignedBy = await storage.getUserProfile(entry.assignedById);
+        const previousAssignee = entry.previousAssigneeId 
+          ? await storage.getUserProfile(entry.previousAssigneeId)
+          : null;
+        
+        return {
+          ...entry,
+          assignedToName: assignedTo?.displayName || "Usuario desconocido",
+          assignedByName: assignedBy?.displayName || "Usuario desconocido",
+          previousAssigneeName: previousAssignee?.displayName || null,
+        };
+      }));
+      
+      res.json(enrichedHistory);
+    } catch (error) {
+      console.error("Error fetching assignment history:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });

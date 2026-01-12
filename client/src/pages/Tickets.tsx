@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge, PriorityBadge } from "@/components/StatusBadge";
-import { Plus, Ticket, Building2, Calendar, ChevronRight } from "lucide-react";
-import type { Ticket as TicketType, Building } from "@shared/schema";
+import { Plus, Ticket, Building2, Calendar, ChevronRight, Filter } from "lucide-react";
+import type { Ticket as TicketType, Building, UserProfile } from "@shared/schema";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -18,6 +18,15 @@ interface TicketWithBuilding extends TicketType {
 
 export default function Tickets() {
   const [activeTab, setActiveTab] = useState("vencidos");
+  const searchString = useSearch();
+  const params = new URLSearchParams(searchString);
+  const showMine = params.get("mine") === "true";
+
+  const { data: userProfile } = useQuery<UserProfile>({
+    queryKey: ["/api/user/profile"],
+  });
+
+  const isManager = userProfile?.role === "gerente_general" || userProfile?.role === "gerente_operaciones";
 
   const { data: tickets, isLoading } = useQuery<TicketWithBuilding[]>({
     queryKey: ["/api/tickets"],
@@ -44,31 +53,61 @@ export default function Tickets() {
   const filterTickets = (filter: string) => {
     if (!tickets) return [];
     
+    // For managers with "mine" filter, only show tickets assigned to them
+    let filteredTickets = tickets;
+    if (isManager && showMine && userProfile) {
+      filteredTickets = tickets.filter((t) => t.assignedExecutiveId === userProfile.userId);
+    }
+    
     switch (filter) {
       case "vencidos":
-        return tickets.filter((t) => t.status === "vencido" || isOverdue(t));
+        return filteredTickets.filter((t) => t.status === "vencido" || isOverdue(t));
       case "por_vencer":
-        return tickets.filter((t) => t.status !== "resuelto" && !isOverdue(t) && isDueSoon(t));
+        return filteredTickets.filter((t) => t.status !== "resuelto" && !isOverdue(t) && isDueSoon(t));
       case "pendientes":
-        return tickets.filter((t) => t.status !== "resuelto" && !isOverdue(t) && !isDueSoon(t));
+        return filteredTickets.filter((t) => t.status !== "resuelto" && !isOverdue(t) && !isDueSoon(t));
       case "resueltos":
-        return tickets.filter((t) => t.status === "resuelto");
+        return filteredTickets.filter((t) => t.status === "resuelto");
       default:
-        return tickets;
+        return filteredTickets;
     }
   };
+
+  const pageTitle = isManager ? (showMine ? "Mis Tickets Asignados" : "Todos los Tickets") : "Mis Tickets";
 
   return (
     <div className="flex flex-col h-full">
       <div className="sticky top-0 bg-background border-b border-border z-10 px-4 py-3">
         <div className="flex items-center justify-between gap-4">
-          <h1 className="text-xl font-semibold">Mis Tickets</h1>
-          <Button asChild size="sm" data-testid="button-create-ticket">
-            <Link href="/tickets/nuevo">
-              <Plus className="h-4 w-4 mr-1" />
-              Crear
-            </Link>
-          </Button>
+          <h1 className="text-xl font-semibold">{pageTitle}</h1>
+          <div className="flex items-center gap-2">
+            {isManager && (
+              <div className="flex items-center gap-1 rounded-lg border p-1">
+                <Button
+                  asChild
+                  size="sm"
+                  variant={!showMine ? "secondary" : "ghost"}
+                  data-testid="button-all-tickets"
+                >
+                  <Link href="/tickets">Todos</Link>
+                </Button>
+                <Button
+                  asChild
+                  size="sm"
+                  variant={showMine ? "secondary" : "ghost"}
+                  data-testid="button-my-tickets"
+                >
+                  <Link href="/tickets?mine=true">Mios</Link>
+                </Button>
+              </div>
+            )}
+            <Button asChild size="sm" data-testid="button-create-ticket">
+              <Link href="/tickets/nuevo">
+                <Plus className="h-4 w-4 mr-1" />
+                Crear
+              </Link>
+            </Button>
+          </div>
         </div>
       </div>
 

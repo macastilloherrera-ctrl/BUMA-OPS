@@ -19,6 +19,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -81,6 +83,7 @@ interface TicketWithDetails {
   status: "pendiente" | "en_curso" | "trabajo_completado" | "vencido" | "resuelto" | "reprogramado";
   requiresMaintainerVisit?: boolean;
   requiresExecutiveVisit?: boolean;
+  requiresInvoice?: boolean;
   scheduledDate?: string | null;
   approvedQuoteId?: string | null;
   approvedBy?: string | null;
@@ -121,6 +124,13 @@ const closureSchema = z.object({
 
 type ClosureForm = z.infer<typeof closureSchema>;
 
+const workCompletionSchema = z.object({
+  invoiceNumber: z.string().optional(),
+  invoiceAmount: z.coerce.number().min(0).optional(),
+});
+
+type WorkCompletionForm = z.infer<typeof workCompletionSchema>;
+
 const restartSchema = z.object({
   reason: z.string().min(1, "La razon del reinicio es requerida"),
   committedCompletionAt: z.string().min(1, "La fecha comprometida es requerida"),
@@ -142,6 +152,10 @@ export default function TicketDetail() {
   const [isQuoteDialogOpen, setIsQuoteDialogOpen] = useState(false);
   const [isClosureDialogOpen, setIsClosureDialogOpen] = useState(false);
   const [isRestartDialogOpen, setIsRestartDialogOpen] = useState(false);
+  const [isWorkCompletionDialogOpen, setIsWorkCompletionDialogOpen] = useState(false);
+  const [workCompletionInvoiceKey, setWorkCompletionInvoiceKey] = useState<string | null>(null);
+  const [workCompletionInvoiceName, setWorkCompletionInvoiceName] = useState<string | null>(null);
+  const pendingWorkCompletionKeyRef = useRef<{ key: string; name: string } | null>(null);
   const [quoteAttachmentKey, setQuoteAttachmentKey] = useState<string | null>(null);
   const [quoteAttachmentName, setQuoteAttachmentName] = useState<string | null>(null);
   const [invoiceDocumentKey, setInvoiceDocumentKey] = useState<string | null>(null);
@@ -179,6 +193,26 @@ export default function TicketDetail() {
 
   const { data: workHistory } = useQuery<TicketWorkCycle[]>({
     queryKey: ["/api/tickets", id, "work-history"],
+    enabled: !!id,
+  });
+
+  interface AssignmentHistoryEntry {
+    id: string;
+    ticketId: string;
+    assignedToId: string;
+    assignedById: string;
+    assignedToRole: string;
+    previousAssigneeId: string | null;
+    reason: string | null;
+    isEscalation: boolean;
+    createdAt: string;
+    assignedToName: string;
+    assignedByName: string;
+    previousAssigneeName: string | null;
+  }
+
+  const { data: assignmentHistory } = useQuery<AssignmentHistoryEntry[]>({
+    queryKey: ["/api/tickets", id, "assignment-history"],
     enabled: !!id,
   });
 
@@ -331,6 +365,14 @@ Equipo BUMA Property Management
     },
   });
 
+  const workCompletionForm = useForm<WorkCompletionForm>({
+    resolver: zodResolver(workCompletionSchema),
+    defaultValues: {
+      invoiceNumber: "",
+      invoiceAmount: 0,
+    },
+  });
+
   const createQuoteMutation = useMutation({
     mutationFn: async (data: QuoteForm) => {
       return apiRequest("POST", `/api/tickets/${id}/quotes`, {
@@ -396,15 +438,29 @@ Equipo BUMA Property Management
   });
 
   const completeWorkMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("PATCH", `/api/tickets/${id}`, {
+    mutationFn: async (invoiceData?: WorkCompletionForm & { invoiceDocumentKey?: string }) => {
+      const payload: Record<string, unknown> = {
         status: "trabajo_completado",
         workCompletedAt: new Date().toISOString(),
-      });
+      };
+      if (invoiceData?.invoiceNumber) {
+        payload.invoiceNumber = invoiceData.invoiceNumber;
+      }
+      if (invoiceData?.invoiceAmount && invoiceData.invoiceAmount > 0) {
+        payload.invoiceAmount = invoiceData.invoiceAmount;
+      }
+      if (invoiceData?.invoiceDocumentKey) {
+        payload.invoiceDocumentKey = invoiceData.invoiceDocumentKey;
+      }
+      return apiRequest("PATCH", `/api/tickets/${id}`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets", id] });
       queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+      setIsWorkCompletionDialogOpen(false);
+      workCompletionForm.reset();
+      setWorkCompletionInvoiceKey(null);
+      setWorkCompletionInvoiceName(null);
       toast({ title: "Trabajo completado" });
     },
     onError: () => {
@@ -685,16 +741,130 @@ Equipo BUMA Property Management
                       </Button>
                     )}
                     {ticket.workStartedAt && !ticket.workCompletedAt && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => completeWorkMutation.mutate()}
-                        disabled={completeWorkMutation.isPending}
-                        data-testid="button-complete-work"
-                      >
-                        <Check className="h-4 w-4 mr-1" />
-                        Marcar Completado
-                      </Button>
+                      ticket.requiresInvoice ? (
+                        <Dialog open={isWorkCompletionDialogOpen} onOpenChange={setIsWorkCompletionDialogOpen}>
+                          <DialogTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              data-testid="button-complete-work"
+                            >
+                              <Check className="h-4 w-4 mr-1" />
+                              Marcar Completado
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-md">
+                            <DialogHeader>
+                              <DialogTitle>Completar Trabajo</DialogTitle>
+                              <DialogDescription>
+                                Este ticket requiere factura. Ingresa los datos de la factura.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <Form {...workCompletionForm}>
+                              <form
+                                onSubmit={workCompletionForm.handleSubmit((data) => 
+                                  completeWorkMutation.mutate({ ...data, invoiceDocumentKey: workCompletionInvoiceKey || undefined })
+                                )}
+                                className="space-y-4"
+                              >
+                                <FormField
+                                  control={workCompletionForm.control}
+                                  name="invoiceNumber"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Numero de Factura</FormLabel>
+                                      <FormControl>
+                                        <Input {...field} data-testid="input-work-invoice-number" />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <FormField
+                                  control={workCompletionForm.control}
+                                  name="invoiceAmount"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Monto Factura</FormLabel>
+                                      <FormControl>
+                                        <Input type="number" {...field} data-testid="input-work-invoice-amount" />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                <div className="space-y-2">
+                                  <Label>Documento de Factura (opcional)</Label>
+                                  {!workCompletionInvoiceKey ? (
+                                    <ObjectUploader
+                                      onGetUploadParameters={async (file) => {
+                                        const response = await fetch("/api/uploads/request-url", {
+                                          method: "POST",
+                                          headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({
+                                            name: file.name,
+                                            contentType: file.type,
+                                          }),
+                                        });
+                                        const data = await response.json();
+                                        const objectKey = data.objectPath?.replace("/objects/", "") || data.objectKey;
+                                        pendingWorkCompletionKeyRef.current = { key: objectKey, name: file.name || "documento" };
+                                        return { method: "PUT" as const, url: data.uploadURL };
+                                      }}
+                                      onComplete={(result) => {
+                                        if (result.successful && result.successful.length > 0 && pendingWorkCompletionKeyRef.current) {
+                                          setWorkCompletionInvoiceKey(pendingWorkCompletionKeyRef.current.key);
+                                          setWorkCompletionInvoiceName(pendingWorkCompletionKeyRef.current.name);
+                                          pendingWorkCompletionKeyRef.current = null;
+                                        }
+                                      }}
+                                    >
+                                      Adjuntar Factura
+                                    </ObjectUploader>
+                                  ) : (
+                                    <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                                      <FileText className="h-4 w-4" />
+                                      <span className="text-sm flex-1 truncate">{workCompletionInvoiceName}</span>
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6"
+                                        onClick={() => {
+                                          setWorkCompletionInvoiceKey(null);
+                                          setWorkCompletionInvoiceName(null);
+                                        }}
+                                      >
+                                        <X className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  )}
+                                </div>
+                                <DialogFooter>
+                                  <Button
+                                    type="submit"
+                                    disabled={completeWorkMutation.isPending}
+                                    data-testid="button-submit-work-completion"
+                                  >
+                                    {completeWorkMutation.isPending ? "Completando..." : "Completar Trabajo"}
+                                  </Button>
+                                </DialogFooter>
+                              </form>
+                            </Form>
+                          </DialogContent>
+                        </Dialog>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => completeWorkMutation.mutate(undefined)}
+                          disabled={completeWorkMutation.isPending}
+                          data-testid="button-complete-work"
+                        >
+                          <Check className="h-4 w-4 mr-1" />
+                          Marcar Completado
+                        </Button>
+                      )
                     )}
                     {isManager && (ticket.status === "trabajo_completado" || ticket.workCompletedAt) && (
                       <Dialog open={isClosureDialogOpen} onOpenChange={setIsClosureDialogOpen}>
@@ -1044,6 +1214,51 @@ Equipo BUMA Property Management
                       )}
                     </div>
                   ))}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Assignment History */}
+            {assignmentHistory && assignmentHistory.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Historial de Asignaciones ({assignmentHistory.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {assignmentHistory.map((entry, index) => (
+                      <div key={entry.id} className={`flex items-start gap-3 ${index > 0 ? 'border-t pt-3' : ''}`}>
+                        <div className={`w-2 h-2 rounded-full mt-2 ${entry.isEscalation ? 'bg-destructive' : 'bg-primary'}`} />
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-sm">{entry.assignedToName}</span>
+                            {entry.isEscalation && (
+                              <Badge variant="destructive" className="text-xs">Escalado</Badge>
+                            )}
+                            <span className="text-xs text-muted-foreground">
+                              {format(new Date(entry.createdAt), "dd MMM yyyy HH:mm", { locale: es })}
+                            </span>
+                          </div>
+                          {entry.previousAssigneeName && (
+                            <div className="text-xs text-muted-foreground">
+                              Anterior: {entry.previousAssigneeName}
+                            </div>
+                          )}
+                          {entry.reason && (
+                            <div className="text-sm text-muted-foreground">
+                              {entry.reason}
+                            </div>
+                          )}
+                          <div className="text-xs text-muted-foreground">
+                            Por: {entry.assignedByName}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </CardContent>
               </Card>
             )}

@@ -58,6 +58,8 @@ const ticketSchema = z.object({
   priority: z.enum(["rojo", "amarillo", "verde"]),
   requiresMaintainerVisit: z.boolean().default(false),
   requiresExecutiveVisit: z.boolean().default(false),
+  requiresInvoice: z.boolean().default(false),
+  maintainerId: z.string().optional(),
   startDate: z.string().min(1, "La fecha de inicio es obligatoria"),
   scheduledDate: z.string().optional(),
 });
@@ -138,6 +140,8 @@ export default function NewTicket() {
       priority: "verde",
       requiresMaintainerVisit: false,
       requiresExecutiveVisit: false,
+      requiresInvoice: false,
+      maintainerId: "",
       startDate: new Date().toISOString().split("T")[0],
       scheduledDate: "",
     },
@@ -145,11 +149,17 @@ export default function NewTicket() {
 
   const selectedType = form.watch("ticketType");
   const selectedCategoryId = form.watch("categoryId");
+  const requiresMaintainerVisit = form.watch("requiresMaintainerVisit");
 
   const getMaintainersForCategory = (categoryId: string) => {
     if (!categoryId || !maintainers) return [];
     return maintainers.filter((m) => m.categoryIds.includes(categoryId));
   };
+
+  // Get maintainers filtered by selected category if available
+  const availableMaintainersForDropdown = selectedCategoryId && selectedCategoryId !== "otro"
+    ? getMaintainersForCategory(selectedCategoryId)
+    : maintainers || [];
 
   const createMutation = useMutation({
     mutationFn: async (data: TicketForm) => {
@@ -160,6 +170,7 @@ export default function NewTicket() {
         priority: data.priority,
         requiresMaintainerVisit: data.requiresMaintainerVisit,
         requiresExecutiveVisit: data.requiresExecutiveVisit,
+        requiresInvoice: data.requiresInvoice,
         startDate: new Date(data.startDate).toISOString(),
       };
       if (data.categoryId && data.categoryId !== "otro") {
@@ -167,6 +178,9 @@ export default function NewTicket() {
       }
       if (data.categoryId === "otro" && data.otherCategoryDescription) {
         payload.otherCategoryDescription = data.otherCategoryDescription;
+      }
+      if (data.maintainerId) {
+        payload.maintainerId = data.maintainerId;
       }
       if (data.scheduledDate) payload.scheduledDate = new Date(data.scheduledDate).toISOString();
       
@@ -489,6 +503,33 @@ export default function NewTicket() {
                     </FormItem>
                   )}
                 />
+                {requiresMaintainerVisit && availableMaintainersForDropdown.length > 0 && (
+                  <FormField
+                    control={form.control}
+                    name="maintainerId"
+                    render={({ field }) => (
+                      <FormItem className="ml-6">
+                        <FormLabel>Seleccionar Proveedor</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-maintainer">
+                              <SelectValue placeholder="Seleccionar proveedor..." />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {availableMaintainersForDropdown.map((m) => (
+                              <SelectItem key={m.id} value={m.id} data-testid={`option-maintainer-${m.id}`}>
+                                {m.companyName}
+                                {m.isPreferred && " (Preferido)"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
                 <FormField
                   control={form.control}
                   name="requiresExecutiveVisit"
@@ -503,6 +544,24 @@ export default function NewTicket() {
                       </FormControl>
                       <div className="space-y-1 leading-none">
                         <FormLabel>Requiere supervision de ejecutivo</FormLabel>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="requiresInvoice"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                          data-testid="checkbox-requires-invoice"
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>Requiere factura al completar</FormLabel>
                       </div>
                     </FormItem>
                   )}
