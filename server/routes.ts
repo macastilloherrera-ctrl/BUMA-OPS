@@ -1355,7 +1355,7 @@ export async function registerRoutes(
           userId: ticket.assignedExecutiveId,
           type: "ticket_asignado",
           title: "Nuevo ticket asignado",
-          message: `Te han asignado el ticket "${ticket.title}" en ${building?.name || "edificio"}`,
+          message: `Te han asignado el ticket "${ticket.description?.substring(0, 50)}..." en ${building?.name || "edificio"}`,
           ticketId: ticket.id,
           isRead: false,
         });
@@ -1438,7 +1438,7 @@ export async function registerRoutes(
           userId: data.assignedExecutiveId,
           type: "ticket_derivado",
           title: "Ticket derivado",
-          message: `Te han derivado el ticket "${ticket.title}" en ${building?.name || "edificio"}`,
+          message: `Te han derivado el ticket "${ticket.description?.substring(0, 50)}..." en ${building?.name || "edificio"}`,
           ticketId: ticket.id,
           isRead: false,
         });
@@ -1511,7 +1511,7 @@ export async function registerRoutes(
           userId: targetProfile.userId,
           type: "ticket_derivado",
           title: "Ticket escalado",
-          message: `Se ha escalado el ticket "${ticket.title}" en ${building?.name || "edificio"} a prioridad roja`,
+          message: `Se ha escalado el ticket "${ticket.description?.substring(0, 50)}..." en ${building?.name || "edificio"} a prioridad roja`,
           ticketId: ticket.id,
           isRead: false,
         });
@@ -1574,7 +1574,7 @@ export async function registerRoutes(
           userId: assigneeId,
           type: "ticket_derivado",
           title: "Ticket reasignado",
-          message: `Te han reasignado el ticket "${ticket.title}" en ${building?.name || "edificio"}`,
+          message: `Te han reasignado el ticket "${ticket.description?.substring(0, 50)}..." en ${building?.name || "edificio"}`,
           ticketId: ticket.id,
           isRead: false,
         });
