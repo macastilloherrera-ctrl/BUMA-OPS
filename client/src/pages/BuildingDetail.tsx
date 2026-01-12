@@ -300,7 +300,7 @@ export default function BuildingDetail() {
     <div className="flex flex-col h-full">
       <div className="sticky top-0 bg-background border-b border-border z-50 px-4 py-3 md:px-6">
         <div className="flex items-center gap-4 flex-wrap">
-          <Link href="/buildings">
+          <Link href="/edificios">
             <Button variant="ghost" size="icon" data-testid="button-back">
               <ArrowLeft className="h-4 w-4" />
             </Button>
@@ -312,7 +312,7 @@ export default function BuildingDetail() {
             {getStatusBadge(building.status)}
           </div>
           {isManager && (
-            <Link href={`/buildings?edit=${building.id}`}>
+            <Link href={`/edificios?edit=${building.id}`}>
               <Button variant="outline" size="sm" data-testid="button-edit-building">
                 <Pencil className="h-4 w-4 mr-1" />
                 Editar

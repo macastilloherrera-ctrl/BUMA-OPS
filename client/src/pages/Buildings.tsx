@@ -165,7 +165,7 @@ export default function Buildings() {
         if (buildingToEdit) {
           setEditingBuilding(buildingToEdit);
           setIsDialogOpen(true);
-          window.history.replaceState({}, '', '/buildings');
+          window.history.replaceState({}, '', '/edificios');
         }
       }
     }
