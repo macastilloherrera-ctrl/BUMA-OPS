@@ -270,13 +270,13 @@ export default function Buildings() {
                 Agregar
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
               <DialogHeader>
                 <DialogTitle>
                   {editingBuilding ? "Editar Edificio" : "Nuevo Edificio"}
                 </DialogTitle>
               </DialogHeader>
-              <ScrollArea className="flex-1 pr-4">
+              <div className="flex-1 overflow-y-auto pr-2" style={{ maxHeight: "calc(90vh - 120px)" }}>
                 <Form {...form}>
                   <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -738,7 +738,7 @@ export default function Buildings() {
                     </div>
                   </form>
                 </Form>
-              </ScrollArea>
+              </div>
             </DialogContent>
           </Dialog>
         </div>
