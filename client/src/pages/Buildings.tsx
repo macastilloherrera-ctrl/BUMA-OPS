@@ -59,6 +59,10 @@ const featureSchema = z.object({
 const buildingSchema = z.object({
   name: z.string().min(1, "El nombre es requerido"),
   address: z.string().min(1, "La direccion es requerida"),
+  region: z.string().optional(),
+  commune: z.string().optional(),
+  contactPhone: z.string().optional(),
+  communityEmail: z.string().email("Email invalido").optional().or(z.literal("")),
   status: z.enum(["activo", "inactivo", "en_revision"]),
   assignedExecutiveId: z.string().optional(),
   departmentCount: z.coerce.number().min(0).default(0),
@@ -96,6 +100,10 @@ export default function Buildings() {
     defaultValues: {
       name: "",
       address: "",
+      region: "",
+      commune: "",
+      contactPhone: "",
+      communityEmail: "",
       status: "activo",
       assignedExecutiveId: "",
       departmentCount: 0,
@@ -213,6 +221,10 @@ export default function Buildings() {
     form.reset({
       name: building.name,
       address: building.address,
+      region: building.region || "",
+      commune: building.commune || "",
+      contactPhone: building.contactPhone || "",
+      communityEmail: building.communityEmail || "",
       status: building.status,
       assignedExecutiveId: building.assignedExecutiveId || "",
       departmentCount: building.departmentCount || 0,
@@ -329,6 +341,81 @@ export default function Buildings() {
                         </FormItem>
                       )}
                     />
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField
+                        control={form.control}
+                        name="region"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Region</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Ej: Metropolitana"
+                                {...field}
+                                data-testid="input-building-region"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="commune"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Comuna</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Ej: Las Condes"
+                                {...field}
+                                data-testid="input-building-commune"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField
+                        control={form.control}
+                        name="contactPhone"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Telefono de Contacto</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="+56 9 1234 5678"
+                                {...field}
+                                data-testid="input-building-phone"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="communityEmail"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Email Comunidad</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="email"
+                                placeholder="comunidad@edificio.cl"
+                                {...field}
+                                data-testid="input-building-email"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
 
                     <FormField
                       control={form.control}
