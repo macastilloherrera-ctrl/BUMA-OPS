@@ -29,6 +29,12 @@ interface VisitDetailData extends Visit {
   criticalAssets?: CriticalAsset[];
   relatedTickets?: Ticket[];
   lastVisit?: Visit;
+  executiveName?: string;
+}
+
+interface ExecutiveInfo {
+  userId: string;
+  displayName: string;
 }
 
 export default function VisitDetail() {
@@ -44,6 +50,16 @@ export default function VisitDetail() {
   const { data: visit, isLoading } = useQuery<VisitDetailData>({
     queryKey: ["/api/visits", id],
   });
+
+  const { data: executives } = useQuery<ExecutiveInfo[]>({
+    queryKey: ["/api/users/executives"],
+  });
+
+  const getExecutiveName = (executiveId: string | null | undefined): string => {
+    if (!executiveId || !executives) return "Sin asignar";
+    const exec = executives.find(e => e.userId === executiveId);
+    return exec?.displayName || executiveId;
+  };
 
   const startVisitMutation = useMutation({
     mutationFn: async () => {
@@ -158,6 +174,12 @@ export default function VisitDetail() {
               <Clock className="h-4 w-4 text-muted-foreground" />
               <span>
                 {visit.scheduledDate && format(new Date(visit.scheduledDate), "HH:mm", { locale: es })}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <User className="h-4 w-4 text-muted-foreground" />
+              <span>
+                <span className="text-muted-foreground">Ejecutivo:</span> {getExecutiveName(visit.executiveId)}
               </span>
             </div>
           </CardContent>
