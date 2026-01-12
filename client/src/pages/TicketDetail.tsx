@@ -58,6 +58,7 @@ import {
   MessageSquare,
   Plus,
   Check,
+  CheckCircle,
   X,
   DollarSign,
   Clock,
@@ -74,6 +75,20 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+
+const DEV_USERS_MAP: Record<string, string> = {
+  "dev-gerente-general": "Carlos Mendoza",
+  "dev-gerente-operaciones": "Roberto Silva",
+  "dev-gerente-finanzas": "Ana Torres",
+  "dev-ejecutivo-1": "Juan Pérez",
+  "dev-ejecutivo-2": "María García",
+  "dev-ejecutivo-3": "Pedro Rodríguez",
+};
+
+const getUserName = (userId: string | null | undefined): string => {
+  if (!userId) return "Desconocido";
+  return DEV_USERS_MAP[userId] || userId;
+};
 
 interface TicketWithDetails {
   id: string;
@@ -832,89 +847,113 @@ Equipo BUMA Property Management
               </CardContent>
             </Card>
 
-            {/* Invoice Information Section */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
-                  Facturación
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {ticket.invoiceStatus === "submitted" && (ticket.invoiceNumber || ticket.invoiceAmount) ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                        Con Factura
-                      </Badge>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      {ticket.invoiceNumber && (
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">N° Factura</p>
-                          <p className="text-sm font-medium">{ticket.invoiceNumber}</p>
-                        </div>
-                      )}
-                      {ticket.invoiceAmount && (
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Monto</p>
-                          <p className="text-sm font-medium">{formatCurrency(ticket.invoiceAmount)}</p>
-                        </div>
-                      )}
-                      {ticket.workCompletedAt && (
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Fecha de Carga</p>
-                          <p className="text-sm font-medium">
-                            {format(new Date(ticket.workCompletedAt), "dd MMM yyyy HH:mm", { locale: es })}
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                    {ticket.invoiceDocumentKey && (
-                      <div className="pt-2 border-t">
-                        <a
-                          href={`/objects/${ticket.invoiceDocumentKey}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
-                          data-testid="link-download-invoice"
-                        >
-                          <Download className="h-4 w-4" />
-                          Descargar Factura
-                        </a>
+            {/* Closure Summary Section - shows when ticket is closed or work completed */}
+            {(ticket.status === "resuelto" || ticket.status === "trabajo_completado") && (
+              <Card className="border-green-200 bg-green-50/30 dark:bg-green-950/20 dark:border-green-800">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2 text-green-700 dark:text-green-400">
+                    <CheckCircle className="h-4 w-4" />
+                    Resumen de Cierre
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-2 gap-4">
+                    {ticket.closedBy && (
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">Cerrado por</p>
+                        <p className="text-sm font-medium">{getUserName(ticket.closedBy)}</p>
+                      </div>
+                    )}
+                    {ticket.closedAt && (
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">Fecha de Cierre</p>
+                        <p className="text-sm font-medium">
+                          {format(new Date(ticket.closedAt), "dd MMM yyyy HH:mm", { locale: es })}
+                        </p>
+                      </div>
+                    )}
+                    {ticket.workCompletedAt && (
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">Trabajo Completado</p>
+                        <p className="text-sm font-medium">
+                          {format(new Date(ticket.workCompletedAt), "dd MMM yyyy HH:mm", { locale: es })}
+                        </p>
                       </div>
                     )}
                   </div>
-                ) : ticket.invoiceStatus === "pending" ? (
-                  <div className="space-y-2">
-                    <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
-                      Factura Pendiente
-                    </Badge>
-                    <p className="text-sm text-muted-foreground">
-                      La factura será proporcionada más adelante.
-                    </p>
-                  </div>
-                ) : ticket.invoiceStatus === "none" ? (
-                  <div className="space-y-2">
-                    <Badge variant="outline" className="text-muted-foreground">
-                      Sin Factura
-                    </Badge>
-                    {ticket.invoiceNote && (
-                      <p className="text-sm">
-                        <span className="text-muted-foreground">Observación: </span>
+                  
+                  {/* Show closure reason when no invoice */}
+                  {ticket.invoiceStatus === "none" && ticket.invoiceNote && (
+                    <div className="pt-3 border-t border-green-200 dark:border-green-800">
+                      <p className="text-sm text-muted-foreground mb-1">Motivo (sin factura)</p>
+                      <p className="text-sm bg-white dark:bg-background p-2 rounded border">
                         {ticket.invoiceNote}
                       </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-muted-foreground">
-                      Sin información de factura
-                    </Badge>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Invoice Information Section - only show when there's invoice data */}
+            {(ticket.invoiceStatus === "submitted" || ticket.invoiceStatus === "pending") && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Facturación
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {ticket.invoiceStatus === "submitted" && (ticket.invoiceNumber || ticket.invoiceAmount) ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                          Con Factura
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        {ticket.invoiceNumber && (
+                          <div className="space-y-1">
+                            <p className="text-sm text-muted-foreground">N° Factura</p>
+                            <p className="text-sm font-medium">{ticket.invoiceNumber}</p>
+                          </div>
+                        )}
+                        {ticket.invoiceAmount && (
+                          <div className="space-y-1">
+                            <p className="text-sm text-muted-foreground">Monto</p>
+                            <p className="text-sm font-medium">{formatCurrency(ticket.invoiceAmount)}</p>
+                          </div>
+                        )}
+                      </div>
+                      {ticket.invoiceDocumentKey && (
+                        <div className="pt-2 border-t">
+                          <a
+                            href={`/objects/${ticket.invoiceDocumentKey}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+                            data-testid="link-download-invoice"
+                          >
+                            <Download className="h-4 w-4" />
+                            Descargar Factura
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  ) : ticket.invoiceStatus === "pending" ? (
+                    <div className="space-y-2">
+                      <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                        Factura Pendiente
+                      </Badge>
+                      <p className="text-sm text-muted-foreground">
+                        La factura será proporcionada más adelante.
+                      </p>
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            )}
 
             {ticket.status !== "resuelto" && (
               <Card>
