@@ -142,6 +142,22 @@ const workCompletionSchema = z.object({
 }, {
   message: "Debe indicar por qué no se paga por este trabajo",
   path: ["invoiceNote"],
+}).refine((data) => {
+  if (data.invoiceStatus === "submitted" && (!data.invoiceNumber || data.invoiceNumber.trim() === "")) {
+    return false;
+  }
+  return true;
+}, {
+  message: "El número de factura es requerido",
+  path: ["invoiceNumber"],
+}).refine((data) => {
+  if (data.invoiceStatus === "submitted" && (!data.invoiceAmount || data.invoiceAmount <= 0)) {
+    return false;
+  }
+  return true;
+}, {
+  message: "El monto de la factura debe ser mayor a 0",
+  path: ["invoiceAmount"],
 });
 
 type WorkCompletionForm = z.infer<typeof workCompletionSchema>;
