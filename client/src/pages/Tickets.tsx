@@ -17,10 +17,12 @@ interface TicketWithBuilding extends TicketType {
 }
 
 export default function Tickets() {
-  const [activeTab, setActiveTab] = useState("vencidos");
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
   const showMine = params.get("mine") === "true";
+  
+  // For "Mios" view, default to "todos" tab to show all assigned tickets regardless of status
+  const [activeTab, setActiveTab] = useState(showMine ? "todos" : "vencidos");
 
   const { data: userProfile } = useQuery<UserProfile>({
     queryKey: ["/api/user/profile"],

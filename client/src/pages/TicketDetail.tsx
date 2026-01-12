@@ -46,6 +46,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { StatusBadge, PriorityBadge } from "@/components/StatusBadge";
 import {
   ArrowLeft,
+  ArrowRightLeft,
   Building2,
   Calendar,
   Tag,
@@ -731,6 +732,39 @@ Equipo BUMA Property Management
           </div>
 
           <TabsContent value="detalles" className="px-4 mt-4 space-y-4">
+            {/* Derivation Banner - show when ticket was recently derived */}
+            {assignmentHistory && assignmentHistory.length > 1 && (() => {
+              const lastDerivation = assignmentHistory[0];
+              const isRecentDerivation = lastDerivation && !lastDerivation.isEscalation && lastDerivation.previousAssigneeId;
+              if (!isRecentDerivation) return null;
+              return (
+                <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-amber-100 dark:bg-amber-900/40 rounded-full">
+                        <ArrowRightLeft className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-amber-800 dark:text-amber-200">Ticket Derivado</span>
+                          <Badge variant="secondary" className="text-xs">
+                            {lastDerivation.previousAssigneeName} → {lastDerivation.assignedToName}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-amber-700 dark:text-amber-300">
+                          <span className="font-medium">Motivo: </span>
+                          {lastDerivation.reason}
+                        </p>
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                          Derivado por {lastDerivation.assignedByName} el {format(new Date(lastDerivation.createdAt), "dd MMM yyyy - HH:mm", { locale: es })}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
+            
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base">Informacion del Ticket</CardTitle>
