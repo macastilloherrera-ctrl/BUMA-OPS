@@ -737,7 +737,7 @@ Equipo BUMA Property Management
                           <p className="text-sm font-medium">{ticket.invoiceNumber}</p>
                         </div>
                       )}
-                      {canSeeCosts && ticket.invoiceAmount && (
+                      {ticket.invoiceAmount && (
                         <div className="space-y-1">
                           <p className="text-sm text-muted-foreground">Monto</p>
                           <p className="text-sm font-medium">{formatCurrency(ticket.invoiceAmount)}</p>
