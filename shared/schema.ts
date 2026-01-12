@@ -109,6 +109,13 @@ export const quoteStatusEnum = pgEnum("quote_status", [
   "rechazada"
 ]);
 
+// Invoice status enum (tracks invoice state in work completion)
+export const invoiceStatusEnum = pgEnum("invoice_status", [
+  "none",      // No invoice - requires explanation
+  "pending",   // Invoice pending - will be provided later
+  "submitted"  // Invoice submitted with data
+]);
+
 // Communication audience enum
 export const communicationAudienceEnum = pgEnum("communication_audience", [
   "comunidad",
@@ -348,6 +355,9 @@ export const tickets = pgTable("tickets", {
   invoiceNumber: varchar("invoice_number", { length: 100 }),
   invoiceAmount: decimal("invoice_amount", { precision: 12, scale: 2 }),
   invoiceDocumentKey: text("invoice_document_key"),
+  invoiceStatus: invoiceStatusEnum("invoice_status"),
+  invoiceNote: text("invoice_note"),
+  invoiceProvidedById: varchar("invoice_provided_by_id"),
   closedAt: timestamp("closed_at"),
   closedBy: varchar("closed_by"),
   committedCompletionAt: timestamp("committed_completion_at"),
@@ -397,6 +407,9 @@ export const ticketWorkCycles = pgTable("ticket_work_cycles", {
   closedBy: varchar("closed_by"),
   invoiceNumber: varchar("invoice_number", { length: 100 }),
   invoiceAmount: decimal("invoice_amount", { precision: 12, scale: 2 }),
+  invoiceStatus: invoiceStatusEnum("invoice_status"),
+  invoiceNote: text("invoice_note"),
+  invoiceProvidedById: varchar("invoice_provided_by_id"),
   approvedQuoteId: varchar("approved_quote_id"),
   approvedBy: varchar("approved_by"),
   approvedAt: timestamp("approved_at"),

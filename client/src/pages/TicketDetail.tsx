@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/form";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { StatusBadge, PriorityBadge } from "@/components/StatusBadge";
 import {
   ArrowLeft,
@@ -94,6 +95,9 @@ interface TicketWithDetails {
   invoiceNumber?: string | null;
   invoiceAmount?: string | null;
   invoiceDocumentKey?: string | null;
+  invoiceStatus?: "none" | "pending" | "submitted" | null;
+  invoiceNote?: string | null;
+  invoiceProvidedById?: string | null;
   closedAt?: string | null;
   closedBy?: string | null;
   createdAt?: string | null;
@@ -126,8 +130,18 @@ const closureSchema = z.object({
 type ClosureForm = z.infer<typeof closureSchema>;
 
 const workCompletionSchema = z.object({
+  invoiceStatus: z.enum(["submitted", "pending", "none"]),
   invoiceNumber: z.string().optional(),
   invoiceAmount: z.coerce.number().min(0).optional(),
+  invoiceNote: z.string().optional(),
+}).refine((data) => {
+  if (data.invoiceStatus === "none" && (!data.invoiceNote || data.invoiceNote.trim() === "")) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Debe indicar por qué no se paga por este trabajo",
+  path: ["invoiceNote"],
 });
 
 type WorkCompletionForm = z.infer<typeof workCompletionSchema>;
@@ -376,8 +390,10 @@ Equipo BUMA Property Management
   const workCompletionForm = useForm<WorkCompletionForm>({
     resolver: zodResolver(workCompletionSchema),
     defaultValues: {
+      invoiceStatus: "submitted",
       invoiceNumber: "",
       invoiceAmount: 0,
+      invoiceNote: "",
     },
   });
 
@@ -446,20 +462,28 @@ Equipo BUMA Property Management
   });
 
   const completeWorkMutation = useMutation({
-    mutationFn: async (invoiceData?: WorkCompletionForm & { invoiceDocumentKey?: string }) => {
+    mutationFn: async (invoiceData: WorkCompletionForm & { invoiceDocumentKey?: string }) => {
       const payload: Record<string, unknown> = {
         status: "trabajo_completado",
         workCompletedAt: new Date().toISOString(),
+        invoiceStatus: invoiceData.invoiceStatus,
+        invoiceProvidedById: userProfile?.userId,
       };
-      if (invoiceData?.invoiceNumber) {
-        payload.invoiceNumber = invoiceData.invoiceNumber;
+      
+      if (invoiceData.invoiceStatus === "submitted") {
+        if (invoiceData.invoiceNumber) {
+          payload.invoiceNumber = invoiceData.invoiceNumber;
+        }
+        if (invoiceData.invoiceAmount && invoiceData.invoiceAmount > 0) {
+          payload.invoiceAmount = String(invoiceData.invoiceAmount);
+        }
+        if (invoiceData.invoiceDocumentKey) {
+          payload.invoiceDocumentKey = invoiceData.invoiceDocumentKey;
+        }
+      } else if (invoiceData.invoiceStatus === "none") {
+        payload.invoiceNote = invoiceData.invoiceNote;
       }
-      if (invoiceData?.invoiceAmount && invoiceData.invoiceAmount > 0) {
-        payload.invoiceAmount = String(invoiceData.invoiceAmount);
-      }
-      if (invoiceData?.invoiceDocumentKey) {
-        payload.invoiceDocumentKey = invoiceData.invoiceDocumentKey;
-      }
+      
       return apiRequest("PATCH", `/api/tickets/${id}`, payload);
     },
     onSuccess: () => {
@@ -723,7 +747,7 @@ Equipo BUMA Property Management
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {ticket.invoiceNumber || ticket.invoiceAmount ? (
+                {ticket.invoiceStatus === "submitted" && (ticket.invoiceNumber || ticket.invoiceAmount) ? (
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
@@ -767,10 +791,31 @@ Equipo BUMA Property Management
                       </div>
                     )}
                   </div>
+                ) : ticket.invoiceStatus === "pending" ? (
+                  <div className="space-y-2">
+                    <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                      Factura Pendiente
+                    </Badge>
+                    <p className="text-sm text-muted-foreground">
+                      La factura será proporcionada más adelante.
+                    </p>
+                  </div>
+                ) : ticket.invoiceStatus === "none" ? (
+                  <div className="space-y-2">
+                    <Badge variant="outline" className="text-muted-foreground">
+                      Sin Factura
+                    </Badge>
+                    {ticket.invoiceNote && (
+                      <p className="text-sm">
+                        <span className="text-muted-foreground">Observación: </span>
+                        {ticket.invoiceNote}
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="text-muted-foreground">
-                      Sin Factura
+                      Sin información de factura
                     </Badge>
                   </div>
                 )}
@@ -818,130 +863,178 @@ Equipo BUMA Property Management
                       </Button>
                     )}
                     {ticket.workStartedAt && !ticket.workCompletedAt && (
-                      ticket.requiresInvoice ? (
-                        <Dialog open={isWorkCompletionDialogOpen} onOpenChange={setIsWorkCompletionDialogOpen}>
-                          <DialogTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              data-testid="button-complete-work"
+                      <Dialog open={isWorkCompletionDialogOpen} onOpenChange={setIsWorkCompletionDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            data-testid="button-complete-work"
+                          >
+                            <Check className="h-4 w-4 mr-1" />
+                            Marcar Completado
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>Completar Trabajo</DialogTitle>
+                            <DialogDescription>
+                              Indica el estado de la facturación para este trabajo.
+                            </DialogDescription>
+                          </DialogHeader>
+                          <Form {...workCompletionForm}>
+                            <form
+                              onSubmit={workCompletionForm.handleSubmit((data) => 
+                                completeWorkMutation.mutate({ ...data, invoiceDocumentKey: workCompletionInvoiceKey || undefined })
+                              )}
+                              className="space-y-4"
                             >
-                              <Check className="h-4 w-4 mr-1" />
-                              Marcar Completado
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-md">
-                            <DialogHeader>
-                              <DialogTitle>Completar Trabajo</DialogTitle>
-                              <DialogDescription>
-                                Este ticket requiere factura. Ingresa los datos de la factura.
-                              </DialogDescription>
-                            </DialogHeader>
-                            <Form {...workCompletionForm}>
-                              <form
-                                onSubmit={workCompletionForm.handleSubmit((data) => 
-                                  completeWorkMutation.mutate({ ...data, invoiceDocumentKey: workCompletionInvoiceKey || undefined })
+                              <FormField
+                                control={workCompletionForm.control}
+                                name="invoiceStatus"
+                                render={({ field }) => (
+                                  <FormItem className="space-y-3">
+                                    <FormLabel>Estado de Factura</FormLabel>
+                                    <FormControl>
+                                      <RadioGroup
+                                        onValueChange={field.onChange}
+                                        value={field.value}
+                                        className="flex flex-col space-y-2"
+                                      >
+                                        <div className="flex items-center space-x-2">
+                                          <RadioGroupItem value="submitted" id="invoice-submitted" />
+                                          <Label htmlFor="invoice-submitted" className="font-normal cursor-pointer">
+                                            Con factura (tengo los datos)
+                                          </Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                          <RadioGroupItem value="pending" id="invoice-pending" />
+                                          <Label htmlFor="invoice-pending" className="font-normal cursor-pointer">
+                                            Factura pendiente (se proporcionará después)
+                                          </Label>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                          <RadioGroupItem value="none" id="invoice-none" />
+                                          <Label htmlFor="invoice-none" className="font-normal cursor-pointer">
+                                            Sin factura
+                                          </Label>
+                                        </div>
+                                      </RadioGroup>
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
                                 )}
-                                className="space-y-4"
-                              >
-                                <FormField
-                                  control={workCompletionForm.control}
-                                  name="invoiceNumber"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Numero de Factura</FormLabel>
-                                      <FormControl>
-                                        <Input {...field} data-testid="input-work-invoice-number" />
-                                      </FormControl>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
-                                <FormField
-                                  control={workCompletionForm.control}
-                                  name="invoiceAmount"
-                                  render={({ field }) => (
-                                    <FormItem>
-                                      <FormLabel>Monto Factura</FormLabel>
-                                      <FormControl>
-                                        <Input type="number" {...field} data-testid="input-work-invoice-amount" />
-                                      </FormControl>
-                                      <FormMessage />
-                                    </FormItem>
-                                  )}
-                                />
-                                <div className="space-y-2">
-                                  <Label>Documento de Factura (opcional)</Label>
-                                  {!workCompletionInvoiceKey ? (
-                                    <ObjectUploader
-                                      onGetUploadParameters={async (file) => {
-                                        const response = await fetch("/api/uploads/request-url", {
-                                          method: "POST",
-                                          headers: { "Content-Type": "application/json" },
-                                          body: JSON.stringify({
-                                            name: file.name,
-                                            contentType: file.type,
-                                          }),
-                                        });
-                                        const data = await response.json();
-                                        const objectKey = data.objectPath?.replace("/objects/", "") || data.objectKey;
-                                        pendingWorkCompletionKeyRef.current = { key: objectKey, name: file.name || "documento" };
-                                        return { method: "PUT" as const, url: data.uploadURL };
-                                      }}
-                                      onComplete={(result) => {
-                                        if (result.successful && result.successful.length > 0 && pendingWorkCompletionKeyRef.current) {
-                                          setWorkCompletionInvoiceKey(pendingWorkCompletionKeyRef.current.key);
-                                          setWorkCompletionInvoiceName(pendingWorkCompletionKeyRef.current.name);
-                                          pendingWorkCompletionKeyRef.current = null;
-                                        }
-                                      }}
-                                    >
-                                      Adjuntar Factura
-                                    </ObjectUploader>
-                                  ) : (
-                                    <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
-                                      <FileText className="h-4 w-4" />
-                                      <span className="text-sm flex-1 truncate">{workCompletionInvoiceName}</span>
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-6 w-6"
-                                        onClick={() => {
-                                          setWorkCompletionInvoiceKey(null);
-                                          setWorkCompletionInvoiceName(null);
+                              />
+
+                              {workCompletionForm.watch("invoiceStatus") === "submitted" && (
+                                <>
+                                  <FormField
+                                    control={workCompletionForm.control}
+                                    name="invoiceNumber"
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel>Número de Factura</FormLabel>
+                                        <FormControl>
+                                          <Input {...field} data-testid="input-work-invoice-number" />
+                                        </FormControl>
+                                        <FormMessage />
+                                      </FormItem>
+                                    )}
+                                  />
+                                  <FormField
+                                    control={workCompletionForm.control}
+                                    name="invoiceAmount"
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel>Monto Factura ($)</FormLabel>
+                                        <FormControl>
+                                          <Input type="number" {...field} data-testid="input-work-invoice-amount" />
+                                        </FormControl>
+                                        <FormMessage />
+                                      </FormItem>
+                                    )}
+                                  />
+                                  <div className="space-y-2">
+                                    <Label>Documento de Factura (opcional)</Label>
+                                    {!workCompletionInvoiceKey ? (
+                                      <ObjectUploader
+                                        onGetUploadParameters={async (file) => {
+                                          const response = await fetch("/api/uploads/request-url", {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({
+                                              name: file.name,
+                                              contentType: file.type,
+                                            }),
+                                          });
+                                          const data = await response.json();
+                                          const objectKey = data.objectPath?.replace("/objects/", "") || data.objectKey;
+                                          pendingWorkCompletionKeyRef.current = { key: objectKey, name: file.name || "documento" };
+                                          return { method: "PUT" as const, url: data.uploadURL };
+                                        }}
+                                        onComplete={(result) => {
+                                          if (result.successful && result.successful.length > 0 && pendingWorkCompletionKeyRef.current) {
+                                            setWorkCompletionInvoiceKey(pendingWorkCompletionKeyRef.current.key);
+                                            setWorkCompletionInvoiceName(pendingWorkCompletionKeyRef.current.name);
+                                            pendingWorkCompletionKeyRef.current = null;
+                                          }
                                         }}
                                       >
-                                        <X className="h-4 w-4" />
-                                      </Button>
-                                    </div>
+                                        Adjuntar Factura
+                                      </ObjectUploader>
+                                    ) : (
+                                      <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                                        <FileText className="h-4 w-4" />
+                                        <span className="text-sm flex-1 truncate">{workCompletionInvoiceName}</span>
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          onClick={() => {
+                                            setWorkCompletionInvoiceKey(null);
+                                            setWorkCompletionInvoiceName(null);
+                                          }}
+                                        >
+                                          <X className="h-4 w-4" />
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+
+                              {workCompletionForm.watch("invoiceStatus") === "none" && (
+                                <FormField
+                                  control={workCompletionForm.control}
+                                  name="invoiceNote"
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>Observación (¿Por qué no se paga por este trabajo?)</FormLabel>
+                                      <FormControl>
+                                        <Textarea
+                                          placeholder="Ej: Trabajo realizado en garantía, servicio gratuito, etc."
+                                          {...field}
+                                          data-testid="input-invoice-note"
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
                                   )}
-                                </div>
-                                <DialogFooter>
-                                  <Button
-                                    type="submit"
-                                    disabled={completeWorkMutation.isPending}
-                                    data-testid="button-submit-work-completion"
-                                  >
-                                    {completeWorkMutation.isPending ? "Completando..." : "Completar Trabajo"}
-                                  </Button>
-                                </DialogFooter>
-                              </form>
-                            </Form>
-                          </DialogContent>
-                        </Dialog>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => completeWorkMutation.mutate(undefined)}
-                          disabled={completeWorkMutation.isPending}
-                          data-testid="button-complete-work"
-                        >
-                          <Check className="h-4 w-4 mr-1" />
-                          Marcar Completado
-                        </Button>
-                      )
+                                />
+                              )}
+
+                              <DialogFooter>
+                                <Button
+                                  type="submit"
+                                  disabled={completeWorkMutation.isPending}
+                                  data-testid="button-submit-work-completion"
+                                >
+                                  {completeWorkMutation.isPending ? "Completando..." : "Completar Trabajo"}
+                                </Button>
+                              </DialogFooter>
+                            </form>
+                          </Form>
+                        </DialogContent>
+                      </Dialog>
                     )}
                     {isManager && (ticket.status === "trabajo_completado" || ticket.workCompletedAt) && (
                       <Dialog open={isClosureDialogOpen} onOpenChange={(open) => {
@@ -961,107 +1054,178 @@ Equipo BUMA Property Management
                           <DialogHeader>
                             <DialogTitle>Cerrar Ticket</DialogTitle>
                           </DialogHeader>
+                          
+                          {/* Show invoice info from executive if available */}
+                          {ticket.invoiceStatus === "submitted" && (ticket.invoiceNumber || ticket.invoiceAmount) && (
+                            <div className="p-3 bg-green-50 border border-green-200 rounded-md space-y-2">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="bg-green-100 text-green-700 border-green-300">
+                                  Con Factura
+                                </Badge>
+                                <span className="text-sm text-muted-foreground">Datos proporcionados por ejecutivo</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-sm">
+                                {ticket.invoiceNumber && (
+                                  <div>
+                                    <span className="text-muted-foreground">N° Factura: </span>
+                                    <span className="font-medium">{ticket.invoiceNumber}</span>
+                                  </div>
+                                )}
+                                {ticket.invoiceAmount && (
+                                  <div>
+                                    <span className="text-muted-foreground">Monto: </span>
+                                    <span className="font-medium">{formatCurrency(ticket.invoiceAmount)}</span>
+                                  </div>
+                                )}
+                              </div>
+                              {ticket.invoiceDocumentKey && (
+                                <a
+                                  href={`/objects/${ticket.invoiceDocumentKey}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                                >
+                                  <Download className="h-3 w-3" />
+                                  Descargar Factura
+                                </a>
+                              )}
+                            </div>
+                          )}
+
+                          {ticket.invoiceStatus === "pending" && (
+                            <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="bg-yellow-100 text-yellow-700 border-yellow-300">
+                                  Factura Pendiente
+                                </Badge>
+                              </div>
+                              <p className="text-sm text-muted-foreground mt-1">
+                                El ejecutivo indicó que la factura será proporcionada más adelante.
+                                Al cerrar sin factura, el ticket quedará como "resuelto sin factura asociada".
+                              </p>
+                            </div>
+                          )}
+
+                          {ticket.invoiceStatus === "none" && ticket.invoiceNote && (
+                            <div className="p-3 bg-gray-50 border border-gray-200 rounded-md">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-muted-foreground">
+                                  Sin Factura
+                                </Badge>
+                              </div>
+                              <p className="text-sm mt-2">
+                                <span className="text-muted-foreground">Observación: </span>
+                                <span>{ticket.invoiceNote}</span>
+                              </p>
+                            </div>
+                          )}
+
                           <Form {...closureForm}>
                             <form
                               onSubmit={closureForm.handleSubmit((data) => closeTicketMutation.mutate(data))}
                               className="space-y-4"
                             >
-                              <div className="flex items-center justify-between p-3 bg-muted rounded-md">
-                                <div className="space-y-0.5">
-                                  <Label className="text-base">Cerrar con factura</Label>
-                                  <p className="text-sm text-muted-foreground">
-                                    Incluir datos de facturacion al cerrar
-                                  </p>
-                                </div>
-                                <Switch
-                                  checked={closeWithInvoice}
-                                  onCheckedChange={(checked) => {
-                                    setCloseWithInvoice(checked);
-                                    if (!checked) {
-                                      closureForm.setValue("invoiceNumber", "");
-                                      closureForm.setValue("invoiceAmount", 0);
-                                      setInvoiceDocumentKey(null);
-                                      setInvoiceDocumentName(null);
-                                    }
-                                  }}
-                                  data-testid="switch-close-with-invoice"
-                                />
-                              </div>
-                              
-                              {closeWithInvoice && (
+                              {/* Only show invoice form if executive didn't submit invoice data */}
+                              {ticket.invoiceStatus !== "submitted" && (
                                 <>
-                                  <FormField
-                                    control={closureForm.control}
-                                    name="invoiceNumber"
-                                    render={({ field }) => (
-                                      <FormItem>
-                                        <FormLabel>Numero de Factura</FormLabel>
-                                        <FormControl>
-                                          <Input {...field} data-testid="input-invoice-number" />
-                                        </FormControl>
-                                        <FormMessage />
-                                      </FormItem>
-                                    )}
-                                  />
-                                  <FormField
-                                    control={closureForm.control}
-                                    name="invoiceAmount"
-                                    render={({ field }) => (
-                                      <FormItem>
-                                        <FormLabel>Monto Factura</FormLabel>
-                                        <FormControl>
-                                          <Input type="number" {...field} data-testid="input-invoice-amount" />
-                                        </FormControl>
-                                        <FormMessage />
-                                      </FormItem>
-                                    )}
-                                  />
-                                  <div className="space-y-2">
-                                    <Label>Documento de Factura (opcional)</Label>
-                                    {!invoiceDocumentKey ? (
-                                      <ObjectUploader
-                                        onGetUploadParameters={async (file) => {
-                                          const response = await fetch("/api/uploads/request-url", {
-                                            method: "POST",
-                                            headers: { "Content-Type": "application/json" },
-                                            body: JSON.stringify({
-                                              name: file.name,
-                                              contentType: file.type,
-                                            }),
-                                          });
-                                          const data = await response.json();
-                                          const objectKey = data.objectPath?.replace("/objects/", "") || data.objectKey;
-                                          pendingInvoiceKeyRef.current = { key: objectKey, name: file.name || "documento" };
-                                          return { method: "PUT" as const, url: data.uploadURL };
-                                        }}
-                                        onComplete={(result) => {
-                                          if (result.successful && result.successful.length > 0 && pendingInvoiceKeyRef.current) {
-                                            setInvoiceDocumentKey(pendingInvoiceKeyRef.current.key);
-                                            setInvoiceDocumentName(pendingInvoiceKeyRef.current.name);
-                                            pendingInvoiceKeyRef.current = null;
-                                          }
-                                        }}
-                                      >
-                                        Adjuntar Factura
-                                      </ObjectUploader>
-                                    ) : (
-                                      <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
-                                        <FileIcon className="h-4 w-4" />
-                                        <span className="text-sm flex-1 truncate">{invoiceDocumentName}</span>
-                                        <Button
-                                          type="button"
-                                          size="icon"
-                                          variant="ghost"
-                                          onClick={() => {
-                                            setInvoiceDocumentKey(null);
-                                            setInvoiceDocumentName(null);
-                                          }}
-                                        >
-                                          <X className="h-4 w-4" />
-                                        </Button>
-                                      </div>
-                                    )}
+                                  <div className="flex items-center justify-between p-3 bg-muted rounded-md">
+                                    <div className="space-y-0.5">
+                                      <Label className="text-base">Agregar factura ahora</Label>
+                                      <p className="text-sm text-muted-foreground">
+                                        Incluir datos de facturación al cerrar
+                                      </p>
+                                    </div>
+                                    <Switch
+                                      checked={closeWithInvoice}
+                                      onCheckedChange={(checked) => {
+                                        setCloseWithInvoice(checked);
+                                        if (!checked) {
+                                          closureForm.setValue("invoiceNumber", "");
+                                          closureForm.setValue("invoiceAmount", 0);
+                                          setInvoiceDocumentKey(null);
+                                          setInvoiceDocumentName(null);
+                                        }
+                                      }}
+                                      data-testid="switch-close-with-invoice"
+                                    />
                                   </div>
+                                  
+                                  {closeWithInvoice && (
+                                    <>
+                                      <FormField
+                                        control={closureForm.control}
+                                        name="invoiceNumber"
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>Número de Factura</FormLabel>
+                                            <FormControl>
+                                              <Input {...field} data-testid="input-invoice-number" />
+                                            </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <FormField
+                                        control={closureForm.control}
+                                        name="invoiceAmount"
+                                        render={({ field }) => (
+                                          <FormItem>
+                                            <FormLabel>Monto Factura ($)</FormLabel>
+                                            <FormControl>
+                                              <Input type="number" {...field} data-testid="input-invoice-amount" />
+                                            </FormControl>
+                                            <FormMessage />
+                                          </FormItem>
+                                        )}
+                                      />
+                                      <div className="space-y-2">
+                                        <Label>Documento de Factura (opcional)</Label>
+                                        {!invoiceDocumentKey ? (
+                                          <ObjectUploader
+                                            onGetUploadParameters={async (file) => {
+                                              const response = await fetch("/api/uploads/request-url", {
+                                                method: "POST",
+                                                headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({
+                                                  name: file.name,
+                                                  contentType: file.type,
+                                                }),
+                                              });
+                                              const data = await response.json();
+                                              const objectKey = data.objectPath?.replace("/objects/", "") || data.objectKey;
+                                              pendingInvoiceKeyRef.current = { key: objectKey, name: file.name || "documento" };
+                                              return { method: "PUT" as const, url: data.uploadURL };
+                                            }}
+                                            onComplete={(result) => {
+                                              if (result.successful && result.successful.length > 0 && pendingInvoiceKeyRef.current) {
+                                                setInvoiceDocumentKey(pendingInvoiceKeyRef.current.key);
+                                                setInvoiceDocumentName(pendingInvoiceKeyRef.current.name);
+                                                pendingInvoiceKeyRef.current = null;
+                                              }
+                                            }}
+                                          >
+                                            Adjuntar Factura
+                                          </ObjectUploader>
+                                        ) : (
+                                          <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                                            <FileIcon className="h-4 w-4" />
+                                            <span className="text-sm flex-1 truncate">{invoiceDocumentName}</span>
+                                            <Button
+                                              type="button"
+                                              size="icon"
+                                              variant="ghost"
+                                              onClick={() => {
+                                                setInvoiceDocumentKey(null);
+                                                setInvoiceDocumentName(null);
+                                              }}
+                                            >
+                                              <X className="h-4 w-4" />
+                                            </Button>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </>
+                                  )}
                                 </>
                               )}
                               <div className="flex gap-2">
