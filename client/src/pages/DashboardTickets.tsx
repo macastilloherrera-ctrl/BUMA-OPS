@@ -48,6 +48,7 @@ import {
   ArrowUpCircle,
   Calendar,
   RefreshCw,
+  Eye,
 } from "lucide-react";
 import type { Ticket, Building, UserProfile } from "@shared/schema";
 import { format, differenceInDays } from "date-fns";
@@ -404,6 +405,12 @@ export default function DashboardTickets() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => setLocation(`/tickets/${ticket.id}?from=dashboard`)}
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              Ver Detalles
+                            </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => {
                                 setSelectedTicket(ticket);

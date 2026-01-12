@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,10 @@ interface VisitReportData extends Visit {
 
 export default function VisitReport() {
   const { id } = useParams<{ id: string }>();
+  const searchString = useSearch();
+  const params = new URLSearchParams(searchString);
+  const fromDashboard = params.get("from") === "dashboard";
+  const backUrl = fromDashboard ? "/dashboard/visitas" : "/visitas";
 
   const { data: visit, isLoading } = useQuery<VisitReportData>({
     queryKey: ["/api/visits", id],
@@ -98,7 +102,7 @@ export default function VisitReport() {
       <div className="p-4 text-center py-12">
         <p className="text-muted-foreground">Visita no encontrada</p>
         <Button asChild className="mt-4">
-          <Link href="/visitas">Volver a visitas</Link>
+          <Link href={backUrl}>Volver a visitas</Link>
         </Button>
       </div>
     );
@@ -120,7 +124,7 @@ export default function VisitReport() {
       <div className="p-4 max-w-4xl mx-auto space-y-6">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" asChild data-testid="button-back">
-            <Link href="/visitas">
+            <Link href={backUrl}>
               <ArrowLeft className="h-5 w-5" />
             </Link>
           </Button>
@@ -311,7 +315,7 @@ export default function VisitReport() {
 
         <div className="flex gap-3 justify-end pb-8">
           <Button variant="outline" asChild data-testid="button-back-visits">
-            <Link href="/visitas">Volver a Visitas</Link>
+            <Link href={backUrl}>Volver a Visitas</Link>
           </Button>
         </div>
       </div>

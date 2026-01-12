@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useParams, useLocation } from "wouter";
+import { useParams, useLocation, useSearch } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -81,8 +81,12 @@ interface VisitData extends Visit {
 export default function IncidentForm() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
   const { toast } = useToast();
   const { user } = useAuth();
+  
+  const params = new URLSearchParams(searchString);
+  const fromDashboard = params.get("from") === "dashboard";
 
   const { data: visit, isLoading: visitLoading } = useQuery<VisitData>({
     queryKey: ["/api/visits", id],
@@ -143,7 +147,7 @@ export default function IncidentForm() {
         title: "Incidente registrado",
         description: "El incidente ha sido guardado exitosamente",
       });
-      setLocation(`/visitas/${id}/en-curso`);
+      setLocation(`/visitas/${id}/en-curso${fromDashboard ? '?from=dashboard' : ''}`);
     },
     onError: () => {
       toast({
@@ -172,7 +176,7 @@ export default function IncidentForm() {
         title: "Incidente actualizado",
         description: "Los cambios han sido guardados",
       });
-      setLocation(`/visitas/${id}/en-curso`);
+      setLocation(`/visitas/${id}/en-curso${fromDashboard ? '?from=dashboard' : ''}`);
     },
     onError: () => {
       toast({
@@ -205,7 +209,7 @@ export default function IncidentForm() {
       <div className="p-4 text-center py-12">
         <p className="text-muted-foreground">Visita no encontrada</p>
         <Button asChild className="mt-4">
-          <Link href="/visitas">Volver a visitas</Link>
+          <Link href={fromDashboard ? "/dashboard/visitas" : "/visitas"}>Volver a visitas</Link>
         </Button>
       </div>
     );
@@ -218,7 +222,7 @@ export default function IncidentForm() {
       <div className="sticky top-0 bg-background border-b border-border z-50 px-4 py-3">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" asChild>
-            <Link href={`/visitas/${id}/en-curso`}>
+            <Link href={`/visitas/${id}/en-curso${fromDashboard ? '?from=dashboard' : ''}`}>
               <ArrowLeft className="h-5 w-5" />
             </Link>
           </Button>

@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useParams, useLocation } from "wouter";
+import { useParams, useLocation, useSearch } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
@@ -148,7 +148,13 @@ const ticketTypeLabels: Record<string, { label: string; icon: typeof AlertTriang
 export default function TicketDetail() {
   const { id } = useParams();
   const [, navigate] = useLocation();
+  const searchString = useSearch();
   const { toast } = useToast();
+  
+  const params = new URLSearchParams(searchString);
+  const fromDashboard = params.get("from") === "dashboard";
+  const backUrl = fromDashboard ? "/dashboard/tickets" : "/tickets";
+  
   const [activeTab, setActiveTab] = useState("detalles");
   const [isQuoteDialogOpen, setIsQuoteDialogOpen] = useState(false);
   const [isClosureDialogOpen, setIsClosureDialogOpen] = useState(false);
@@ -578,7 +584,7 @@ Equipo BUMA Property Management
     return (
       <div className="flex flex-col h-full items-center justify-center">
         <p className="text-muted-foreground">Ticket no encontrado</p>
-        <Button variant="outline" className="mt-4" onClick={() => navigate("/tickets")}>
+        <Button variant="outline" className="mt-4" onClick={() => navigate(backUrl)}>
           Volver a tickets
         </Button>
       </div>
@@ -595,7 +601,7 @@ Equipo BUMA Property Management
     <div className="flex flex-col h-full">
       <div className="sticky top-0 bg-background border-b border-border z-10 px-4 py-3">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate("/tickets")}>
+          <Button variant="ghost" size="icon" onClick={() => navigate(backUrl)}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex-1">

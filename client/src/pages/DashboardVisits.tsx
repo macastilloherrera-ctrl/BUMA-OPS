@@ -767,7 +767,7 @@ export default function DashboardVisits() {
                         const isOverdue = visit.status === "atrasada" || 
                           (visit.scheduledDate && isBefore(new Date(visit.scheduledDate), todayStart));
                         return (
-                          <Link key={visit.id} href={`/visitas/${visit.id}`} onClick={() => setShowCoverageDialog(false)}>
+                          <Link key={visit.id} href={`/visitas/${visit.id}?from=dashboard`} onClick={() => setShowCoverageDialog(false)}>
                             <div
                               className={`flex items-center justify-between p-3 rounded-md hover-elevate cursor-pointer ${isOverdue ? 'bg-destructive/10' : 'bg-muted/30'}`}
                               data-testid={`building-visit-${visit.id}`}
@@ -959,7 +959,7 @@ export default function DashboardVisits() {
                   return (
                     <Link 
                       key={visit.id} 
-                      href={`/visitas/${visit.id}`}
+                      href={`/visitas/${visit.id}?from=dashboard`}
                       onClick={() => setShowOverdueDialog(false)}
                     >
                       <div
@@ -1032,7 +1032,7 @@ export default function DashboardVisits() {
                   {inProgressVisits.map((visit) => (
                     <Link 
                       key={visit.id} 
-                      href={`/visitas/${visit.id}`}
+                      href={`/visitas/${visit.id}?from=dashboard`}
                       onClick={() => setShowTeamDialog(false)}
                     >
                       <div
@@ -1083,7 +1083,7 @@ export default function DashboardVisits() {
                           .map((visit) => (
                             <Link 
                               key={visit.id} 
-                              href={`/visitas/${visit.id}`}
+                              href={`/visitas/${visit.id}?from=dashboard`}
                               onClick={() => setShowTeamDialog(false)}
                             >
                               <div 

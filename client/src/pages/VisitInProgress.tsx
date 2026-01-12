@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useParams, useLocation } from "wouter";
+import { useParams, useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -45,8 +45,13 @@ interface VisitInProgressData extends Visit {
 export default function VisitInProgress() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
   const { toast } = useToast();
   const { user } = useAuth();
+  
+  const params = new URLSearchParams(searchString);
+  const fromDashboard = params.get("from") === "dashboard";
+  const backUrl = fromDashboard ? "/dashboard/visitas" : "/visitas";
   const [notes, setNotes] = useState("");
   const [completionObservations, setCompletionObservations] = useState("");
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
@@ -129,7 +134,7 @@ export default function VisitInProgress() {
         description: "El informe ha sido generado. Redirigiendo...",
       });
       setTimeout(() => {
-        setLocation(`/visitas/${id}/informe`);
+        setLocation(`/visitas/${id}/informe${fromDashboard ? '?from=dashboard' : ''}`);
       }, 500);
     },
     onError: () => {
@@ -256,7 +261,7 @@ export default function VisitInProgress() {
       <div className="p-4 text-center py-12">
         <p className="text-muted-foreground">Visita no disponible</p>
         <Button asChild className="mt-4">
-          <Link href="/visitas">Volver a visitas</Link>
+          <Link href={backUrl}>Volver a visitas</Link>
         </Button>
       </div>
     );
@@ -271,7 +276,7 @@ export default function VisitInProgress() {
       <div className="sticky top-0 bg-background border-b border-border z-10 px-4 py-3">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="icon" asChild>
-            <Link href={`/visitas/${id}`}>
+            <Link href={`/visitas/${id}${fromDashboard ? '?from=dashboard' : ''}`}>
               <ArrowLeft className="h-5 w-5" />
             </Link>
           </Button>
@@ -696,7 +701,7 @@ export default function VisitInProgress() {
                      visitIncident.status === "reparada" ? "Reparada" : "Reprogramada"}
                   </Badge>
                   <Button variant="outline" size="sm" asChild className="mt-2" data-testid="button-edit-incident">
-                    <Link href={`/visitas/${id}/incidente`}>
+                    <Link href={`/visitas/${id}/incidente${fromDashboard ? '?from=dashboard' : ''}`}>
                       Editar Incidente
                     </Link>
                   </Button>
@@ -707,7 +712,7 @@ export default function VisitInProgress() {
                     Las visitas urgentes requieren registrar el incidente o falla antes de cerrar.
                   </p>
                   <Button variant="default" asChild data-testid="button-register-incident">
-                    <Link href={`/visitas/${id}/incidente`}>
+                    <Link href={`/visitas/${id}/incidente${fromDashboard ? '?from=dashboard' : ''}`}>
                       Registrar Incidente
                     </Link>
                   </Button>
@@ -727,7 +732,7 @@ export default function VisitInProgress() {
             asChild
             data-testid="button-complete-visit-blocked"
           >
-            <Link href={`/visitas/${id}/incidente`}>
+            <Link href={`/visitas/${id}/incidente${fromDashboard ? '?from=dashboard' : ''}`}>
               <AlertCircle className="h-5 w-5 mr-2" />
               Registrar Incidente para Cerrar
             </Link>

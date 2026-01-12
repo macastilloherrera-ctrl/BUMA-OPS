@@ -67,7 +67,7 @@ export default function VisitDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/visits"] });
-      setLocation(`/visitas/${id}/en-curso`);
+      setLocation(`/visitas/${id}/en-curso${fromDashboard ? '?from=dashboard' : ''}`);
     },
     onError: () => {
       toast({
@@ -303,7 +303,7 @@ export default function VisitDetail() {
             asChild
             data-testid="button-view-report"
           >
-            <Link href={`/visitas/${id}/informe`}>
+            <Link href={`/visitas/${id}/informe${fromDashboard ? '?from=dashboard' : ''}`}>
               <FileText className="h-5 w-5 mr-2" />
               Ver Informe
             </Link>
