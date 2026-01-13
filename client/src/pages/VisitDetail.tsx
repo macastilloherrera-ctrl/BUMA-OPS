@@ -32,11 +32,6 @@ interface VisitDetailData extends Visit {
   executiveName?: string;
 }
 
-interface ExecutiveInfo {
-  userId: string;
-  displayName: string;
-}
-
 export default function VisitDetail() {
   const { id } = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
@@ -51,14 +46,11 @@ export default function VisitDetail() {
     queryKey: ["/api/visits", id],
   });
 
-  const { data: executives } = useQuery<ExecutiveInfo[]>({
-    queryKey: ["/api/users/executives"],
-  });
-
-  const getExecutiveName = (executiveId: string | null | undefined): string => {
-    if (!executiveId || !executives) return "Sin asignar";
-    const exec = executives.find(e => e.userId === executiveId);
-    return exec?.displayName || executiveId;
+  const getExecutiveName = (): string => {
+    // Use executiveName from API response (works for all users including executives)
+    if (visit?.executiveName) return visit.executiveName;
+    if (visit?.executiveId) return visit.executiveId;
+    return "Sin asignar";
   };
 
   const startVisitMutation = useMutation({
@@ -179,7 +171,7 @@ export default function VisitDetail() {
             <div className="flex items-center gap-2 text-sm">
               <User className="h-4 w-4 text-muted-foreground" />
               <span>
-                <span className="text-muted-foreground">Ejecutivo:</span> {getExecutiveName(visit.executiveId)}
+                <span className="text-muted-foreground">Ejecutivo:</span> {getExecutiveName()}
               </span>
             </div>
           </CardContent>

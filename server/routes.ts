@@ -722,6 +722,18 @@ export async function registerRoutes(
       const checklistItems = await storage.getVisitChecklistItems(visit.id);
       const criticalAssets = await storage.getCriticalAssets(visit.buildingId);
       
+      // Get executive name from DEV_USERS
+      const { DEV_USERS } = await import("./devAuth");
+      const getExecutiveName = (executiveId: string | null | undefined): string | null => {
+        if (!executiveId) return null;
+        const devUser = DEV_USERS.find((u) => u.id === executiveId);
+        if (devUser) {
+          return `${devUser.firstName} ${devUser.lastName}`.trim();
+        }
+        // Fallback: try to extract a readable name from the ID
+        return executiveId.includes("-") ? executiveId.split("-").slice(-1)[0] : executiveId;
+      };
+      
       // Get related tickets with proper role-based filtering
       let relatedTickets = await storage.getTickets({ buildingId: visit.buildingId });
       relatedTickets = relatedTickets.filter((t) => ["pendiente", "en_curso", "vencido"].includes(t.status));
@@ -749,6 +761,7 @@ export async function registerRoutes(
         checklistItems,
         criticalAssets,
         relatedTickets,
+        executiveName: getExecutiveName(visit.executiveId),
       });
     } catch (error) {
       console.error("Error getting visit:", error);
