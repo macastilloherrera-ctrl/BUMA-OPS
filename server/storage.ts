@@ -81,8 +81,12 @@ import { db } from "./db";
 import { eq, and, desc, gte, lte, or, sql } from "drizzle-orm";
 
 export interface IStorage {
+  // Users
+  getUsers(): Promise<User[]>;
+  
   // User Profiles
   getUserProfile(userId: string): Promise<UserProfile | undefined>;
+  getUserProfiles(): Promise<UserProfile[]>;
   createUserProfile(profile: InsertUserProfile): Promise<UserProfile>;
   updateUserProfile(userId: string, data: Partial<InsertUserProfile>): Promise<UserProfile | undefined>;
   getExecutives(): Promise<UserProfile[]>;
@@ -121,6 +125,7 @@ export interface IStorage {
 
   // Critical Assets
   getCriticalAssets(buildingId?: string): Promise<CriticalAsset[]>;
+  getCriticalEquipment(): Promise<CriticalAsset[]>;
   getCriticalAsset(id: string): Promise<CriticalAsset | undefined>;
   createCriticalAsset(asset: InsertCriticalAsset): Promise<CriticalAsset>;
   updateCriticalAsset(id: string, data: Partial<InsertCriticalAsset>): Promise<CriticalAsset | undefined>;
@@ -240,10 +245,19 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // Users
+  async getUsers(): Promise<User[]> {
+    return db.select().from(users);
+  }
+
   // User Profiles
   async getUserProfile(userId: string): Promise<UserProfile | undefined> {
     const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.userId, userId));
     return profile || undefined;
+  }
+
+  async getUserProfiles(): Promise<UserProfile[]> {
+    return db.select().from(userProfiles);
   }
 
   async createUserProfile(profile: InsertUserProfile): Promise<UserProfile> {
@@ -392,6 +406,10 @@ export class DatabaseStorage implements IStorage {
     if (buildingId) {
       return db.select().from(criticalAssets).where(eq(criticalAssets.buildingId, buildingId)).orderBy(criticalAssets.name);
     }
+    return db.select().from(criticalAssets).orderBy(criticalAssets.name);
+  }
+
+  async getCriticalEquipment(): Promise<CriticalAsset[]> {
     return db.select().from(criticalAssets).orderBy(criticalAssets.name);
   }
 
