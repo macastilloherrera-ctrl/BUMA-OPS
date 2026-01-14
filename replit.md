@@ -49,6 +49,14 @@ Plataforma interna de operaciones para gestionar visitas a terreno, tickets oper
 - Gestion de edificios y equipos criticos
 - Visibilidad de costos
 
+### Reportes (Todos los perfiles)
+- **Cumplimiento Normativo**: Informe por edificio con scoring binario (0-100%)
+  - Reglamento de copropiedad cargado (25%)
+  - Equipos sin mantenciones vencidas (25%)
+  - Minimo 2 visitas en ultimos 30 dias (25%)
+  - Sin tickets urgentes pendientes (25%)
+- **Informe de Egresos**: Solo gerente_general y gerente_comercial, formato Edipro
+
 ## Comandos de Desarrollo
 ```bash
 npm run dev          # Iniciar servidor de desarrollo
