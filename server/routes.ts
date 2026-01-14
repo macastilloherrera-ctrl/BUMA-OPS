@@ -2794,8 +2794,8 @@ export async function registerRoutes(
         // Equipment maintenance (25 points) - No equipment overdue OR no equipment at all
         if (equipmentOverdue === 0) score += 25;
         
-        // Recent visits (25 points) - At least 2 visits in last 30 days
-        if (recentVisitsCount >= 2) score += 25;
+        // Recent visits (25 points) - At least 4 visits in last 30 days (1 per week)
+        if (recentVisitsCount >= 4) score += 25;
         
         // No urgent tickets (25 points) - Zero urgent tickets pending
         if (urgentTickets === 0) score += 25;

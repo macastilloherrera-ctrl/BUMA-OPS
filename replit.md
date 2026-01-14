@@ -53,7 +53,7 @@ Plataforma interna de operaciones para gestionar visitas a terreno, tickets oper
 - **Cumplimiento Normativo**: Informe por edificio con scoring binario (0-100%)
   - Reglamento de copropiedad cargado (25%)
   - Equipos sin mantenciones vencidas (25%)
-  - Minimo 2 visitas en ultimos 30 dias (25%)
+  - Minimo 4 visitas en ultimos 30 dias - 1 por semana (25%)
   - Sin tickets urgentes pendientes (25%)
 - **Informe de Egresos**: Solo gerente_general y gerente_comercial, formato Edipro
 
