@@ -2580,5 +2580,162 @@ export async function registerRoutes(
     }
   });
 
+  // ========== REPORTS ROUTES ==========
+
+  // Get expense data for export (gerente_general and gerente_comercial only)
+  app.get("/api/reports/expenses", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !["gerente_general", "gerente_comercial"].includes(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { buildingId, month, year } = req.query;
+      
+      // Get closed tickets with invoice info
+      const allTickets = await storage.getTickets();
+      
+      let filteredTickets = allTickets.filter(t => 
+        t.status === "cerrado" && 
+        t.invoiceAmount && 
+        parseFloat(t.invoiceAmount) > 0
+      );
+
+      // Filter by building if specified
+      if (buildingId && buildingId !== "all") {
+        filteredTickets = filteredTickets.filter(t => t.buildingId === buildingId);
+      }
+
+      // Filter by month and year if specified
+      if (month && year) {
+        const monthNum = parseInt(month as string);
+        const yearNum = parseInt(year as string);
+        filteredTickets = filteredTickets.filter(t => {
+          if (!t.closedAt) return false;
+          const closedDate = new Date(t.closedAt);
+          return closedDate.getMonth() + 1 === monthNum && closedDate.getFullYear() === yearNum;
+        });
+      }
+
+      // Get buildings and maintainers for names
+      const buildings = await storage.getBuildings();
+      const maintainers = await storage.getMaintainers();
+      const categories = await storage.getMaintainerCategories();
+
+      const buildingMap = new Map(buildings.map(b => [b.id, b.name]));
+      const maintainerMap = new Map(maintainers.map(m => [m.id, m.companyName]));
+      const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+
+      // Map tickets to expense report format
+      const expenses = filteredTickets.map((t, index) => ({
+        numero: index + 1,
+        edificio: buildingMap.get(t.buildingId) || "Desconocido",
+        fondo: "Gasto Común",
+        subfondo: t.categoryId ? (categoryMap.get(t.categoryId) || "Otros") : "Otros",
+        descripcion: t.description,
+        monto: parseFloat(t.invoiceAmount || "0"),
+        documento: t.invoiceNumber || "",
+        fechaEgreso: t.closedAt ? new Date(t.closedAt).toLocaleDateString("es-CL") : "",
+        proveedor: t.maintainerId ? (maintainerMap.get(t.maintainerId) || "") : "",
+        formaPago: "transferencia",
+      }));
+
+      res.json(expenses);
+    } catch (error) {
+      console.error("Error fetching expenses:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Generate Excel file for expenses
+  app.get("/api/reports/expenses/excel", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !["gerente_general", "gerente_comercial"].includes(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { buildingId, month, year } = req.query;
+      const XLSX = await import("xlsx");
+      
+      // Get closed tickets with invoice info
+      const allTickets = await storage.getTickets();
+      
+      let filteredTickets = allTickets.filter(t => 
+        t.status === "cerrado" && 
+        t.invoiceAmount && 
+        parseFloat(t.invoiceAmount) > 0
+      );
+
+      // Filter by building if specified
+      if (buildingId && buildingId !== "all") {
+        filteredTickets = filteredTickets.filter(t => t.buildingId === buildingId);
+      }
+
+      // Filter by month and year if specified
+      if (month && year) {
+        const monthNum = parseInt(month as string);
+        const yearNum = parseInt(year as string);
+        filteredTickets = filteredTickets.filter(t => {
+          if (!t.closedAt) return false;
+          const closedDate = new Date(t.closedAt);
+          return closedDate.getMonth() + 1 === monthNum && closedDate.getFullYear() === yearNum;
+        });
+      }
+
+      // Get buildings and maintainers for names
+      const buildings = await storage.getBuildings();
+      const maintainers = await storage.getMaintainers();
+      const categories = await storage.getMaintainerCategories();
+
+      const buildingMap = new Map(buildings.map(b => [b.id, b.name]));
+      const maintainerMap = new Map(maintainers.map(m => [m.id, m.companyName]));
+      const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+
+      // Create worksheet data in Edipro format
+      const wsData = [
+        ["numero", "fondo", "subfondo", "descripcion", "monto", "documento", "fecha egreso", "fecha banco", "anulado", "Proveedor", "numero respaldo", "forma de pago", "fecha cheque"],
+      ];
+
+      filteredTickets.forEach((t, index) => {
+        wsData.push([
+          String(index + 1),
+          "Gasto Común",
+          t.categoryId ? (categoryMap.get(t.categoryId) || "Otros") : "Otros",
+          t.description,
+          t.invoiceAmount || "0",
+          t.invoiceNumber || "",
+          t.closedAt ? new Date(t.closedAt).toLocaleDateString("es-CL") : "",
+          "",
+          "no",
+          t.maintainerId ? (maintainerMap.get(t.maintainerId) || "") : "",
+          "",
+          "transferencia",
+          "",
+        ]);
+      });
+
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Egresos");
+
+      // Generate buffer
+      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+
+      // Build filename
+      const building = buildingId && buildingId !== "all" ? buildingMap.get(buildingId as string) : "todos";
+      const monthNames = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+      const monthName = month ? monthNames[parseInt(month as string) - 1] : "todos";
+      const filename = `egresos_${building}_${monthName}_${year || "todos"}.xlsx`;
+
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.send(buf);
+    } catch (error) {
+      console.error("Error generating Excel:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   return httpServer;
 }

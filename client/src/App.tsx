@@ -38,6 +38,7 @@ import CalendarView from "@/pages/CalendarView";
 import VisitReport from "@/pages/VisitReport";
 import DevLogin from "@/pages/DevLogin";
 import Executives from "@/pages/Executives";
+import ExpenseReport from "@/pages/ExpenseReport";
 
 function LoadingScreen() {
   return (
@@ -159,6 +160,9 @@ function AuthenticatedApp() {
                     <Route path="/mantenedores" component={Maintainers} />
                     <Route path="/ejecutivos" component={Executives} />
                   </>
+                )}
+                {(userRole === "gerente_general" || userRole === "gerente_comercial") && (
+                  <Route path="/reportes/egresos" component={ExpenseReport} />
                 )}
                 <Route path="/perfil" component={() => <Profile userRole={userRole} />} />
 

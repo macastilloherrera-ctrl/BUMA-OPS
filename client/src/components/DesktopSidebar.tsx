@@ -22,6 +22,7 @@ import {
   LogOut,
   HardHat,
   ClipboardList,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -59,6 +60,40 @@ const managerNavItems = [
       { path: "/equipos", label: "Equipos Criticos", icon: Wrench },
       { path: "/mantenedores", label: "Mantenedores", icon: HardHat },
       { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
+    ]
+  },
+];
+
+const managerWithReportsNavItems = [
+  { 
+    group: "Dashboards",
+    items: [
+      { path: "/dashboard/tickets", label: "Tickets Semaforo", icon: Ticket },
+      { path: "/dashboard/visitas", label: "Panel Visitas", icon: Calendar },
+      { path: "/calendario", label: "Calendario", icon: CalendarDays },
+    ]
+  },
+  {
+    group: "Operaciones",
+    items: [
+      { path: "/tickets", label: "Todos los Tickets", icon: Ticket },
+      { path: "/tickets?mine=true", label: "Mis Tickets", icon: ClipboardList },
+      { path: "/visitas", label: "Visitas", icon: Calendar },
+    ]
+  },
+  {
+    group: "Gestion",
+    items: [
+      { path: "/edificios", label: "Edificios", icon: Building2 },
+      { path: "/equipos", label: "Equipos Criticos", icon: Wrench },
+      { path: "/mantenedores", label: "Mantenedores", icon: HardHat },
+      { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
+    ]
+  },
+  {
+    group: "Reportes",
+    items: [
+      { path: "/reportes/egresos", label: "Informe Egresos", icon: FileSpreadsheet },
     ]
   },
 ];
@@ -108,6 +143,12 @@ const generalManagerNavItems = [
       { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
     ]
   },
+  {
+    group: "Reportes",
+    items: [
+      { path: "/reportes/egresos", label: "Informe Egresos", icon: FileSpreadsheet },
+    ]
+  },
 ];
 
 const financeNavItems = [
@@ -126,8 +167,9 @@ export function DesktopSidebar({ user, userRole, onLogout }: DesktopSidebarProps
     switch (userRole) {
       case "gerente_general":
         return generalManagerNavItems;
-      case "gerente_operaciones":
       case "gerente_comercial":
+        return managerWithReportsNavItems;
+      case "gerente_operaciones":
         return managerNavItems;
       case "gerente_finanzas":
         return financeNavItems;
