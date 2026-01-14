@@ -127,6 +127,7 @@ export function DesktopSidebar({ user, userRole, onLogout }: DesktopSidebarProps
       case "gerente_general":
         return generalManagerNavItems;
       case "gerente_operaciones":
+      case "gerente_comercial":
         return managerNavItems;
       case "gerente_finanzas":
         return financeNavItems;
@@ -147,6 +148,7 @@ export function DesktopSidebar({ user, userRole, onLogout }: DesktopSidebarProps
     const labels: Record<UserRole, string> = {
       gerente_general: "Gerente General",
       gerente_operaciones: "Gerente Operaciones",
+      gerente_comercial: "Gerente Comercial",
       gerente_finanzas: "Gerente Finanzas",
       ejecutivo_operaciones: "Ejecutivo Operaciones",
     };

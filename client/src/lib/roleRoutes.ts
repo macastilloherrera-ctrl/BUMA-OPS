@@ -3,6 +3,7 @@ import type { UserRole } from "@shared/schema";
 export const roleHomeRoutes: Record<UserRole, string> = {
   ejecutivo_operaciones: "/visitas?view=today",
   gerente_operaciones: "/dashboard/tickets",
+  gerente_comercial: "/dashboard/tickets",
   gerente_finanzas: "/dashboard/tickets",
   gerente_general: "/dashboard/overview",
 };
@@ -38,6 +39,25 @@ export const rolePermissions: Record<UserRole, {
     buildingScope: "all",
   },
   gerente_operaciones: {
+    allowedRoutes: [
+      "/dashboard/tickets",
+      "/dashboard/visitas",
+      "/visitas",
+      "/visitas/programar",
+      "/tickets",
+      "/tickets/nuevo",
+      "/calendario",
+      "/edificios",
+      "/equipos",
+      "/mantenedores",
+      "/ejecutivos",
+      "/perfil",
+    ],
+    canViewCosts: true,
+    canApproveAssets: true,
+    buildingScope: "all",
+  },
+  gerente_comercial: {
     allowedRoutes: [
       "/dashboard/tickets",
       "/dashboard/visitas",
@@ -98,7 +118,7 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
 }
 
 export function isManagerRole(role: UserRole): boolean {
-  return role === "gerente_general" || role === "gerente_operaciones";
+  return role === "gerente_general" || role === "gerente_operaciones" || role === "gerente_comercial";
 }
 
 export function isFinanceRole(role: UserRole): boolean {
