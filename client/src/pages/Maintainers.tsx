@@ -88,7 +88,7 @@ export default function Maintainers() {
     queryKey: ["/api/user/profile"],
   });
 
-  const isManager = userProfile?.role === "gerente_general" || userProfile?.role === "gerente_operaciones";
+  const isManager = userProfile?.role === "gerente_general" || userProfile?.role === "gerente_operaciones" || userProfile?.role === "gerente_comercial";
 
   const { data: categories, isLoading: categoriesLoading } = useQuery<MaintainerCategory[]>({
     queryKey: ["/api/maintainers/categories"],

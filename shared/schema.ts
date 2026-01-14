@@ -154,6 +154,7 @@ export const buildings = pgTable("buildings", {
   communityEmail: varchar("community_email", { length: 255 }),
   status: buildingStatusEnum("status").notNull().default("activo"),
   assignedExecutiveId: varchar("assigned_executive_id"),
+  regulationDocumentUrl: text("regulation_document_url"),
   departmentCount: integer("department_count").default(0),
   elevatorCount: integer("elevator_count").default(0),
   gateCount: integer("gate_count").default(0),

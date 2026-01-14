@@ -264,7 +264,10 @@ export default function Buildings() {
     return matchesSearch && matchesStatus;
   });
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, hasRegulation: boolean = true) => {
+    if (status === "activo" && !hasRegulation) {
+      return <Badge variant="destructive">Activo - Sin Reglamento</Badge>;
+    }
     const config: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
       activo: { label: "Activo", variant: "default" },
       inactivo: { label: "Inactivo", variant: "secondary" },
@@ -810,7 +813,7 @@ export default function Buildings() {
                         {building.name}
                       </CardTitle>
                     </Link>
-                    {getStatusBadge(building.status)}
+                    {getStatusBadge(building.status, !!building.regulationDocumentUrl)}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">

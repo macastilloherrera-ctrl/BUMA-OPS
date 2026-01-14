@@ -59,6 +59,7 @@ import {
   Calendar,
   Upload,
   Download,
+  FileText,
 } from "lucide-react";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import type { UppyFile, UploadResult } from "@uppy/core";
@@ -91,12 +92,13 @@ export default function BuildingDetail() {
   const [isStaffDialogOpen, setIsStaffDialogOpen] = useState(false);
   const [isFolderDialogOpen, setIsFolderDialogOpen] = useState(false);
   const [selectedFolder, setSelectedFolder] = useState<BuildingFolder | null>(null);
+  const [isRegulationDialogOpen, setIsRegulationDialogOpen] = useState(false);
 
   const { data: userProfile } = useQuery<UserProfile>({
     queryKey: ["/api/user/profile"],
   });
 
-  const isManager = userProfile?.role && ["gerente_general", "gerente_operaciones"].includes(userProfile.role);
+  const isManager = userProfile?.role && ["gerente_general", "gerente_operaciones", "gerente_comercial"].includes(userProfile.role);
 
   const { data: building, isLoading: buildingLoading } = useQuery<BuildingWithExecutive>({
     queryKey: ["/api/buildings", id],
@@ -235,6 +237,21 @@ export default function BuildingDetail() {
     },
   });
 
+  const updateRegulationMutation = useMutation({
+    mutationFn: async (url: string | null) => {
+      return apiRequest("PATCH", `/api/buildings/${id}`, { regulationDocumentUrl: url });
+    },
+    onSuccess: (_data, url) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/buildings", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/buildings"] });
+      setIsRegulationDialogOpen(false);
+      toast({ title: url ? "Reglamento subido" : "Reglamento eliminado" });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "No se pudo actualizar el reglamento", variant: "destructive" });
+    },
+  });
+
   const handleDownloadFile = async (file: BuildingFile) => {
     try {
       const objectPath = file.objectStorageKey.startsWith("/objects/") 
@@ -256,13 +273,38 @@ export default function BuildingDetail() {
     }
   };
 
+  const handleDownloadRegulation = async () => {
+    if (!building?.regulationDocumentUrl) return;
+    try {
+      const objectPath = building.regulationDocumentUrl.startsWith("/objects/") 
+        ? building.regulationDocumentUrl 
+        : `/objects/${building.regulationDocumentUrl}`;
+      const response = await fetch(objectPath);
+      if (!response.ok) throw new Error("Error al descargar");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Reglamento_${building.name.replace(/\s/g, "_")}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Error al descargar reglamento", variant: "destructive" });
+    }
+  };
+
   const sortedFiles = files?.slice().sort((a, b) => {
     const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
     const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
     return dateB - dateA;
   });
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, hasRegulation: boolean = true) => {
+    if (status === "activo" && !hasRegulation) {
+      return <Badge variant="destructive">Activo - Sin Reglamento</Badge>;
+    }
     const config: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
       activo: { label: "Activo", variant: "default" },
       inactivo: { label: "Inactivo", variant: "secondary" },
@@ -309,7 +351,7 @@ export default function BuildingDetail() {
             <h1 className="text-xl md:text-2xl font-semibold" data-testid="text-building-name">
               {building.name}
             </h1>
-            {getStatusBadge(building.status)}
+            {getStatusBadge(building.status, !!building.regulationDocumentUrl)}
           </div>
           {isManager && (
             <Link href={`/edificios?edit=${building.id}`}>
@@ -350,6 +392,111 @@ export default function BuildingDetail() {
                     <div className="flex items-center gap-2">
                       <User className="h-4 w-4 text-muted-foreground" />
                       <span>Ejecutivo: {building.executiveName}</span>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Reglamento de Copropiedad
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {building.regulationDocumentUrl ? (
+                    <div className="flex items-center justify-between gap-4 p-3 bg-muted/50 rounded-md">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-5 w-5 text-primary" />
+                        <span className="text-sm font-medium">Reglamento cargado</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={handleDownloadRegulation}
+                          data-testid="button-download-regulation"
+                        >
+                          <Download className="h-4 w-4 mr-1" />
+                          Descargar
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="outline" size="sm" data-testid="button-delete-regulation">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Eliminar Reglamento</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Esta accion eliminara el reglamento de copropiedad. El edificio quedara marcado como "Activo - Sin Reglamento".
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction 
+                                onClick={() => updateRegulationMutation.mutate(null)}
+                                data-testid="button-confirm-delete-regulation"
+                              >
+                                Eliminar
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+                        <FileText className="h-5 w-5 text-destructive" />
+                        <span className="text-sm text-destructive font-medium">Sin reglamento de copropiedad</span>
+                      </div>
+                      <Dialog open={isRegulationDialogOpen} onOpenChange={setIsRegulationDialogOpen}>
+                        <DialogTrigger asChild>
+                          <Button size="sm" data-testid="button-upload-regulation">
+                            <Upload className="h-4 w-4 mr-1" />
+                            Subir Reglamento
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                          <DialogHeader>
+                            <DialogTitle>Subir Reglamento de Copropiedad</DialogTitle>
+                          </DialogHeader>
+                          <ObjectUploader
+                            maxNumberOfFiles={1}
+                            maxFileSize={20 * 1024 * 1024}
+                            onGetUploadParameters={async (file) => {
+                              const res = await fetch("/api/uploads/request-url", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  name: file.name,
+                                  size: file.size,
+                                  contentType: file.type,
+                                }),
+                              });
+                              const { uploadURL, objectPath } = await res.json();
+                              (file.meta as Record<string, unknown>).objectPath = objectPath;
+                              return {
+                                method: "PUT" as const,
+                                url: uploadURL,
+                                headers: { "Content-Type": file.type || "application/octet-stream" },
+                              };
+                            }}
+                            onComplete={(result) => {
+                              const file = result.successful?.[0];
+                              if (file?.meta?.objectPath) {
+                                updateRegulationMutation.mutate(file.meta.objectPath as string);
+                              }
+                            }}
+                          >
+                            <Upload className="h-4 w-4 mr-1" />
+                            Subir Archivo
+                          </ObjectUploader>
+                        </DialogContent>
+                      </Dialog>
                     </div>
                   )}
                 </CardContent>
