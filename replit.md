@@ -29,10 +29,11 @@ Plataforma interna de operaciones para gestionar visitas a terreno, tickets oper
 ```
 
 ## Roles de Usuario
-1. **Gerente General**: Acceso total, ve costos, aprueba equipos
-2. **Gerente Operaciones**: Gestiona visitas/tickets, ve costos, aprueba equipos
-3. **Gerente Finanzas**: Solo lectura en dashboards
-4. **Ejecutivo Operaciones**: Trabajo de campo, no ve costos
+1. **Super Admin**: Configuracion del sistema, branding, gestion avanzada de usuarios
+2. **Gerente General**: Acceso total, ve costos, aprueba equipos, administra usuarios
+3. **Gerente Operaciones**: Gestiona visitas/tickets, ve costos, aprueba equipos
+4. **Gerente Finanzas**: Solo lectura en dashboards
+5. **Ejecutivo Operaciones**: Trabajo de campo, no ve costos
 
 ## Funcionalidades Principales
 
