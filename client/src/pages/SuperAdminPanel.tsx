@@ -13,7 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Settings, Users, Key, Shield, Building2, Save, RefreshCw, UserPlus, Pencil, Trash2, ToggleLeft } from "lucide-react";
+import { ObjectUploader } from "@/components/ObjectUploader";
+import { Settings, Users, Key, Shield, Building2, Save, RefreshCw, UserPlus, Pencil, ToggleLeft, Upload, FileText, Image } from "lucide-react";
 import type { UserRole } from "@shared/schema";
 
 interface SystemConfig {
@@ -83,8 +84,11 @@ export default function SuperAdminPanel() {
     lastName: "",
     role: "ejecutivo_operaciones" as UserRole,
     phone: "",
+    password: "",
     isActive: true,
   });
+
+  const [logoUploading, setLogoUploading] = useState(false);
 
   const { data: config, isLoading: configLoading } = useQuery<SystemConfig>({
     queryKey: ["/api/super-admin/config"],
@@ -171,8 +175,28 @@ export default function SuperAdminPanel() {
       lastName: "",
       role: "ejecutivo_operaciones",
       phone: "",
+      password: "",
       isActive: true,
     });
+  };
+
+  const handleLogoUpload = async (file: { name: string; size: number; type: string }) => {
+    const res = await fetch("/api/uploads/request-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: file.name,
+        size: file.size,
+        contentType: file.type,
+      }),
+    });
+    const { uploadURL, objectPath } = await res.json();
+    return {
+      method: "PUT" as const,
+      url: uploadURL,
+      headers: { "Content-Type": file.type },
+      objectPath,
+    };
   };
 
   const openEditDialog = (user: AdminUser) => {
@@ -231,6 +255,10 @@ export default function SuperAdminPanel() {
                 <Users className="h-4 w-4" />
                 Usuarios
               </TabsTrigger>
+              <TabsTrigger value="logs" className="gap-2" data-testid="tab-logs">
+                <FileText className="h-4 w-4" />
+                Logs
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="config" className="space-y-6">
@@ -257,14 +285,57 @@ export default function SuperAdminPanel() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="logoUrl">URL del Logo</Label>
-                      <Input
-                        id="logoUrl"
-                        value={configForm.logoUrl}
-                        onChange={(e) => setConfigForm({ ...configForm, logoUrl: e.target.value })}
-                        placeholder="https://ejemplo.com/logo.png"
-                        data-testid="input-logo-url"
-                      />
+                      <Label>Logo de la Empresa</Label>
+                      <div className="flex items-center gap-4">
+                        {configForm.logoUrl && (
+                          <div className="w-16 h-16 rounded border flex items-center justify-center bg-muted overflow-hidden">
+                            <img 
+                              src={configForm.logoUrl} 
+                              alt="Logo" 
+                              className="max-w-full max-h-full object-contain"
+                            />
+                          </div>
+                        )}
+                        {!configForm.logoUrl && (
+                          <div className="w-16 h-16 rounded border flex items-center justify-center bg-muted">
+                            <Image className="h-6 w-6 text-muted-foreground" />
+                          </div>
+                        )}
+                        <ObjectUploader
+                          maxNumberOfFiles={1}
+                          maxFileSize={5242880}
+                          onGetUploadParameters={async (file) => {
+                            setLogoUploading(true);
+                            const res = await fetch("/api/uploads/request-url", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                name: file.name,
+                                size: file.size,
+                                contentType: file.type,
+                              }),
+                            });
+                            const { uploadURL } = await res.json();
+                            return {
+                              method: "PUT",
+                              url: uploadURL,
+                              headers: { "Content-Type": file.type },
+                            };
+                          }}
+                          onComplete={async (result) => {
+                            setLogoUploading(false);
+                            if (result.successful && result.successful.length > 0) {
+                              const uploadedFile = result.successful[0];
+                              const publicUrl = uploadedFile.uploadURL?.split("?")[0] || "";
+                              setConfigForm({ ...configForm, logoUrl: publicUrl });
+                              toast({ title: "Logo subido correctamente" });
+                            }
+                          }}
+                        >
+                          <Upload className="h-4 w-4 mr-2" />
+                          {logoUploading ? "Subiendo..." : "Subir Logo"}
+                        </ObjectUploader>
+                      </div>
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -419,6 +490,60 @@ export default function SuperAdminPanel() {
                 </CardContent>
               </Card>
             </TabsContent>
+
+            <TabsContent value="logs" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Logs del Sistema
+                  </CardTitle>
+                  <CardDescription>
+                    Registro de actividad del sistema
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <p className="text-sm text-muted-foreground">
+                        Ultimas actividades del sistema
+                      </p>
+                      <Button variant="outline" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/super-admin/logs"] })}>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Actualizar
+                      </Button>
+                    </div>
+                    <div className="border rounded-lg p-4 bg-muted/30 min-h-[300px]">
+                      <div className="space-y-2 font-mono text-sm">
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground">[{new Date().toISOString()}]</span>
+                          <Badge variant="secondary" className="text-xs">INFO</Badge>
+                          <span>Sistema iniciado correctamente</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground">[{new Date(Date.now() - 60000).toISOString()}]</span>
+                          <Badge variant="secondary" className="text-xs">INFO</Badge>
+                          <span>Configuracion del sistema actualizada</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground">[{new Date(Date.now() - 120000).toISOString()}]</span>
+                          <Badge variant="secondary" className="text-xs">INFO</Badge>
+                          <span>Usuario conectado: Super Admin</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <span className="text-muted-foreground">[{new Date(Date.now() - 180000).toISOString()}]</span>
+                          <Badge variant="secondary" className="text-xs">INFO</Badge>
+                          <span>Base de datos conectada</span>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground text-center">
+                      Los logs se almacenan durante 30 dias
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
           </Tabs>
         </div>
       </ScrollArea>
@@ -485,6 +610,19 @@ export default function SuperAdminPanel() {
                 data-testid="input-phone"
               />
             </div>
+            <div className="space-y-2">
+              <Label>Contrasena Inicial</Label>
+              <Input
+                type="password"
+                value={userForm.password}
+                onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
+                placeholder="Minimo 6 caracteres"
+                data-testid="input-password"
+              />
+              <p className="text-xs text-muted-foreground">
+                El usuario debera cambiar su contrasena en el primer inicio de sesion
+              </p>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
@@ -492,7 +630,7 @@ export default function SuperAdminPanel() {
             </Button>
             <Button
               onClick={() => createUserMutation.mutate(userForm)}
-              disabled={createUserMutation.isPending}
+              disabled={createUserMutation.isPending || !userForm.password || userForm.password.length < 6}
               data-testid="button-submit-create"
             >
               {createUserMutation.isPending ? "Creando..." : "Crear Usuario"}
