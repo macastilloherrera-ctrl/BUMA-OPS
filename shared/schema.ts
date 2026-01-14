@@ -9,6 +9,7 @@ export * from "./models/auth";
 export const userRoleEnum = pgEnum("user_role", [
   "gerente_general",
   "gerente_operaciones",
+  "gerente_comercial",
   "gerente_finanzas",
   "ejecutivo_operaciones"
 ]);
@@ -970,7 +971,7 @@ export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
 
 // Helper types for frontend
-export type UserRole = "gerente_general" | "gerente_operaciones" | "gerente_finanzas" | "ejecutivo_operaciones";
+export type UserRole = "gerente_general" | "gerente_operaciones" | "gerente_comercial" | "gerente_finanzas" | "ejecutivo_operaciones";
 export type VisitType = "rutina" | "urgente";
 export type TicketPriority = "rojo" | "amarillo" | "verde";
 export type TicketStatus = "pendiente" | "en_curso" | "trabajo_completado" | "vencido" | "resuelto" | "reprogramado";

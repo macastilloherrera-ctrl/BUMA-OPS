@@ -22,6 +22,15 @@ export const DEV_USERS = [
     label: "Gerente Operaciones",
   },
   {
+    id: "dev-gerente-comercial",
+    email: "comercial@buma.local",
+    firstName: "Gerente",
+    lastName: "Comercial",
+    profileImageUrl: null,
+    role: "gerente_comercial" as const,
+    label: "Gerente Comercial",
+  },
+  {
     id: "exec-a-001",
     email: "execa@buma.local",
     firstName: "Ejecutivo",
@@ -50,6 +59,7 @@ function getRedirectForRole(role: string): string {
     case "gerente_general":
       return "/dashboard/overview";
     case "gerente_operaciones":
+    case "gerente_comercial":
       return "/dashboard/tickets";
     case "gerente_finanzas":
       return "/dashboard/tickets";

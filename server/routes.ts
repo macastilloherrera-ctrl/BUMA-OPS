@@ -59,7 +59,7 @@ function stripCostFields<T extends { cost?: string | null }>(items: T[], canSeeC
 
 // Helper to check if user is a manager role
 function isManagerRole(profile: UserProfile | null): boolean {
-  return !!profile && ["gerente_general", "gerente_operaciones"].includes(profile.role);
+  return !!profile && ["gerente_general", "gerente_operaciones", "gerente_comercial"].includes(profile.role);
 }
 
 // Helper to check if user can access a building (based on buildingScope)
