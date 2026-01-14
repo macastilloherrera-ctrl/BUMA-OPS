@@ -45,6 +45,7 @@ import ReportTickets from "@/pages/ReportTickets";
 import ReportFinancial from "@/pages/ReportFinancial";
 import ReportEquipment from "@/pages/ReportEquipment";
 import ReportExecutives from "@/pages/ReportExecutives";
+import AdminUsers from "@/pages/AdminUsers";
 
 function LoadingScreen() {
   return (
@@ -180,6 +181,10 @@ function AuthenticatedApp() {
                   </>
                 )}
                 <Route path="/reportes/cumplimiento" component={RegulatoryComplianceReport} />
+                
+                {(userRole === "gerente_general" || userRole === "gerente_operaciones") && (
+                  <Route path="/admin/usuarios" component={AdminUsers} />
+                )}
                 <Route path="/perfil" component={() => <Profile userRole={userRole} />} />
 
                 <Route component={NotFound} />

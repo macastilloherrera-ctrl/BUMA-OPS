@@ -1,5 +1,6 @@
 import {
   users,
+  type UpsertUser,
   userProfiles,
   buildings,
   buildingStaff,
@@ -83,12 +84,18 @@ import { eq, and, desc, gte, lte, or, sql } from "drizzle-orm";
 export interface IStorage {
   // Users
   getUsers(): Promise<User[]>;
+  getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  createUser(user: UpsertUser): Promise<User>;
+  updateUser(id: string, data: Partial<UpsertUser>): Promise<User | undefined>;
+  deleteUser(id: string): Promise<boolean>;
   
   // User Profiles
   getUserProfile(userId: string): Promise<UserProfile | undefined>;
   getUserProfiles(): Promise<UserProfile[]>;
   createUserProfile(profile: InsertUserProfile): Promise<UserProfile>;
   updateUserProfile(userId: string, data: Partial<InsertUserProfile>): Promise<UserProfile | undefined>;
+  deleteUserProfile(userId: string): Promise<boolean>;
   getExecutives(): Promise<UserProfile[]>;
 
   // Buildings
@@ -250,6 +257,36 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(users);
   }
 
+  async getUser(id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user || undefined;
+  }
+
+  async createUser(user: UpsertUser): Promise<User> {
+    const [created] = await db.insert(users).values(user).returning();
+    return created;
+  }
+
+  async updateUser(id: string, data: Partial<UpsertUser>): Promise<User | undefined> {
+    const [updated] = await db
+      .update(users)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteUser(id: string): Promise<boolean> {
+    await db.delete(userProfiles).where(eq(userProfiles.userId, id));
+    await db.delete(users).where(eq(users.id, id));
+    return true;
+  }
+
   // User Profiles
   async getUserProfile(userId: string): Promise<UserProfile | undefined> {
     const [profile] = await db.select().from(userProfiles).where(eq(userProfiles.userId, userId));
@@ -272,6 +309,11 @@ export class DatabaseStorage implements IStorage {
       .where(eq(userProfiles.userId, userId))
       .returning();
     return updated || undefined;
+  }
+
+  async deleteUserProfile(userId: string): Promise<boolean> {
+    await db.delete(userProfiles).where(eq(userProfiles.userId, userId));
+    return true;
   }
 
   async getExecutives(): Promise<UserProfile[]> {

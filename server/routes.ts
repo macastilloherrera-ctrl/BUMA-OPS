@@ -3883,5 +3883,320 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== ADMIN USER MANAGEMENT ENDPOINTS ====================
+  
+  // Helper to check if user has admin privileges
+  const isAdminRole = (role: string): boolean => {
+    return ["gerente_general", "gerente_operaciones"].includes(role);
+  };
+
+  // List all users with their profiles
+  app.get("/api/admin/users", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isAdminRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado. Se requieren privilegios de administrador." });
+      }
+
+      const allUsers = await storage.getUsers();
+      const allProfiles = await storage.getUserProfiles();
+      const buildings = await storage.getBuildings();
+      
+      const profileMap = new Map(allProfiles.map(p => [p.userId, p]));
+      
+      const usersWithProfiles = allUsers.map(user => {
+        const userProfile = profileMap.get(user.id);
+        const assignedBuildings = buildings.filter(b => b.assignedExecutiveId === user.id);
+        
+        return {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          profileImageUrl: user.profileImageUrl,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+          profile: userProfile ? {
+            id: userProfile.id,
+            role: userProfile.role,
+            buildingScope: userProfile.buildingScope,
+            phone: userProfile.phone,
+            isActive: userProfile.isActive,
+          } : null,
+          assignedBuildings: assignedBuildings.map(b => ({ id: b.id, name: b.name })),
+        };
+      });
+      
+      res.json(usersWithProfiles);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Get single user with profile
+  app.get("/api/admin/users/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isAdminRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const user = await storage.getUser(req.params.id);
+      if (!user) {
+        return res.status(404).json({ error: "Usuario no encontrado" });
+      }
+      
+      const userProfile = await storage.getUserProfile(user.id);
+      const buildings = await storage.getBuildings();
+      const assignedBuildings = buildings.filter(b => b.assignedExecutiveId === user.id);
+      
+      res.json({
+        ...user,
+        profile: userProfile || null,
+        assignedBuildings: assignedBuildings.map(b => ({ id: b.id, name: b.name })),
+      });
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Create new user with profile
+  app.post("/api/admin/users", isAuthenticated, async (req, res) => {
+    try {
+      const adminProfile = await storage.getUserProfile((req.user as any).id);
+      if (!adminProfile || !isAdminRole(adminProfile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { email, firstName, lastName, role, buildingScope, phone, isActive } = req.body;
+      
+      if (!email || !role) {
+        return res.status(400).json({ error: "Email y rol son requeridos" });
+      }
+      
+      // Check if email already exists
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({ error: "Ya existe un usuario con este email" });
+      }
+      
+      // Create user
+      const newUser = await storage.createUser({
+        email,
+        firstName: firstName || null,
+        lastName: lastName || null,
+      });
+      
+      // Create profile
+      const newProfile = await storage.createUserProfile({
+        userId: newUser.id,
+        role,
+        buildingScope: buildingScope || (role === "ejecutivo_operaciones" ? "assigned" : "all"),
+        phone: phone || null,
+        isActive: isActive !== false,
+      });
+      
+      res.status(201).json({
+        ...newUser,
+        profile: newProfile,
+      });
+    } catch (error) {
+      console.error("Error creating user:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Update user and profile
+  app.patch("/api/admin/users/:id", isAuthenticated, async (req, res) => {
+    try {
+      const adminProfile = await storage.getUserProfile((req.user as any).id);
+      if (!adminProfile || !isAdminRole(adminProfile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const userId = req.params.id;
+      const { email, firstName, lastName, role, buildingScope, phone, isActive } = req.body;
+      
+      // Update user
+      const userUpdates: any = {};
+      if (email !== undefined) userUpdates.email = email;
+      if (firstName !== undefined) userUpdates.firstName = firstName;
+      if (lastName !== undefined) userUpdates.lastName = lastName;
+      
+      let updatedUser = await storage.getUser(userId);
+      if (!updatedUser) {
+        return res.status(404).json({ error: "Usuario no encontrado" });
+      }
+      
+      if (Object.keys(userUpdates).length > 0) {
+        updatedUser = await storage.updateUser(userId, userUpdates);
+      }
+      
+      // Update or create profile
+      const profileUpdates: any = {};
+      if (role !== undefined) profileUpdates.role = role;
+      if (buildingScope !== undefined) profileUpdates.buildingScope = buildingScope;
+      if (phone !== undefined) profileUpdates.phone = phone;
+      if (isActive !== undefined) profileUpdates.isActive = isActive;
+      
+      let userProfile = await storage.getUserProfile(userId);
+      if (Object.keys(profileUpdates).length > 0) {
+        if (userProfile) {
+          userProfile = await storage.updateUserProfile(userId, profileUpdates);
+        } else {
+          userProfile = await storage.createUserProfile({
+            userId,
+            role: role || "ejecutivo_operaciones",
+            buildingScope: buildingScope || "assigned",
+            phone: phone || null,
+            isActive: isActive !== false,
+          });
+        }
+      }
+      
+      res.json({
+        ...updatedUser,
+        profile: userProfile,
+      });
+    } catch (error) {
+      console.error("Error updating user:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Delete user (and profile)
+  app.delete("/api/admin/users/:id", isAuthenticated, async (req, res) => {
+    try {
+      const adminProfile = await storage.getUserProfile((req.user as any).id);
+      if (!adminProfile || !isAdminRole(adminProfile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const userId = req.params.id;
+      
+      // Prevent deleting yourself
+      if (userId === (req.user as any).id) {
+        return res.status(400).json({ error: "No puedes eliminar tu propio usuario" });
+      }
+      
+      // Unassign from buildings first
+      const buildings = await storage.getBuildings();
+      for (const building of buildings) {
+        if (building.assignedExecutiveId === userId) {
+          await storage.updateBuilding(building.id, { assignedExecutiveId: null });
+        }
+      }
+      
+      await storage.deleteUser(userId);
+      
+      res.json({ success: true, message: "Usuario eliminado correctamente" });
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Toggle user active status
+  app.patch("/api/admin/users/:id/toggle-active", isAuthenticated, async (req, res) => {
+    try {
+      const adminProfile = await storage.getUserProfile((req.user as any).id);
+      if (!adminProfile || !isAdminRole(adminProfile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const userId = req.params.id;
+      
+      const userProfile = await storage.getUserProfile(userId);
+      if (!userProfile) {
+        return res.status(404).json({ error: "Perfil de usuario no encontrado" });
+      }
+      
+      const updatedProfile = await storage.updateUserProfile(userId, {
+        isActive: !userProfile.isActive,
+      });
+      
+      res.json({
+        userId,
+        isActive: updatedProfile?.isActive,
+        message: updatedProfile?.isActive ? "Usuario activado" : "Usuario desactivado",
+      });
+    } catch (error) {
+      console.error("Error toggling user status:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Assign buildings to executive
+  app.patch("/api/admin/users/:id/buildings", isAuthenticated, async (req, res) => {
+    try {
+      const adminProfile = await storage.getUserProfile((req.user as any).id);
+      if (!adminProfile || !isAdminRole(adminProfile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const userId = req.params.id;
+      const { buildingIds } = req.body;
+      
+      if (!Array.isArray(buildingIds)) {
+        return res.status(400).json({ error: "buildingIds debe ser un array" });
+      }
+      
+      const userProfile = await storage.getUserProfile(userId);
+      if (!userProfile) {
+        return res.status(404).json({ error: "Perfil de usuario no encontrado" });
+      }
+      
+      // First, unassign all buildings from this user
+      const allBuildings = await storage.getBuildings();
+      for (const building of allBuildings) {
+        if (building.assignedExecutiveId === userId) {
+          await storage.updateBuilding(building.id, { assignedExecutiveId: null });
+        }
+      }
+      
+      // Then assign the new buildings
+      for (const buildingId of buildingIds) {
+        await storage.updateBuilding(buildingId, { assignedExecutiveId: userId });
+      }
+      
+      // Return updated assignments
+      const updatedBuildings = await storage.getBuildings();
+      const assignedBuildings = updatedBuildings.filter(b => b.assignedExecutiveId === userId);
+      
+      res.json({
+        userId,
+        assignedBuildings: assignedBuildings.map(b => ({ id: b.id, name: b.name })),
+      });
+    } catch (error) {
+      console.error("Error assigning buildings:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Get available roles
+  app.get("/api/admin/roles", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isAdminRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const roles = [
+        { id: "gerente_general", name: "Gerente General", description: "Acceso total a la plataforma" },
+        { id: "gerente_operaciones", name: "Gerente de Operaciones", description: "Gestiona visitas, tickets y equipos" },
+        { id: "gerente_comercial", name: "Gerente Comercial", description: "Acceso a reportes financieros" },
+        { id: "gerente_finanzas", name: "Gerente de Finanzas", description: "Solo lectura en dashboards" },
+        { id: "ejecutivo_operaciones", name: "Ejecutivo de Operaciones", description: "Trabajo de campo, sin acceso a costos" },
+      ];
+      
+      res.json(roles);
+    } catch (error) {
+      console.error("Error fetching roles:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   return httpServer;
 }

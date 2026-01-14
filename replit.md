@@ -49,6 +49,14 @@ Plataforma interna de operaciones para gestionar visitas a terreno, tickets oper
 - Gestion de edificios y equipos criticos
 - Visibilidad de costos
 
+### Administracion de Usuarios (Solo Gerente General y Gerente Operaciones)
+- CRUD completo de usuarios con perfiles
+- Asignacion de roles y edificios
+- Activacion/desactivacion de usuarios
+- Vista tabular con filtros y busqueda
+- Gestion de edificios asignados para ejecutivos
+- API: `/api/admin/users`, `/api/admin/roles`
+
 ### Reportes (Todos los perfiles)
 - **Cumplimiento Normativo**: Informe por edificio con scoring binario (0-100%)
   - Reglamento de copropiedad cargado (25%)

@@ -26,6 +26,7 @@ import {
   FileCheck,
   DollarSign,
   BarChart3,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -74,6 +75,12 @@ const managerNavItems = [
       { path: "/reportes/equipos", label: "Informe Equipos", icon: Wrench },
       { path: "/reportes/ejecutivos", label: "Informe Ejecutivos", icon: Users },
       { path: "/reportes/cumplimiento", label: "Cumplimiento Normativo", icon: FileCheck },
+    ]
+  },
+  {
+    group: "Administracion",
+    items: [
+      { path: "/admin/usuarios", label: "Usuarios", icon: Shield },
     ]
   },
 ];
@@ -174,6 +181,12 @@ const generalManagerNavItems = [
     items: [
       { path: "/reportes/egresos", label: "Informe Egresos", icon: FileSpreadsheet },
       { path: "/reportes/cumplimiento", label: "Cumplimiento Normativo", icon: FileCheck },
+    ]
+  },
+  {
+    group: "Administracion",
+    items: [
+      { path: "/admin/usuarios", label: "Usuarios", icon: Shield },
     ]
   },
 ];
