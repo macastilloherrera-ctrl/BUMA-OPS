@@ -39,7 +39,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Plus, MapPin, User, Search, Pencil, Trash2, UserPlus, Settings2 } from "lucide-react";
+import { Building2, Plus, MapPin, User, Search, Pencil, Trash2, UserPlus, Settings2, Upload, FileText, X } from "lucide-react";
+import { ObjectUploader } from "@/components/ObjectUploader";
 import type { Building, UserProfile, BuildingStaff, BuildingFeature } from "@shared/schema";
 import { Link, useSearch } from "wouter";
 
@@ -85,6 +86,8 @@ export default function Buildings() {
   const [statusFilter, setStatusFilter] = useState<string>("todos");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingBuilding, setEditingBuilding] = useState<Building | null>(null);
+  const [regulationDocumentPath, setRegulationDocumentPath] = useState<string | null>(null);
+  const [regulationFileName, setRegulationFileName] = useState<string | null>(null);
 
   const { data: buildings, isLoading } = useQuery<BuildingWithExecutive[]>({
     queryKey: ["/api/buildings"],
@@ -175,12 +178,17 @@ export default function Buildings() {
     mutationFn: async (data: BuildingForm) => {
       const { staff, features, ...buildingData } = data;
       
+      const buildingPayload = {
+        ...buildingData,
+        regulationDocumentUrl: regulationDocumentPath,
+      };
+      
       let building: Building;
       if (editingBuilding) {
-        const res = await apiRequest("PATCH", `/api/buildings/${editingBuilding.id}`, buildingData);
+        const res = await apiRequest("PATCH", `/api/buildings/${editingBuilding.id}`, buildingPayload);
         building = await res.json();
       } else {
-        const res = await apiRequest("POST", "/api/buildings", buildingData);
+        const res = await apiRequest("POST", "/api/buildings", buildingPayload);
         building = await res.json();
       }
 
@@ -232,6 +240,8 @@ export default function Buildings() {
 
   const handleEdit = (building: Building) => {
     setEditingBuilding(building);
+    setRegulationDocumentPath(building.regulationDocumentUrl || null);
+    setRegulationFileName(building.regulationDocumentUrl ? "Documento existente" : null);
     form.reset({
       name: building.name,
       address: building.address,
@@ -254,6 +264,8 @@ export default function Buildings() {
   const handleDialogClose = () => {
     setIsDialogOpen(false);
     setEditingBuilding(null);
+    setRegulationDocumentPath(null);
+    setRegulationFileName(null);
     form.reset();
   };
 
@@ -736,6 +748,78 @@ export default function Buildings() {
                         </AccordionContent>
                       </AccordionItem>
                     </Accordion>
+
+                    <div className="space-y-2 pt-2">
+                      <label className="text-sm font-medium">Reglamento de Copropiedad</label>
+                      {regulationDocumentPath ? (
+                        <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-md">
+                          <FileText className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm flex-1 truncate">{regulationFileName || "Documento cargado"}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setRegulationDocumentPath(null);
+                              setRegulationFileName(null);
+                            }}
+                            data-testid="button-remove-regulation"
+                          >
+                            <X className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <ObjectUploader
+                          maxNumberOfFiles={1}
+                          maxFileSize={20 * 1024 * 1024}
+                          onGetUploadParameters={async (file) => {
+                            const res = await fetch("/api/uploads/request-url", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                name: file.name,
+                                size: file.size,
+                                contentType: file.type,
+                              }),
+                            });
+                            if (!res.ok) {
+                              toast({
+                                title: "Error",
+                                description: "No se pudo obtener URL de subida",
+                                variant: "destructive",
+                              });
+                              throw new Error("Failed to get upload URL");
+                            }
+                            const { uploadURL, objectPath } = await res.json();
+                            (file.meta as Record<string, unknown>).objectPath = objectPath;
+                            (file.meta as Record<string, unknown>).fileName = file.name;
+                            return {
+                              method: "PUT" as const,
+                              url: uploadURL,
+                              headers: { "Content-Type": file.type || "application/octet-stream" },
+                            };
+                          }}
+                          onComplete={(result) => {
+                            const file = result.successful?.[0];
+                            if (file?.meta?.objectPath) {
+                              setRegulationDocumentPath(file.meta.objectPath as string);
+                              setRegulationFileName(file.meta.fileName as string);
+                              toast({
+                                title: "Archivo cargado",
+                                description: "El reglamento se guardara al crear el edificio",
+                              });
+                            }
+                          }}
+                          buttonClassName="w-full"
+                        >
+                          <Upload className="h-4 w-4 mr-1" />
+                          Subir Reglamento (PDF, DOC)
+                        </ObjectUploader>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Opcional. Puede agregarlo despues desde el detalle del edificio.
+                      </p>
+                    </div>
 
                     <div className="flex gap-2 pt-4">
                       <Button
