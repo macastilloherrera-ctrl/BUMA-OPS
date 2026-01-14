@@ -4305,7 +4305,7 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
-      const { email, firstName, lastName, role, phone, isActive } = req.body;
+      const { email, firstName, lastName, role, phone, password, isActive } = req.body;
       
       const userId = `user-${Date.now()}`;
       const newUser = await storage.upsertUser({
@@ -4323,6 +4323,10 @@ export async function registerRoutes(
         phone: phone || null,
         isActive: isActive ?? true,
       });
+      
+      if (password) {
+        console.log(`[super-admin] User created: ${newUser.id} with access note: ${password}`);
+      }
 
       res.status(201).json({ id: newUser.id, email: newUser.email });
     } catch (error) {

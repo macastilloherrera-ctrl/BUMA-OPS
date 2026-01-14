@@ -207,6 +207,7 @@ export default function SuperAdminPanel() {
       lastName: user.lastName || "",
       role: user.profile?.role || "ejecutivo_operaciones",
       phone: user.profile?.phone || "",
+      password: "",
       isActive: user.profile?.isActive ?? true,
     });
     setShowEditDialog(true);
@@ -315,10 +316,11 @@ export default function SuperAdminPanel() {
                                 contentType: file.type,
                               }),
                             });
-                            const { uploadURL } = await res.json();
+                            const data = await res.json();
+                            (file as any).objectPath = data.objectPath;
                             return {
                               method: "PUT",
-                              url: uploadURL,
+                              url: data.uploadURL,
                               headers: { "Content-Type": file.type },
                             };
                           }}
@@ -326,9 +328,13 @@ export default function SuperAdminPanel() {
                             setLogoUploading(false);
                             if (result.successful && result.successful.length > 0) {
                               const uploadedFile = result.successful[0];
-                              const publicUrl = uploadedFile.uploadURL?.split("?")[0] || "";
-                              setConfigForm({ ...configForm, logoUrl: publicUrl });
-                              toast({ title: "Logo subido correctamente" });
+                              const objectPath = (uploadedFile.data as any)?.objectPath || (uploadedFile as any).objectPath;
+                              if (objectPath) {
+                                setConfigForm({ ...configForm, logoUrl: objectPath });
+                                toast({ title: "Logo subido correctamente" });
+                              } else {
+                                toast({ title: "Error al obtener ruta del logo", variant: "destructive" });
+                              }
                             }
                           }}
                         >
@@ -508,38 +514,20 @@ export default function SuperAdminPanel() {
                       <p className="text-sm text-muted-foreground">
                         Ultimas actividades del sistema
                       </p>
-                      <Button variant="outline" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/super-admin/logs"] })}>
+                      <Button variant="outline" size="sm" disabled>
                         <RefreshCw className="h-4 w-4 mr-2" />
                         Actualizar
                       </Button>
                     </div>
-                    <div className="border rounded-lg p-4 bg-muted/30 min-h-[300px]">
-                      <div className="space-y-2 font-mono text-sm">
-                        <div className="flex gap-2">
-                          <span className="text-muted-foreground">[{new Date().toISOString()}]</span>
-                          <Badge variant="secondary" className="text-xs">INFO</Badge>
-                          <span>Sistema iniciado correctamente</span>
-                        </div>
-                        <div className="flex gap-2">
-                          <span className="text-muted-foreground">[{new Date(Date.now() - 60000).toISOString()}]</span>
-                          <Badge variant="secondary" className="text-xs">INFO</Badge>
-                          <span>Configuracion del sistema actualizada</span>
-                        </div>
-                        <div className="flex gap-2">
-                          <span className="text-muted-foreground">[{new Date(Date.now() - 120000).toISOString()}]</span>
-                          <Badge variant="secondary" className="text-xs">INFO</Badge>
-                          <span>Usuario conectado: Super Admin</span>
-                        </div>
-                        <div className="flex gap-2">
-                          <span className="text-muted-foreground">[{new Date(Date.now() - 180000).toISOString()}]</span>
-                          <Badge variant="secondary" className="text-xs">INFO</Badge>
-                          <span>Base de datos conectada</span>
-                        </div>
-                      </div>
+                    <div className="border rounded-lg p-4 bg-muted/30 min-h-[300px] flex flex-col items-center justify-center">
+                      <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+                      <p className="text-muted-foreground text-center">
+                        El sistema de logs esta en desarrollo.
+                      </p>
+                      <p className="text-sm text-muted-foreground text-center mt-2">
+                        Proximamente podras ver el registro de actividades del sistema aqui.
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground text-center">
-                      Los logs se almacenan durante 30 dias
-                    </p>
                   </div>
                 </CardContent>
               </Card>
@@ -611,16 +599,16 @@ export default function SuperAdminPanel() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Contrasena Inicial</Label>
+              <Label>Nota de acceso</Label>
               <Input
-                type="password"
+                type="text"
                 value={userForm.password}
                 onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-                placeholder="Minimo 6 caracteres"
+                placeholder="Referencia interna (ej: enviado por email)"
                 data-testid="input-password"
               />
               <p className="text-xs text-muted-foreground">
-                El usuario debera cambiar su contrasena en el primer inicio de sesion
+                El usuario iniciara sesion con su cuenta de Replit
               </p>
             </div>
           </div>
@@ -629,8 +617,8 @@ export default function SuperAdminPanel() {
               Cancelar
             </Button>
             <Button
-              onClick={() => createUserMutation.mutate(userForm)}
-              disabled={createUserMutation.isPending || !userForm.password || userForm.password.length < 6}
+              onClick={() => createUserMutation.mutate({ ...userForm, password: userForm.password || "pendiente" })}
+              disabled={createUserMutation.isPending}
               data-testid="button-submit-create"
             >
               {createUserMutation.isPending ? "Creando..." : "Crear Usuario"}
