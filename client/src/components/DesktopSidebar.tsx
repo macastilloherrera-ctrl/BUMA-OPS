@@ -77,12 +77,6 @@ const managerNavItems = [
       { path: "/reportes/cumplimiento", label: "Cumplimiento Normativo", icon: FileCheck },
     ]
   },
-  {
-    group: "Administracion",
-    items: [
-      { path: "/admin/usuarios", label: "Usuarios", icon: Shield },
-    ]
-  },
 ];
 
 const managerWithReportsNavItems = [

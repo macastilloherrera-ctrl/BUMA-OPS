@@ -65,7 +65,6 @@ export const rolePermissions: Record<UserRole, {
       "/reportes/financiero",
       "/reportes/equipos",
       "/reportes/ejecutivos",
-      "/admin/usuarios",
       "/perfil",
     ],
     canViewCosts: true,

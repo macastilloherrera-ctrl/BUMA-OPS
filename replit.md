@@ -49,7 +49,7 @@ Plataforma interna de operaciones para gestionar visitas a terreno, tickets oper
 - Gestion de edificios y equipos criticos
 - Visibilidad de costos
 
-### Administracion de Usuarios (Solo Gerente General y Gerente Operaciones)
+### Administracion de Usuarios (Solo Gerente General)
 - CRUD completo de usuarios con perfiles
 - Asignacion de roles y edificios
 - Activacion/desactivacion de usuarios

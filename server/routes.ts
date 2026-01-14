@@ -3885,9 +3885,9 @@ export async function registerRoutes(
 
   // ==================== ADMIN USER MANAGEMENT ENDPOINTS ====================
   
-  // Helper to check if user has admin privileges
+  // Helper to check if user has admin privileges (only gerente_general)
   const isAdminRole = (role: string): boolean => {
-    return ["gerente_general", "gerente_operaciones"].includes(role);
+    return role === "gerente_general";
   };
 
   // List all users with their profiles

@@ -182,7 +182,7 @@ function AuthenticatedApp() {
                 )}
                 <Route path="/reportes/cumplimiento" component={RegulatoryComplianceReport} />
                 
-                {(userRole === "gerente_general" || userRole === "gerente_operaciones") && (
+                {userRole === "gerente_general" && (
                   <Route path="/admin/usuarios" component={AdminUsers} />
                 )}
                 <Route path="/perfil" component={() => <Profile userRole={userRole} />} />
