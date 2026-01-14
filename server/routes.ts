@@ -2845,5 +2845,664 @@ export async function registerRoutes(
     }
   });
 
+  // Helper function to check if user is a manager
+  const isManagerRole = (role: string) => {
+    return ["gerente_general", "gerente_operaciones", "gerente_comercial"].includes(role);
+  };
+
+  // Visits Report - for managers only
+  app.get("/api/reports/visits", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isManagerRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { buildingId, startDate, endDate } = req.query;
+      
+      let visits = await storage.getVisits();
+      
+      if (buildingId && buildingId !== "all") {
+        visits = visits.filter(v => v.buildingId === buildingId);
+      }
+      
+      if (startDate) {
+        const start = new Date(startDate as string);
+        visits = visits.filter(v => new Date(v.scheduledDate) >= start);
+      }
+      
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        visits = visits.filter(v => new Date(v.scheduledDate) <= end);
+      }
+      
+      const buildings = await storage.getBuildings();
+      const buildingMap = new Map(buildings.map(b => [b.id, b.name]));
+      const users = await storage.getUsers();
+      const userMap = new Map(users.map(u => [u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
+      
+      const data = visits.map(v => ({
+        id: v.id,
+        edificio: buildingMap.get(v.buildingId) || v.buildingId,
+        ejecutivo: userMap.get(v.executiveId) || v.executiveId,
+        tipo: v.type === "rutina" ? "Rutina" : v.type === "urgente" ? "Urgente" : "Seguimiento",
+        estado: v.status === "realizada" ? "Realizada" : v.status === "programada" ? "Programada" : v.status === "cancelada" ? "Cancelada" : v.status,
+        fechaProgramada: v.scheduledDate,
+        fechaInicio: v.startedAt,
+        fechaFin: v.completedAt,
+        notas: v.notes || "",
+        observaciones: v.completionObservations || "",
+      }));
+      
+      const summary = {
+        total: data.length,
+        realizadas: data.filter(v => v.estado === "Realizada").length,
+        programadas: data.filter(v => v.estado === "Programada").length,
+        canceladas: data.filter(v => v.estado === "Cancelada").length,
+      };
+      
+      res.json({ data, summary });
+    } catch (error) {
+      console.error("Error fetching visits report:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Tickets Report - for managers only
+  app.get("/api/reports/tickets", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isManagerRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { buildingId, startDate, endDate, status, priority } = req.query;
+      
+      let tickets = await storage.getTickets();
+      
+      if (buildingId && buildingId !== "all") {
+        tickets = tickets.filter(t => t.buildingId === buildingId);
+      }
+      
+      if (startDate) {
+        const start = new Date(startDate as string);
+        tickets = tickets.filter(t => new Date(t.createdAt) >= start);
+      }
+      
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        tickets = tickets.filter(t => new Date(t.createdAt) <= end);
+      }
+      
+      if (status && status !== "all") {
+        tickets = tickets.filter(t => t.status === status);
+      }
+      
+      if (priority && priority !== "all") {
+        tickets = tickets.filter(t => t.priority === priority);
+      }
+      
+      const buildings = await storage.getBuildings();
+      const buildingMap = new Map(buildings.map(b => [b.id, b.name]));
+      const users = await storage.getUsers();
+      const userMap = new Map(users.map(u => [u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
+      
+      const data = tickets.map(t => ({
+        id: t.id,
+        edificio: buildingMap.get(t.buildingId) || t.buildingId,
+        tipo: t.ticketType === "urgencia" ? "Urgencia" : t.ticketType === "mantencion" ? "Mantención" : "Planificado",
+        descripcion: t.description,
+        prioridad: t.priority === "rojo" ? "Alta" : t.priority === "amarillo" ? "Media" : "Baja",
+        estado: t.status === "resuelto" ? "Resuelto" : t.status === "abierto" ? "Abierto" : t.status === "en_progreso" ? "En Progreso" : t.status,
+        asignado: userMap.get(t.assignedExecutiveId || "") || "-",
+        fechaCreacion: t.createdAt,
+        fechaCierre: t.closedAt,
+        montoFactura: t.invoiceAmount ? parseFloat(t.invoiceAmount) : null,
+      }));
+      
+      const summary = {
+        total: data.length,
+        abiertos: data.filter(t => t.estado === "Abierto" || t.estado === "En Progreso").length,
+        resueltos: data.filter(t => t.estado === "Resuelto").length,
+        prioridadAlta: data.filter(t => t.prioridad === "Alta").length,
+        prioridadMedia: data.filter(t => t.prioridad === "Media").length,
+        prioridadBaja: data.filter(t => t.prioridad === "Baja").length,
+      };
+      
+      res.json({ data, summary });
+    } catch (error) {
+      console.error("Error fetching tickets report:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Financial Report - for managers only
+  app.get("/api/reports/financial", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isManagerRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { buildingId, startDate, endDate } = req.query;
+      
+      let tickets = await storage.getTickets();
+      
+      // Only closed tickets with invoice amounts
+      tickets = tickets.filter(t => t.status === "resuelto" && t.invoiceAmount && parseFloat(t.invoiceAmount) > 0);
+      
+      if (buildingId && buildingId !== "all") {
+        tickets = tickets.filter(t => t.buildingId === buildingId);
+      }
+      
+      if (startDate) {
+        const start = new Date(startDate as string);
+        tickets = tickets.filter(t => t.closedAt && new Date(t.closedAt) >= start);
+      }
+      
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        tickets = tickets.filter(t => t.closedAt && new Date(t.closedAt) <= end);
+      }
+      
+      const buildings = await storage.getBuildings();
+      const buildingMap = new Map(buildings.map(b => [b.id, b.name]));
+      const maintainers = await storage.getMaintainers();
+      const maintainerMap = new Map(maintainers.map(m => [m.id, m.companyName]));
+      
+      const data = tickets.map(t => ({
+        id: t.id,
+        edificio: buildingMap.get(t.buildingId) || t.buildingId,
+        descripcion: t.description,
+        tipo: t.ticketType === "urgencia" ? "Urgencia" : t.ticketType === "mantencion" ? "Mantención" : "Planificado",
+        proveedor: t.maintainerId ? maintainerMap.get(t.maintainerId) || "-" : "-",
+        numeroFactura: t.invoiceNumber || "-",
+        monto: parseFloat(t.invoiceAmount || "0"),
+        fechaEgreso: t.closedAt,
+      }));
+      
+      // Group by building for summary
+      const byBuilding = data.reduce((acc, item) => {
+        if (!acc[item.edificio]) {
+          acc[item.edificio] = { total: 0, count: 0 };
+        }
+        acc[item.edificio].total += item.monto;
+        acc[item.edificio].count++;
+        return acc;
+      }, {} as Record<string, { total: number; count: number }>);
+      
+      const summary = {
+        totalMonto: data.reduce((sum, t) => sum + t.monto, 0),
+        totalFacturas: data.length,
+        promedioFactura: data.length > 0 ? Math.round(data.reduce((sum, t) => sum + t.monto, 0) / data.length) : 0,
+        porEdificio: Object.entries(byBuilding).map(([edificio, stats]) => ({
+          edificio,
+          total: stats.total,
+          count: stats.count,
+        })),
+      };
+      
+      res.json({ data, summary });
+    } catch (error) {
+      console.error("Error fetching financial report:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Critical Equipment Report - for managers only
+  app.get("/api/reports/equipment", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isManagerRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { buildingId, maintenanceStatus } = req.query;
+      
+      let equipment = await storage.getCriticalEquipment();
+      
+      if (buildingId && buildingId !== "all") {
+        equipment = equipment.filter(e => e.buildingId === buildingId);
+      }
+      
+      const now = new Date();
+      
+      if (maintenanceStatus === "overdue") {
+        equipment = equipment.filter(e => e.nextMaintenanceDate && new Date(e.nextMaintenanceDate) < now);
+      } else if (maintenanceStatus === "upcoming") {
+        const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        equipment = equipment.filter(e => e.nextMaintenanceDate && new Date(e.nextMaintenanceDate) >= now && new Date(e.nextMaintenanceDate) <= thirtyDays);
+      } else if (maintenanceStatus === "ok") {
+        const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        equipment = equipment.filter(e => !e.nextMaintenanceDate || new Date(e.nextMaintenanceDate) > thirtyDays);
+      }
+      
+      const buildings = await storage.getBuildings();
+      const buildingMap = new Map(buildings.map(b => [b.id, b.name]));
+      const maintainers = await storage.getMaintainers();
+      const maintainerMap = new Map(maintainers.map(m => [m.id, m.companyName]));
+      
+      const data = equipment.map(e => {
+        const isOverdue = e.nextMaintenanceDate && new Date(e.nextMaintenanceDate) < now;
+        const isUpcoming = e.nextMaintenanceDate && new Date(e.nextMaintenanceDate) >= now && new Date(e.nextMaintenanceDate) <= new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        
+        return {
+          id: e.id,
+          edificio: buildingMap.get(e.buildingId) || e.buildingId,
+          nombre: e.name,
+          tipo: e.type,
+          marca: e.brand || "-",
+          modelo: e.model || "-",
+          estado: e.status === "operativo" ? "Operativo" : e.status === "en_mantencion" ? "En Mantención" : "Fuera de Servicio",
+          mantenedor: e.assignedMaintainerId ? maintainerMap.get(e.assignedMaintainerId) || "-" : "-",
+          ultimaMantencion: e.lastMaintenanceDate,
+          proximaMantencion: e.nextMaintenanceDate,
+          estadoMantencion: isOverdue ? "Vencida" : isUpcoming ? "Próxima" : "Al día",
+        };
+      });
+      
+      const summary = {
+        total: data.length,
+        operativos: data.filter(e => e.estado === "Operativo").length,
+        enMantencion: data.filter(e => e.estado === "En Mantención").length,
+        fueraServicio: data.filter(e => e.estado === "Fuera de Servicio").length,
+        mantencionVencida: data.filter(e => e.estadoMantencion === "Vencida").length,
+        mantencionProxima: data.filter(e => e.estadoMantencion === "Próxima").length,
+      };
+      
+      res.json({ data, summary });
+    } catch (error) {
+      console.error("Error fetching equipment report:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Executive Performance Report - for managers only
+  app.get("/api/reports/executives", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isManagerRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { startDate, endDate } = req.query;
+      
+      const profiles = await storage.getUserProfiles();
+      const executiveProfiles = profiles.filter(p => p.role === "ejecutivo_operaciones");
+      const users = await storage.getUsers();
+      const userMap = new Map(users.map(u => [u.id, u]));
+      
+      let visits = await storage.getVisits();
+      let tickets = await storage.getTickets();
+      
+      if (startDate) {
+        const start = new Date(startDate as string);
+        visits = visits.filter(v => new Date(v.scheduledDate) >= start);
+        tickets = tickets.filter(t => new Date(t.createdAt) >= start);
+      }
+      
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        visits = visits.filter(v => new Date(v.scheduledDate) <= end);
+        tickets = tickets.filter(t => new Date(t.createdAt) <= end);
+      }
+      
+      const buildings = await storage.getBuildings();
+      
+      const data = executiveProfiles.map(ep => {
+        const user = userMap.get(ep.userId);
+        const execVisits = visits.filter(v => v.executiveId === ep.userId);
+        const execTickets = tickets.filter(t => t.assignedExecutiveId === ep.userId);
+        const assignedBuildings = buildings.filter(b => b.assignedExecutiveId === ep.userId);
+        
+        return {
+          ejecutivoId: ep.userId,
+          nombre: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email : ep.userId,
+          email: user?.email || "-",
+          edificiosAsignados: assignedBuildings.length,
+          visitasTotales: execVisits.length,
+          visitasRealizadas: execVisits.filter(v => v.status === "realizada").length,
+          visitasProgramadas: execVisits.filter(v => v.status === "programada").length,
+          visitasCanceladas: execVisits.filter(v => v.status === "cancelada").length,
+          ticketsAsignados: execTickets.length,
+          ticketsResueltos: execTickets.filter(t => t.status === "resuelto").length,
+          ticketsPendientes: execTickets.filter(t => !["resuelto", "cancelado"].includes(t.status)).length,
+          tasaCumplimiento: execVisits.length > 0 
+            ? Math.round((execVisits.filter(v => v.status === "realizada").length / execVisits.length) * 100) 
+            : 0,
+        };
+      });
+      
+      const summary = {
+        totalEjecutivos: data.length,
+        totalVisitas: data.reduce((sum, e) => sum + e.visitasTotales, 0),
+        totalVisitasRealizadas: data.reduce((sum, e) => sum + e.visitasRealizadas, 0),
+        totalTickets: data.reduce((sum, e) => sum + e.ticketsAsignados, 0),
+        totalTicketsResueltos: data.reduce((sum, e) => sum + e.ticketsResueltos, 0),
+        promedioCumplimiento: data.length > 0 
+          ? Math.round(data.reduce((sum, e) => sum + e.tasaCumplimiento, 0) / data.length) 
+          : 0,
+      };
+      
+      res.json({ data, summary });
+    } catch (error) {
+      console.error("Error fetching executives report:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Excel download endpoints for each report
+  app.get("/api/reports/visits/excel", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isManagerRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { buildingId, startDate, endDate } = req.query;
+      const XLSX = await import("xlsx");
+      
+      let visits = await storage.getVisits();
+      
+      if (buildingId && buildingId !== "all") {
+        visits = visits.filter(v => v.buildingId === buildingId);
+      }
+      if (startDate) {
+        visits = visits.filter(v => new Date(v.scheduledDate) >= new Date(startDate as string));
+      }
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        visits = visits.filter(v => new Date(v.scheduledDate) <= end);
+      }
+      
+      const buildings = await storage.getBuildings();
+      const buildingMap = new Map(buildings.map(b => [b.id, b.name]));
+      const users = await storage.getUsers();
+      const userMap = new Map(users.map(u => [u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
+      
+      const wsData = [
+        ["Edificio", "Ejecutivo", "Tipo", "Estado", "Fecha Programada", "Fecha Inicio", "Fecha Fin", "Notas", "Observaciones"],
+      ];
+      
+      visits.forEach(v => {
+        wsData.push([
+          buildingMap.get(v.buildingId) || v.buildingId,
+          userMap.get(v.executiveId) || v.executiveId,
+          v.type === "rutina" ? "Rutina" : v.type === "urgente" ? "Urgente" : "Seguimiento",
+          v.status === "realizada" ? "Realizada" : v.status === "programada" ? "Programada" : "Cancelada",
+          v.scheduledDate ? new Date(v.scheduledDate).toLocaleDateString("es-CL") : "",
+          v.startedAt ? new Date(v.startedAt).toLocaleString("es-CL") : "",
+          v.completedAt ? new Date(v.completedAt).toLocaleString("es-CL") : "",
+          v.notes || "",
+          v.completionObservations || "",
+        ]);
+      });
+      
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Visitas");
+      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="informe_visitas_${new Date().toISOString().split('T')[0]}.xlsx"`);
+      res.send(buf);
+    } catch (error) {
+      console.error("Error generating visits Excel:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/reports/tickets/excel", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isManagerRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { buildingId, startDate, endDate, status, priority } = req.query;
+      const XLSX = await import("xlsx");
+      
+      let tickets = await storage.getTickets();
+      
+      if (buildingId && buildingId !== "all") tickets = tickets.filter(t => t.buildingId === buildingId);
+      if (startDate) tickets = tickets.filter(t => new Date(t.createdAt) >= new Date(startDate as string));
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        tickets = tickets.filter(t => new Date(t.createdAt) <= end);
+      }
+      if (status && status !== "all") tickets = tickets.filter(t => t.status === status);
+      if (priority && priority !== "all") tickets = tickets.filter(t => t.priority === priority);
+      
+      const buildings = await storage.getBuildings();
+      const buildingMap = new Map(buildings.map(b => [b.id, b.name]));
+      const users = await storage.getUsers();
+      const userMap = new Map(users.map(u => [u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
+      
+      const wsData = [
+        ["Edificio", "Tipo", "Descripción", "Prioridad", "Estado", "Asignado", "Fecha Creación", "Fecha Cierre", "Monto Factura"],
+      ];
+      
+      tickets.forEach(t => {
+        wsData.push([
+          buildingMap.get(t.buildingId) || t.buildingId,
+          t.ticketType === "urgencia" ? "Urgencia" : t.ticketType === "mantencion" ? "Mantención" : "Planificado",
+          t.description,
+          t.priority === "rojo" ? "Alta" : t.priority === "amarillo" ? "Media" : "Baja",
+          t.status === "resuelto" ? "Resuelto" : t.status === "abierto" ? "Abierto" : t.status === "en_progreso" ? "En Progreso" : t.status,
+          userMap.get(t.assignedExecutiveId || "") || "-",
+          t.createdAt ? new Date(t.createdAt).toLocaleDateString("es-CL") : "",
+          t.closedAt ? new Date(t.closedAt).toLocaleDateString("es-CL") : "",
+          t.invoiceAmount ? `$${parseFloat(t.invoiceAmount).toLocaleString("es-CL")}` : "",
+        ]);
+      });
+      
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Tickets");
+      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="informe_tickets_${new Date().toISOString().split('T')[0]}.xlsx"`);
+      res.send(buf);
+    } catch (error) {
+      console.error("Error generating tickets Excel:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/reports/financial/excel", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isManagerRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { buildingId, startDate, endDate } = req.query;
+      const XLSX = await import("xlsx");
+      
+      let tickets = await storage.getTickets();
+      tickets = tickets.filter(t => t.status === "resuelto" && t.invoiceAmount && parseFloat(t.invoiceAmount) > 0);
+      
+      if (buildingId && buildingId !== "all") tickets = tickets.filter(t => t.buildingId === buildingId);
+      if (startDate) tickets = tickets.filter(t => t.closedAt && new Date(t.closedAt) >= new Date(startDate as string));
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        tickets = tickets.filter(t => t.closedAt && new Date(t.closedAt) <= end);
+      }
+      
+      const buildings = await storage.getBuildings();
+      const buildingMap = new Map(buildings.map(b => [b.id, b.name]));
+      const maintainers = await storage.getMaintainers();
+      const maintainerMap = new Map(maintainers.map(m => [m.id, m.companyName]));
+      
+      const wsData = [
+        ["Edificio", "Descripción", "Tipo", "Proveedor", "N° Factura", "Monto", "Fecha Egreso"],
+      ];
+      
+      tickets.forEach(t => {
+        wsData.push([
+          buildingMap.get(t.buildingId) || t.buildingId,
+          t.description,
+          t.ticketType === "urgencia" ? "Urgencia" : t.ticketType === "mantencion" ? "Mantención" : "Planificado",
+          t.maintainerId ? maintainerMap.get(t.maintainerId) || "-" : "-",
+          t.invoiceNumber || "-",
+          parseFloat(t.invoiceAmount || "0"),
+          t.closedAt ? new Date(t.closedAt).toLocaleDateString("es-CL") : "",
+        ]);
+      });
+      
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Financiero");
+      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="informe_financiero_${new Date().toISOString().split('T')[0]}.xlsx"`);
+      res.send(buf);
+    } catch (error) {
+      console.error("Error generating financial Excel:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/reports/equipment/excel", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isManagerRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { buildingId, maintenanceStatus } = req.query;
+      const XLSX = await import("xlsx");
+      
+      let equipment = await storage.getCriticalEquipment();
+      const now = new Date();
+      
+      if (buildingId && buildingId !== "all") equipment = equipment.filter(e => e.buildingId === buildingId);
+      if (maintenanceStatus === "overdue") {
+        equipment = equipment.filter(e => e.nextMaintenanceDate && new Date(e.nextMaintenanceDate) < now);
+      } else if (maintenanceStatus === "upcoming") {
+        const thirtyDays = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        equipment = equipment.filter(e => e.nextMaintenanceDate && new Date(e.nextMaintenanceDate) >= now && new Date(e.nextMaintenanceDate) <= thirtyDays);
+      }
+      
+      const buildings = await storage.getBuildings();
+      const buildingMap = new Map(buildings.map(b => [b.id, b.name]));
+      const maintainers = await storage.getMaintainers();
+      const maintainerMap = new Map(maintainers.map(m => [m.id, m.companyName]));
+      
+      const wsData = [
+        ["Edificio", "Nombre", "Tipo", "Marca", "Modelo", "Estado", "Mantenedor", "Última Mantención", "Próxima Mantención", "Estado Mantención"],
+      ];
+      
+      equipment.forEach(e => {
+        const isOverdue = e.nextMaintenanceDate && new Date(e.nextMaintenanceDate) < now;
+        const isUpcoming = e.nextMaintenanceDate && new Date(e.nextMaintenanceDate) >= now && new Date(e.nextMaintenanceDate) <= new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        
+        wsData.push([
+          buildingMap.get(e.buildingId) || e.buildingId,
+          e.name,
+          e.type,
+          e.brand || "-",
+          e.model || "-",
+          e.status === "operativo" ? "Operativo" : e.status === "en_mantencion" ? "En Mantención" : "Fuera de Servicio",
+          e.assignedMaintainerId ? maintainerMap.get(e.assignedMaintainerId) || "-" : "-",
+          e.lastMaintenanceDate ? new Date(e.lastMaintenanceDate).toLocaleDateString("es-CL") : "-",
+          e.nextMaintenanceDate ? new Date(e.nextMaintenanceDate).toLocaleDateString("es-CL") : "-",
+          isOverdue ? "Vencida" : isUpcoming ? "Próxima" : "Al día",
+        ]);
+      });
+      
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Equipos");
+      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="informe_equipos_${new Date().toISOString().split('T')[0]}.xlsx"`);
+      res.send(buf);
+    } catch (error) {
+      console.error("Error generating equipment Excel:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/reports/executives/excel", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isManagerRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { startDate, endDate } = req.query;
+      const XLSX = await import("xlsx");
+      
+      const profiles = await storage.getUserProfiles();
+      const executiveProfiles = profiles.filter(p => p.role === "ejecutivo_operaciones");
+      const users = await storage.getUsers();
+      const userMap = new Map(users.map(u => [u.id, u]));
+      
+      let visits = await storage.getVisits();
+      let tickets = await storage.getTickets();
+      
+      if (startDate) {
+        const start = new Date(startDate as string);
+        visits = visits.filter(v => new Date(v.scheduledDate) >= start);
+        tickets = tickets.filter(t => new Date(t.createdAt) >= start);
+      }
+      if (endDate) {
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        visits = visits.filter(v => new Date(v.scheduledDate) <= end);
+        tickets = tickets.filter(t => new Date(t.createdAt) <= end);
+      }
+      
+      const buildings = await storage.getBuildings();
+      
+      const wsData = [
+        ["Ejecutivo", "Email", "Edificios Asignados", "Visitas Totales", "Visitas Realizadas", "Visitas Pendientes", "Tickets Asignados", "Tickets Resueltos", "Tickets Pendientes", "% Cumplimiento"],
+      ];
+      
+      executiveProfiles.forEach(ep => {
+        const user = userMap.get(ep.userId);
+        const execVisits = visits.filter(v => v.executiveId === ep.userId);
+        const execTickets = tickets.filter(t => t.assignedExecutiveId === ep.userId);
+        const assignedBuildings = buildings.filter(b => b.assignedExecutiveId === ep.userId);
+        
+        wsData.push([
+          user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email : ep.userId,
+          user?.email || "-",
+          String(assignedBuildings.length),
+          String(execVisits.length),
+          String(execVisits.filter(v => v.status === "realizada").length),
+          String(execVisits.filter(v => v.status === "programada").length),
+          String(execTickets.length),
+          String(execTickets.filter(t => t.status === "resuelto").length),
+          String(execTickets.filter(t => !["resuelto", "cancelado"].includes(t.status)).length),
+          `${execVisits.length > 0 ? Math.round((execVisits.filter(v => v.status === "realizada").length / execVisits.length) * 100) : 0}%`,
+        ]);
+      });
+      
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Ejecutivos");
+      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="informe_ejecutivos_${new Date().toISOString().split('T')[0]}.xlsx"`);
+      res.send(buf);
+    } catch (error) {
+      console.error("Error generating executives Excel:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   return httpServer;
 }

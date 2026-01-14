@@ -40,6 +40,11 @@ import DevLogin from "@/pages/DevLogin";
 import Executives from "@/pages/Executives";
 import ExpenseReport from "@/pages/ExpenseReport";
 import RegulatoryComplianceReport from "@/pages/RegulatoryComplianceReport";
+import ReportVisits from "@/pages/ReportVisits";
+import ReportTickets from "@/pages/ReportTickets";
+import ReportFinancial from "@/pages/ReportFinancial";
+import ReportEquipment from "@/pages/ReportEquipment";
+import ReportExecutives from "@/pages/ReportExecutives";
 
 function LoadingScreen() {
   return (
@@ -164,6 +169,15 @@ function AuthenticatedApp() {
                 )}
                 {(userRole === "gerente_general" || userRole === "gerente_comercial") && (
                   <Route path="/reportes/egresos" component={ExpenseReport} />
+                )}
+                {isManager && (
+                  <>
+                    <Route path="/reportes/visitas" component={ReportVisits} />
+                    <Route path="/reportes/tickets" component={ReportTickets} />
+                    <Route path="/reportes/financiero" component={ReportFinancial} />
+                    <Route path="/reportes/equipos" component={ReportEquipment} />
+                    <Route path="/reportes/ejecutivos" component={ReportExecutives} />
+                  </>
                 )}
                 <Route path="/reportes/cumplimiento" component={RegulatoryComplianceReport} />
                 <Route path="/perfil" component={() => <Profile userRole={userRole} />} />
