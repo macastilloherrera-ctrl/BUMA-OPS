@@ -477,6 +477,14 @@ export default function BuildingDetail() {
                                   contentType: file.type,
                                 }),
                               });
+                              if (!res.ok) {
+                                toast({
+                                  title: "Error",
+                                  description: "No se pudo obtener URL de subida",
+                                  variant: "destructive",
+                                });
+                                throw new Error("Failed to get upload URL");
+                              }
                               const { uploadURL, objectPath } = await res.json();
                               (file.meta as Record<string, unknown>).objectPath = objectPath;
                               return {
@@ -488,7 +496,11 @@ export default function BuildingDetail() {
                             onComplete={(result) => {
                               const file = result.successful?.[0];
                               if (file?.meta?.objectPath) {
-                                updateRegulationMutation.mutate(file.meta.objectPath as string);
+                                updateRegulationMutation.mutate(file.meta.objectPath as string, {
+                                  onSuccess: () => {
+                                    setIsRegulationDialogOpen(false);
+                                  },
+                                });
                               }
                             }}
                           >
