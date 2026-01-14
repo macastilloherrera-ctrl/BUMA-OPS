@@ -1,6 +1,7 @@
 import type { UserRole } from "@shared/schema";
 
 export const roleHomeRoutes: Record<UserRole, string> = {
+  super_admin: "/super-admin",
   ejecutivo_operaciones: "/visitas?view=today",
   gerente_operaciones: "/dashboard/tickets",
   gerente_comercial: "/dashboard/tickets",
@@ -18,6 +19,18 @@ export const rolePermissions: Record<UserRole, {
   canApproveAssets: boolean;
   buildingScope: "assigned" | "all";
 }> = {
+  super_admin: {
+    allowedRoutes: [
+      "/super-admin",
+      "/super-admin/config",
+      "/super-admin/users",
+      "/super-admin/logs",
+      "/perfil",
+    ],
+    canViewCosts: true,
+    canApproveAssets: true,
+    buildingScope: "all",
+  },
   gerente_general: {
     allowedRoutes: [
       "/dashboard/overview",
@@ -142,6 +155,10 @@ export function canAccessRoute(role: UserRole, path: string): boolean {
 
 export function isManagerRole(role: UserRole): boolean {
   return role === "gerente_general" || role === "gerente_operaciones" || role === "gerente_comercial";
+}
+
+export function isSuperAdmin(role: UserRole): boolean {
+  return role === "super_admin";
 }
 
 export function isFinanceRole(role: UserRole): boolean {
