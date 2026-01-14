@@ -39,6 +39,7 @@ import VisitReport from "@/pages/VisitReport";
 import DevLogin from "@/pages/DevLogin";
 import Executives from "@/pages/Executives";
 import ExpenseReport from "@/pages/ExpenseReport";
+import RegulatoryComplianceReport from "@/pages/RegulatoryComplianceReport";
 
 function LoadingScreen() {
   return (
@@ -164,6 +165,7 @@ function AuthenticatedApp() {
                 {(userRole === "gerente_general" || userRole === "gerente_comercial") && (
                   <Route path="/reportes/egresos" component={ExpenseReport} />
                 )}
+                <Route path="/reportes/cumplimiento" component={RegulatoryComplianceReport} />
                 <Route path="/perfil" component={() => <Profile userRole={userRole} />} />
 
                 <Route component={NotFound} />

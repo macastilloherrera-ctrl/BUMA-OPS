@@ -2737,5 +2737,113 @@ export async function registerRoutes(
     }
   });
 
+  // Regulatory Compliance Report - accessible to all authenticated users
+  app.get("/api/reports/regulatory-compliance", isAuthenticated, async (req, res) => {
+    try {
+      const { buildingId } = req.query;
+      
+      const allBuildings = await storage.getBuildings();
+      const allEquipment = await storage.getCriticalEquipment();
+      const allVisits = await storage.getVisits();
+      const allTickets = await storage.getTickets();
+      
+      // Filter buildings if specific one requested
+      const buildings = buildingId && buildingId !== "all" 
+        ? allBuildings.filter(b => b.id === buildingId)
+        : allBuildings.filter(b => b.status === "activo");
+      
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      
+      const complianceData = buildings.map(building => {
+        // Check regulation document
+        const hasRegulationDocument = !!building.regulationDocumentUrl;
+        
+        // Get building equipment
+        const buildingEquipment = allEquipment.filter(e => e.buildingId === building.id);
+        const totalEquipment = buildingEquipment.length;
+        const equipmentWithMaintenance = buildingEquipment.filter(e => e.lastMaintenanceDate).length;
+        const equipmentOverdue = buildingEquipment.filter(e => {
+          if (!e.nextMaintenanceDate) return false;
+          return new Date(e.nextMaintenanceDate) < now;
+        }).length;
+        
+        // Get building visits in last 30 days
+        const buildingVisits = allVisits.filter(v => 
+          v.buildingId === building.id && 
+          v.status === "realizada" &&
+          v.completedAt && new Date(v.completedAt) >= thirtyDaysAgo
+        );
+        const recentVisitsCount = buildingVisits.length;
+        
+        // Get open tickets for building
+        const buildingTickets = allTickets.filter(t => t.buildingId === building.id);
+        const openTickets = buildingTickets.filter(t => 
+          !["resuelto", "cancelado"].includes(t.status)
+        ).length;
+        const urgentTickets = buildingTickets.filter(t => 
+          t.priority === "rojo" && !["resuelto", "cancelado"].includes(t.status)
+        ).length;
+        
+        // Calculate compliance score (0-100) - Binary scoring: each criterion is all or nothing
+        let score = 0;
+        
+        // Regulation document (25 points) - Must have document uploaded
+        if (hasRegulationDocument) score += 25;
+        
+        // Equipment maintenance (25 points) - No equipment overdue OR no equipment at all
+        if (equipmentOverdue === 0) score += 25;
+        
+        // Recent visits (25 points) - At least 2 visits in last 30 days
+        if (recentVisitsCount >= 2) score += 25;
+        
+        // No urgent tickets (25 points) - Zero urgent tickets pending
+        if (urgentTickets === 0) score += 25;
+        
+        const compliancePercent = score; // Score is already 0-100 (4 criteria x 25 points each)
+        
+        // Determine status
+        let complianceStatus: "cumple" | "parcial" | "no_cumple";
+        if (compliancePercent >= 80) complianceStatus = "cumple";
+        else if (compliancePercent >= 50) complianceStatus = "parcial";
+        else complianceStatus = "no_cumple";
+        
+        return {
+          buildingId: building.id,
+          buildingName: building.name,
+          buildingAddress: building.address,
+          hasRegulationDocument,
+          regulationDocumentUrl: building.regulationDocumentUrl,
+          totalEquipment,
+          equipmentWithMaintenance,
+          equipmentOverdue,
+          recentVisitsCount,
+          openTickets,
+          urgentTickets,
+          compliancePercent,
+          complianceStatus,
+        };
+      });
+      
+      // Summary statistics
+      const summary = {
+        totalBuildings: complianceData.length,
+        compliant: complianceData.filter(c => c.complianceStatus === "cumple").length,
+        partial: complianceData.filter(c => c.complianceStatus === "parcial").length,
+        nonCompliant: complianceData.filter(c => c.complianceStatus === "no_cumple").length,
+        withRegulation: complianceData.filter(c => c.hasRegulationDocument).length,
+        withOverdueEquipment: complianceData.filter(c => c.equipmentOverdue > 0).length,
+        averageCompliance: complianceData.length > 0 
+          ? Math.round(complianceData.reduce((sum, c) => sum + c.compliancePercent, 0) / complianceData.length)
+          : 0,
+      };
+      
+      res.json({ buildings: complianceData, summary });
+    } catch (error) {
+      console.error("Error fetching regulatory compliance:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   return httpServer;
 }

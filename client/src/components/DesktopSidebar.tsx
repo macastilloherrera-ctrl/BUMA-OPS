@@ -23,6 +23,7 @@ import {
   HardHat,
   ClipboardList,
   FileSpreadsheet,
+  FileCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -62,6 +63,12 @@ const managerNavItems = [
       { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
     ]
   },
+  {
+    group: "Reportes",
+    items: [
+      { path: "/reportes/cumplimiento", label: "Cumplimiento Normativo", icon: FileCheck },
+    ]
+  },
 ];
 
 const managerWithReportsNavItems = [
@@ -94,6 +101,7 @@ const managerWithReportsNavItems = [
     group: "Reportes",
     items: [
       { path: "/reportes/egresos", label: "Informe Egresos", icon: FileSpreadsheet },
+      { path: "/reportes/cumplimiento", label: "Cumplimiento Normativo", icon: FileCheck },
     ]
   },
 ];
@@ -112,6 +120,12 @@ const executiveNavItems = [
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2 },
       { path: "/equipos", label: "Equipos Criticos", icon: Wrench },
+    ]
+  },
+  {
+    group: "Reportes",
+    items: [
+      { path: "/reportes/cumplimiento", label: "Cumplimiento Normativo", icon: FileCheck },
     ]
   },
 ];
@@ -147,6 +161,7 @@ const generalManagerNavItems = [
     group: "Reportes",
     items: [
       { path: "/reportes/egresos", label: "Informe Egresos", icon: FileSpreadsheet },
+      { path: "/reportes/cumplimiento", label: "Cumplimiento Normativo", icon: FileCheck },
     ]
   },
 ];
@@ -156,6 +171,12 @@ const financeNavItems = [
     group: "Dashboards",
     items: [
       { path: "/dashboard/tickets", label: "Tickets Semaforo", icon: Ticket },
+    ]
+  },
+  {
+    group: "Reportes",
+    items: [
+      { path: "/reportes/cumplimiento", label: "Cumplimiento Normativo", icon: FileCheck },
     ]
   },
 ];
