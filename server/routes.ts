@@ -2850,7 +2850,7 @@ export async function registerRoutes(
     return ["gerente_general", "gerente_operaciones", "gerente_comercial"].includes(role);
   };
 
-  // Visits Report - for managers only
+  // Visits Report - for managers only (with analytical metrics)
   app.get("/api/reports/visits", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
@@ -2861,6 +2861,8 @@ export async function registerRoutes(
       const { buildingId, startDate, endDate } = req.query;
       
       let visits = await storage.getVisits();
+      const allBuildings = await storage.getBuildings();
+      const activeBuildings = allBuildings.filter(b => b.status === "activo");
       
       if (buildingId && buildingId !== "all") {
         visits = visits.filter(v => v.buildingId === buildingId);
@@ -2877,13 +2879,79 @@ export async function registerRoutes(
         visits = visits.filter(v => new Date(v.scheduledDate) <= end);
       }
       
-      const buildings = await storage.getBuildings();
-      const buildingMap = new Map(buildings.map(b => [b.id, b.name]));
+      const buildingMap = new Map(allBuildings.map(b => [b.id, b.name]));
       const users = await storage.getUsers();
       const userMap = new Map(users.map(u => [u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
       
+      // Calculate coverage: % of buildings with at least one visit
+      const visitedBuildingIds = new Set(visits.map(v => v.buildingId));
+      const coveragePercent = activeBuildings.length > 0 
+        ? Math.round((visitedBuildingIds.size / activeBuildings.length) * 100)
+        : 0;
+      
+      // Calculate punctuality: completed visits within scheduled date (same day)
+      const completedVisits = visits.filter(v => v.status === "realizada" && v.completedAt);
+      let punctualVisits = 0;
+      let lateVisits = 0;
+      completedVisits.forEach(v => {
+        const scheduled = new Date(v.scheduledDate);
+        const completed = new Date(v.completedAt!);
+        scheduled.setHours(0,0,0,0);
+        completed.setHours(0,0,0,0);
+        if (completed <= scheduled) {
+          punctualVisits++;
+        } else {
+          lateVisits++;
+        }
+      });
+      const punctualityPercent = completedVisits.length > 0
+        ? Math.round((punctualVisits / completedVisits.length) * 100)
+        : 0;
+      
+      // Calculate productivity by executive
+      const executiveProductivity: Record<string, { name: string, total: number, completed: number, cancelled: number }> = {};
+      visits.forEach(v => {
+        const execName = userMap.get(v.executiveId) || v.executiveId;
+        if (!executiveProductivity[v.executiveId]) {
+          executiveProductivity[v.executiveId] = { name: execName, total: 0, completed: 0, cancelled: 0 };
+        }
+        executiveProductivity[v.executiveId].total++;
+        if (v.status === "realizada") executiveProductivity[v.executiveId].completed++;
+        if (v.status === "cancelada") executiveProductivity[v.executiveId].cancelled++;
+      });
+      
+      // Calculate average time in field (for completed visits with start/end times)
+      const visitsWithDuration = completedVisits.filter(v => v.startedAt && v.completedAt);
+      let totalMinutes = 0;
+      const durationByType: Record<string, { count: number, totalMinutes: number }> = {};
+      visitsWithDuration.forEach(v => {
+        const start = new Date(v.startedAt!);
+        const end = new Date(v.completedAt!);
+        const minutes = Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60));
+        totalMinutes += minutes;
+        
+        if (!durationByType[v.type]) {
+          durationByType[v.type] = { count: 0, totalMinutes: 0 };
+        }
+        durationByType[v.type].count++;
+        durationByType[v.type].totalMinutes += minutes;
+      });
+      const avgDurationMinutes = visitsWithDuration.length > 0
+        ? Math.round(totalMinutes / visitsWithDuration.length)
+        : 0;
+      
+      // Cancellation patterns
+      const cancelledVisits = visits.filter(v => v.status === "cancelada");
+      const cancellationReasons: Record<string, number> = {};
+      cancelledVisits.forEach(v => {
+        const reason = (v as any).cancellationType || "sin_especificar";
+        cancellationReasons[reason] = (cancellationReasons[reason] || 0) + 1;
+      });
+      
       const data = visits.map(v => ({
         id: v.id,
+        buildingId: v.buildingId,
+        executiveId: v.executiveId,
         edificio: buildingMap.get(v.buildingId) || v.buildingId,
         ejecutivo: userMap.get(v.executiveId) || v.executiveId,
         tipo: v.type === "rutina" ? "Rutina" : v.type === "urgente" ? "Urgente" : "Seguimiento",
@@ -2893,6 +2961,9 @@ export async function registerRoutes(
         fechaFin: v.completedAt,
         notas: v.notes || "",
         observaciones: v.completionObservations || "",
+        duracionMinutos: v.startedAt && v.completedAt 
+          ? Math.round((new Date(v.completedAt).getTime() - new Date(v.startedAt).getTime()) / (1000 * 60))
+          : null,
       }));
       
       const summary = {
@@ -2902,14 +2973,44 @@ export async function registerRoutes(
         canceladas: data.filter(v => v.estado === "Cancelada").length,
       };
       
-      res.json({ data, summary });
+      const analytics = {
+        coverage: {
+          totalBuildings: activeBuildings.length,
+          visitedBuildings: visitedBuildingIds.size,
+          coveragePercent,
+        },
+        punctuality: {
+          totalCompleted: completedVisits.length,
+          punctual: punctualVisits,
+          late: lateVisits,
+          punctualityPercent,
+        },
+        productivity: Object.values(executiveProductivity).map(e => ({
+          ...e,
+          completionRate: e.total > 0 ? Math.round((e.completed / e.total) * 100) : 0,
+        })),
+        duration: {
+          avgMinutes: avgDurationMinutes,
+          byType: Object.entries(durationByType).map(([type, d]) => ({
+            type: type === "rutina" ? "Rutina" : type === "urgente" ? "Urgente" : "Seguimiento",
+            avgMinutes: d.count > 0 ? Math.round(d.totalMinutes / d.count) : 0,
+            count: d.count,
+          })),
+        },
+        cancellations: {
+          total: cancelledVisits.length,
+          byReason: Object.entries(cancellationReasons).map(([reason, count]) => ({ reason, count })),
+        },
+      };
+      
+      res.json({ data, summary, analytics });
     } catch (error) {
       console.error("Error fetching visits report:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
 
-  // Tickets Report - for managers only
+  // Tickets Report - for managers only (with analytical metrics)
   app.get("/api/reports/tickets", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
@@ -2920,6 +3021,7 @@ export async function registerRoutes(
       const { buildingId, startDate, endDate, status, priority } = req.query;
       
       let tickets = await storage.getTickets();
+      const allTickets = [...tickets]; // Keep all for analytics
       
       if (buildingId && buildingId !== "all") {
         tickets = tickets.filter(t => t.buildingId === buildingId);
@@ -2949,36 +3051,143 @@ export async function registerRoutes(
       const users = await storage.getUsers();
       const userMap = new Map(users.map(u => [u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
       
-      const data = tickets.map(t => ({
-        id: t.id,
-        edificio: buildingMap.get(t.buildingId) || t.buildingId,
-        tipo: t.ticketType === "urgencia" ? "Urgencia" : t.ticketType === "mantencion" ? "Mantención" : "Planificado",
-        descripcion: t.description,
-        prioridad: t.priority === "rojo" ? "Alta" : t.priority === "amarillo" ? "Media" : "Baja",
-        estado: t.status === "resuelto" ? "Resuelto" : t.status === "abierto" ? "Abierto" : t.status === "en_progreso" ? "En Progreso" : t.status,
-        asignado: userMap.get(t.assignedExecutiveId || "") || "-",
-        fechaCreacion: t.createdAt,
-        fechaCierre: t.closedAt,
-        montoFactura: t.invoiceAmount ? parseFloat(t.invoiceAmount) : null,
-      }));
+      // Semáforo General - tickets by priority and status
+      const semaforo = {
+        rojo: { total: 0, abiertos: 0, enProgreso: 0, resueltos: 0 },
+        amarillo: { total: 0, abiertos: 0, enProgreso: 0, resueltos: 0 },
+        verde: { total: 0, abiertos: 0, enProgreso: 0, resueltos: 0 },
+      };
+      tickets.forEach(t => {
+        const pri = t.priority as keyof typeof semaforo;
+        if (semaforo[pri]) {
+          semaforo[pri].total++;
+          if (t.status === "pendiente" || t.status === "en_curso") semaforo[pri].abiertos++;
+          else if (t.status === "trabajo_completado") semaforo[pri].enProgreso++;
+          else if (t.status === "resuelto") semaforo[pri].resueltos++;
+        }
+      });
+      
+      // Tickets vencidos - overdue analysis
+      const now = new Date();
+      const overdueTickets = tickets.filter(t => {
+        if (t.status === "resuelto") return false;
+        if (!t.dueDate) return false;
+        return new Date(t.dueDate) < now;
+      });
+      
+      // Resolution time by ticket type
+      const resolvedTickets = tickets.filter(t => t.status === "resuelto" && t.createdAt && t.resolvedAt);
+      const resolutionByType: Record<string, { count: number, totalDays: number }> = {};
+      resolvedTickets.forEach(t => {
+        const type = t.ticketType || "otro";
+        if (!resolutionByType[type]) {
+          resolutionByType[type] = { count: 0, totalDays: 0 };
+        }
+        const created = new Date(t.createdAt);
+        const resolved = new Date(t.resolvedAt!);
+        const days = Math.max(0, (resolved.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+        resolutionByType[type].count++;
+        resolutionByType[type].totalDays += days;
+      });
+      
+      // Cost by building
+      const costByBuilding: Record<string, { name: string, total: number, count: number }> = {};
+      tickets.filter(t => t.invoiceAmount && parseFloat(t.invoiceAmount) > 0).forEach(t => {
+        const bName = buildingMap.get(t.buildingId) || t.buildingId;
+        if (!costByBuilding[t.buildingId]) {
+          costByBuilding[t.buildingId] = { name: bName, total: 0, count: 0 };
+        }
+        costByBuilding[t.buildingId].total += parseFloat(t.invoiceAmount!);
+        costByBuilding[t.buildingId].count++;
+      });
+      
+      // Escalations analysis
+      const escalatedTickets = tickets.filter(t => t.escalatedTo);
+      const escalationReasons: Record<string, number> = {};
+      escalatedTickets.forEach(t => {
+        const reason = t.escalationReason || "sin_motivo";
+        escalationReasons[reason] = (escalationReasons[reason] || 0) + 1;
+      });
+      
+      // Assignment history (derivations)
+      const ticketsWithHistory = tickets.filter(t => t.assignmentHistory && Array.isArray(t.assignmentHistory) && t.assignmentHistory.length > 1);
+      const derivationsCount = ticketsWithHistory.reduce((sum, t) => {
+        const history = t.assignmentHistory as any[];
+        return sum + (history.length - 1); // Number of reassignments
+      }, 0);
+      
+      const data = tickets.map(t => {
+        const history = (t.assignmentHistory as any[]) || [];
+        return {
+          id: t.id,
+          edificio: buildingMap.get(t.buildingId) || t.buildingId,
+          tipo: t.ticketType === "urgencia" ? "Urgencia" : t.ticketType === "mantencion" ? "Mantención" : "Planificado",
+          descripcion: t.description,
+          prioridad: t.priority === "rojo" ? "Alta" : t.priority === "amarillo" ? "Media" : "Baja",
+          estado: t.status === "resuelto" ? "Resuelto" : t.status === "pendiente" ? "Pendiente" : t.status === "en_curso" ? "En Curso" : t.status === "trabajo_completado" ? "Trabajo Completado" : t.status,
+          asignado: userMap.get(t.assignedExecutiveId || "") || "-",
+          fechaCreacion: t.createdAt,
+          fechaVencimiento: t.dueDate,
+          fechaCierre: t.closedAt,
+          montoFactura: t.invoiceAmount ? parseFloat(t.invoiceAmount) : null,
+          escaladoA: t.escalatedTo ? userMap.get(t.escalatedTo) || "-" : null,
+          derivaciones: history.length > 1 ? history.length - 1 : 0,
+          diasResolucion: t.resolvedAt && t.createdAt 
+            ? Math.round((new Date(t.resolvedAt).getTime() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60 * 24))
+            : null,
+        };
+      });
       
       const summary = {
         total: data.length,
-        abiertos: data.filter(t => t.estado === "Abierto" || t.estado === "En Progreso").length,
-        resueltos: data.filter(t => t.estado === "Resuelto").length,
-        prioridadAlta: data.filter(t => t.prioridad === "Alta").length,
-        prioridadMedia: data.filter(t => t.prioridad === "Media").length,
-        prioridadBaja: data.filter(t => t.prioridad === "Baja").length,
+        abiertos: tickets.filter(t => t.status === "pendiente" || t.status === "en_curso").length,
+        enProgreso: tickets.filter(t => t.status === "trabajo_completado").length,
+        resueltos: tickets.filter(t => t.status === "resuelto").length,
+        prioridadAlta: tickets.filter(t => t.priority === "rojo").length,
+        prioridadMedia: tickets.filter(t => t.priority === "amarillo").length,
+        prioridadBaja: tickets.filter(t => t.priority === "verde").length,
       };
       
-      res.json({ data, summary });
+      const analytics = {
+        semaforo,
+        overdue: {
+          total: overdueTickets.length,
+          byPriority: {
+            rojo: overdueTickets.filter(t => t.priority === "rojo").length,
+            amarillo: overdueTickets.filter(t => t.priority === "amarillo").length,
+            verde: overdueTickets.filter(t => t.priority === "verde").length,
+          },
+        },
+        resolution: {
+          avgDays: resolvedTickets.length > 0 
+            ? Math.round(Object.values(resolutionByType).reduce((s, r) => s + r.totalDays, 0) / resolvedTickets.length * 10) / 10
+            : 0,
+          byType: Object.entries(resolutionByType).map(([type, data]) => ({
+            type: type === "urgencia" ? "Urgencia" : type === "mantencion" ? "Mantención" : "Planificado",
+            avgDays: data.count > 0 ? Math.round((data.totalDays / data.count) * 10) / 10 : 0,
+            count: data.count,
+          })),
+        },
+        costByBuilding: Object.values(costByBuilding).sort((a, b) => b.total - a.total).slice(0, 10),
+        totalCost: Object.values(costByBuilding).reduce((sum, b) => sum + b.total, 0),
+        escalations: {
+          total: escalatedTickets.length,
+          byReason: Object.entries(escalationReasons).map(([reason, count]) => ({ reason, count })),
+        },
+        derivations: {
+          ticketsWithDerivations: ticketsWithHistory.length,
+          totalDerivations: derivationsCount,
+        },
+      };
+      
+      res.json({ data, summary, analytics });
     } catch (error) {
       console.error("Error fetching tickets report:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
 
-  // Financial Report - for managers only
+  // Financial Report - for managers only (with analytics)
   app.get("/api/reports/financial", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
@@ -2988,24 +3197,34 @@ export async function registerRoutes(
 
       const { buildingId, startDate, endDate } = req.query;
       
-      let tickets = await storage.getTickets();
+      let allTickets = await storage.getTickets();
       
-      // Only closed tickets with invoice amounts
-      tickets = tickets.filter(t => t.status === "resuelto" && t.invoiceAmount && parseFloat(t.invoiceAmount) > 0);
+      // Paid tickets (resuelto with invoice)
+      let paidTickets = allTickets.filter(t => t.status === "resuelto" && t.invoiceAmount && parseFloat(t.invoiceAmount) > 0);
       
+      // Pending invoices - work completed but not resolved (before filtering)
+      let pendingInvoices = allTickets.filter(t => 
+        t.status === "trabajo_completado" && 
+        (!t.invoiceStatus || t.invoiceStatus !== "pagada")
+      );
+      
+      // Apply same filters to both paid and pending invoices
       if (buildingId && buildingId !== "all") {
-        tickets = tickets.filter(t => t.buildingId === buildingId);
+        paidTickets = paidTickets.filter(t => t.buildingId === buildingId);
+        pendingInvoices = pendingInvoices.filter(t => t.buildingId === buildingId);
       }
       
       if (startDate) {
         const start = new Date(startDate as string);
-        tickets = tickets.filter(t => t.closedAt && new Date(t.closedAt) >= start);
+        paidTickets = paidTickets.filter(t => t.closedAt && new Date(t.closedAt) >= start);
+        pendingInvoices = pendingInvoices.filter(t => new Date(t.createdAt) >= start);
       }
       
       if (endDate) {
         const end = new Date(endDate as string);
         end.setHours(23, 59, 59, 999);
-        tickets = tickets.filter(t => t.closedAt && new Date(t.closedAt) <= end);
+        paidTickets = paidTickets.filter(t => t.closedAt && new Date(t.closedAt) <= end);
+        pendingInvoices = pendingInvoices.filter(t => new Date(t.createdAt) <= end);
       }
       
       const buildings = await storage.getBuildings();
@@ -3013,7 +3232,7 @@ export async function registerRoutes(
       const maintainers = await storage.getMaintainers();
       const maintainerMap = new Map(maintainers.map(m => [m.id, m.companyName]));
       
-      const data = tickets.map(t => ({
+      const data = paidTickets.map(t => ({
         id: t.id,
         edificio: buildingMap.get(t.buildingId) || t.buildingId,
         descripcion: t.description,
@@ -3024,15 +3243,39 @@ export async function registerRoutes(
         fechaEgreso: t.closedAt,
       }));
       
-      // Group by building for summary
-      const byBuilding = data.reduce((acc, item) => {
-        if (!acc[item.edificio]) {
-          acc[item.edificio] = { total: 0, count: 0 };
+      // Group by building
+      const byBuilding: Record<string, { total: number; count: number }> = {};
+      data.forEach(item => {
+        if (!byBuilding[item.edificio]) {
+          byBuilding[item.edificio] = { total: 0, count: 0 };
         }
-        acc[item.edificio].total += item.monto;
-        acc[item.edificio].count++;
-        return acc;
-      }, {} as Record<string, { total: number; count: number }>);
+        byBuilding[item.edificio].total += item.monto;
+        byBuilding[item.edificio].count++;
+      });
+      
+      // Group by ticket type
+      const byType: Record<string, { total: number; count: number }> = {};
+      data.forEach(item => {
+        if (!byType[item.tipo]) {
+          byType[item.tipo] = { total: 0, count: 0 };
+        }
+        byType[item.tipo].total += item.monto;
+        byType[item.tipo].count++;
+      });
+      
+      // Group by month
+      const byMonth: Record<string, { total: number; count: number }> = {};
+      data.forEach(item => {
+        if (item.fechaEgreso) {
+          const date = new Date(item.fechaEgreso);
+          const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          if (!byMonth[monthKey]) {
+            byMonth[monthKey] = { total: 0, count: 0 };
+          }
+          byMonth[monthKey].total += item.monto;
+          byMonth[monthKey].count++;
+        }
+      });
       
       const summary = {
         totalMonto: data.reduce((sum, t) => sum + t.monto, 0),
@@ -3042,17 +3285,40 @@ export async function registerRoutes(
           edificio,
           total: stats.total,
           count: stats.count,
-        })),
+        })).sort((a, b) => b.total - a.total),
       };
       
-      res.json({ data, summary });
+      const analytics = {
+        pendingInvoices: {
+          count: pendingInvoices.length,
+          estimatedAmount: pendingInvoices.reduce((sum, t) => sum + parseFloat(t.invoiceAmount || "0"), 0),
+        },
+        byType: Object.entries(byType).map(([type, stats]) => ({
+          type,
+          total: stats.total,
+          count: stats.count,
+          avgPerTicket: stats.count > 0 ? Math.round(stats.total / stats.count) : 0,
+        })).sort((a, b) => b.total - a.total),
+        byMonth: Object.entries(byMonth).map(([month, stats]) => ({
+          month,
+          total: stats.total,
+          count: stats.count,
+        })).sort((a, b) => a.month.localeCompare(b.month)),
+        topBuildings: Object.entries(byBuilding).map(([name, stats]) => ({
+          name,
+          total: stats.total,
+          count: stats.count,
+        })).sort((a, b) => b.total - a.total).slice(0, 5),
+      };
+      
+      res.json({ data, summary, analytics });
     } catch (error) {
       console.error("Error fetching financial report:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
 
-  // Critical Equipment Report - for managers only
+  // Critical Equipment Report - for managers only (with analytics)
   app.get("/api/reports/equipment", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
@@ -3062,7 +3328,8 @@ export async function registerRoutes(
 
       const { buildingId, maintenanceStatus } = req.query;
       
-      let equipment = await storage.getCriticalEquipment();
+      let allEquipment = await storage.getCriticalEquipment();
+      let equipment = [...allEquipment];
       
       if (buildingId && buildingId !== "all") {
         equipment = equipment.filter(e => e.buildingId === buildingId);
@@ -3091,17 +3358,42 @@ export async function registerRoutes(
         
         return {
           id: e.id,
+          buildingId: e.buildingId,
           edificio: buildingMap.get(e.buildingId) || e.buildingId,
           nombre: e.name,
           tipo: e.type,
           marca: e.brand || "-",
           modelo: e.model || "-",
-          estado: e.status === "operativo" ? "Operativo" : e.status === "en_mantencion" ? "En Mantención" : "Fuera de Servicio",
+          estado: e.status === "operativo" ? "Operativo" : e.status === "en_mantencion" ? "En Mantención" : e.status === "fuera_servicio" ? "Fuera de Servicio" : e.status === "por_aprobar" ? "Por Aprobar" : e.status,
           mantenedor: e.assignedMaintainerId ? maintainerMap.get(e.assignedMaintainerId) || "-" : "-",
           ultimaMantencion: e.lastMaintenanceDate,
           proximaMantencion: e.nextMaintenanceDate,
           estadoMantencion: isOverdue ? "Vencida" : isUpcoming ? "Próxima" : "Al día",
+          costo: e.cost ? parseFloat(e.cost) : 0,
         };
+      });
+      
+      // Equipment pending approval (all equipment, not filtered)
+      const pendingApproval = allEquipment.filter(e => e.status === "por_aprobar");
+      
+      // Investment by building
+      const investmentByBuilding: Record<string, { name: string, total: number, count: number }> = {};
+      data.forEach(e => {
+        if (!investmentByBuilding[e.buildingId]) {
+          investmentByBuilding[e.buildingId] = { name: e.edificio, total: 0, count: 0 };
+        }
+        investmentByBuilding[e.buildingId].total += e.costo;
+        investmentByBuilding[e.buildingId].count++;
+      });
+      
+      // Investment by type
+      const investmentByType: Record<string, { total: number, count: number }> = {};
+      data.forEach(e => {
+        if (!investmentByType[e.tipo]) {
+          investmentByType[e.tipo] = { total: 0, count: 0 };
+        }
+        investmentByType[e.tipo].total += e.costo;
+        investmentByType[e.tipo].count++;
       });
       
       const summary = {
@@ -3109,18 +3401,47 @@ export async function registerRoutes(
         operativos: data.filter(e => e.estado === "Operativo").length,
         enMantencion: data.filter(e => e.estado === "En Mantención").length,
         fueraServicio: data.filter(e => e.estado === "Fuera de Servicio").length,
+        porAprobar: data.filter(e => e.estado === "Por Aprobar").length,
         mantencionVencida: data.filter(e => e.estadoMantencion === "Vencida").length,
         mantencionProxima: data.filter(e => e.estadoMantencion === "Próxima").length,
       };
       
-      res.json({ data, summary });
+      const analytics = {
+        pendingApproval: {
+          total: pendingApproval.length,
+          items: pendingApproval.slice(0, 10).map(e => ({
+            id: e.id,
+            nombre: e.name,
+            edificio: buildingMap.get(e.buildingId) || e.buildingId,
+            tipo: e.type,
+            costo: e.cost ? parseFloat(e.cost) : 0,
+          })),
+        },
+        investmentByBuilding: Object.values(investmentByBuilding).sort((a, b) => b.total - a.total),
+        investmentByType: Object.entries(investmentByType).map(([type, data]) => ({
+          type,
+          total: data.total,
+          count: data.count,
+        })).sort((a, b) => b.total - a.total),
+        totalInvestment: data.reduce((sum, e) => sum + e.costo, 0),
+        overdueRisk: {
+          total: allEquipment.filter(e => e.nextMaintenanceDate && new Date(e.nextMaintenanceDate) < now).length,
+          critical: allEquipment.filter(e => {
+            if (!e.nextMaintenanceDate) return false;
+            const daysPast = (now.getTime() - new Date(e.nextMaintenanceDate).getTime()) / (1000 * 60 * 60 * 24);
+            return daysPast > 30;
+          }).length,
+        },
+      };
+      
+      res.json({ data, summary, analytics });
     } catch (error) {
       console.error("Error fetching equipment report:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
 
-  // Executive Performance Report - for managers only
+  // Executive Performance Report - for managers only (with analytics)
   app.get("/api/reports/executives", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
@@ -3159,6 +3480,9 @@ export async function registerRoutes(
         const execTickets = tickets.filter(t => t.assignedExecutiveId === ep.userId);
         const assignedBuildings = buildings.filter(b => b.assignedExecutiveId === ep.userId);
         
+        // Tickets created from visits (findings)
+        const findingsDetected = tickets.filter(t => t.createdBy === ep.userId && t.visitId).length;
+        
         return {
           ejecutivoId: ep.userId,
           nombre: user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email : ep.userId,
@@ -3171,11 +3495,29 @@ export async function registerRoutes(
           ticketsAsignados: execTickets.length,
           ticketsResueltos: execTickets.filter(t => t.status === "resuelto").length,
           ticketsPendientes: execTickets.filter(t => !["resuelto", "cancelado"].includes(t.status)).length,
+          hallazgosDetectados: findingsDetected,
           tasaCumplimiento: execVisits.length > 0 
             ? Math.round((execVisits.filter(v => v.status === "realizada").length / execVisits.length) * 100) 
             : 0,
         };
       });
+      
+      // Workload analysis
+      const avgBuildingsPerExec = data.length > 0 
+        ? Math.round(data.reduce((sum, e) => sum + e.edificiosAsignados, 0) / data.length * 10) / 10
+        : 0;
+      const avgTicketsPerExec = data.length > 0
+        ? Math.round(data.reduce((sum, e) => sum + e.ticketsAsignados, 0) / data.length * 10) / 10
+        : 0;
+      
+      // Identify overloaded executives (above average)
+      const overloadedExecs = data.filter(e => 
+        e.edificiosAsignados > avgBuildingsPerExec * 1.5 || 
+        e.ticketsAsignados > avgTicketsPerExec * 1.5
+      );
+      
+      // Top performers by findings
+      const topFinders = [...data].sort((a, b) => b.hallazgosDetectados - a.hallazgosDetectados).slice(0, 5);
       
       const summary = {
         totalEjecutivos: data.length,
@@ -3188,7 +3530,44 @@ export async function registerRoutes(
           : 0,
       };
       
-      res.json({ data, summary });
+      const analytics = {
+        workload: {
+          avgBuildingsPerExec,
+          avgTicketsPerExec,
+          overloadedCount: overloadedExecs.length,
+          overloadedExecs: overloadedExecs.map(e => ({
+            nombre: e.nombre,
+            edificios: e.edificiosAsignados,
+            tickets: e.ticketsAsignados,
+          })),
+        },
+        findings: {
+          totalFindings: data.reduce((sum, e) => sum + e.hallazgosDetectados, 0),
+          avgFindingsPerExec: data.length > 0 
+            ? Math.round(data.reduce((sum, e) => sum + e.hallazgosDetectados, 0) / data.length * 10) / 10
+            : 0,
+          topFinders: topFinders.map(e => ({
+            nombre: e.nombre,
+            hallazgos: e.hallazgosDetectados,
+            visitas: e.visitasRealizadas,
+            proactividadRate: e.visitasRealizadas > 0 
+              ? Math.round((e.hallazgosDetectados / e.visitasRealizadas) * 100)
+              : 0,
+          })),
+        },
+        performance: {
+          topPerformers: [...data].sort((a, b) => b.tasaCumplimiento - a.tasaCumplimiento).slice(0, 5).map(e => ({
+            nombre: e.nombre,
+            cumplimiento: e.tasaCumplimiento,
+          })),
+          lowPerformers: [...data].filter(e => e.tasaCumplimiento < 70).map(e => ({
+            nombre: e.nombre,
+            cumplimiento: e.tasaCumplimiento,
+          })),
+        },
+      };
+      
+      res.json({ data, summary, analytics });
     } catch (error) {
       console.error("Error fetching executives report:", error);
       res.status(500).json({ error: "Error interno del servidor" });
