@@ -2596,7 +2596,7 @@ export async function registerRoutes(
       const allTickets = await storage.getTickets();
       
       let filteredTickets = allTickets.filter(t => 
-        t.status === "cerrado" && 
+        t.status === "resuelto" && 
         t.invoiceAmount && 
         parseFloat(t.invoiceAmount) > 0
       );
@@ -2662,7 +2662,7 @@ export async function registerRoutes(
       const allTickets = await storage.getTickets();
       
       let filteredTickets = allTickets.filter(t => 
-        t.status === "cerrado" && 
+        t.status === "resuelto" && 
         t.invoiceAmount && 
         parseFloat(t.invoiceAmount) > 0
       );
