@@ -26,9 +26,12 @@ import {
   executiveAssignments,
   executiveDocuments,
   notifications,
+  systemConfig,
   type User,
   type UserProfile,
   type InsertUserProfile,
+  type SystemConfig,
+  type InsertSystemConfig,
   type Building,
   type InsertBuilding,
   type BuildingStaff,
@@ -97,6 +100,10 @@ export interface IStorage {
   updateUserProfile(userId: string, data: Partial<InsertUserProfile>): Promise<UserProfile | undefined>;
   deleteUserProfile(userId: string): Promise<boolean>;
   getExecutives(): Promise<UserProfile[]>;
+
+  // System Config
+  getSystemConfig(): Promise<SystemConfig | undefined>;
+  updateSystemConfig(data: Partial<InsertSystemConfig>): Promise<SystemConfig>;
 
   // Buildings
   getBuildings(): Promise<Building[]>;
@@ -318,6 +325,37 @@ export class DatabaseStorage implements IStorage {
 
   async getExecutives(): Promise<UserProfile[]> {
     return db.select().from(userProfiles).where(eq(userProfiles.role, "ejecutivo_operaciones"));
+  }
+
+  // System Config
+  async getSystemConfig(): Promise<SystemConfig | undefined> {
+    const [config] = await db.select().from(systemConfig).where(eq(systemConfig.id, "default"));
+    return config || undefined;
+  }
+
+  async updateSystemConfig(data: Partial<InsertSystemConfig>): Promise<SystemConfig> {
+    const existing = await this.getSystemConfig();
+    
+    if (existing) {
+      const [updated] = await db
+        .update(systemConfig)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(systemConfig.id, "default"))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(systemConfig)
+        .values({
+          id: "default",
+          companyName: data.companyName || "BUMA OPS",
+          logoUrl: data.logoUrl || null,
+          primaryColor: data.primaryColor || "#2563eb",
+          updatedBy: data.updatedBy || null,
+        })
+        .returning();
+      return created;
+    }
   }
 
   // Buildings

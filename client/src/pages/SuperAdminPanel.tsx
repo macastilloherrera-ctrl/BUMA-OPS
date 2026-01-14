@@ -1,0 +1,601 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Settings, Users, Key, Shield, Building2, Save, RefreshCw, UserPlus, Pencil, Trash2, ToggleLeft } from "lucide-react";
+import type { UserRole } from "@shared/schema";
+
+interface SystemConfig {
+  id: string;
+  companyName: string;
+  logoUrl: string | null;
+  primaryColor: string;
+  updatedAt: string;
+  updatedBy: string | null;
+}
+
+interface AdminUser {
+  id: string;
+  email: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  profileImageUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+  profile: {
+    id: string;
+    role: UserRole;
+    buildingScope: string;
+    phone: string | null;
+    isActive: boolean;
+  } | null;
+  assignedBuildings: { id: string; name: string }[];
+}
+
+interface Role {
+  value: UserRole;
+  label: string;
+  description: string;
+}
+
+interface Building {
+  id: string;
+  name: string;
+}
+
+const roleLabels: Record<UserRole, string> = {
+  super_admin: "Super Admin",
+  gerente_general: "Gerente General",
+  gerente_operaciones: "Gerente Operaciones",
+  gerente_comercial: "Gerente Comercial",
+  gerente_finanzas: "Gerente Finanzas",
+  ejecutivo_operaciones: "Ejecutivo Operaciones",
+};
+
+export default function SuperAdminPanel() {
+  const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState("config");
+  
+  const [configForm, setConfigForm] = useState({
+    companyName: "",
+    logoUrl: "",
+    primaryColor: "#2563eb",
+  });
+
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showResetPasswordDialog, setShowResetPasswordDialog] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [userForm, setUserForm] = useState({
+    email: "",
+    firstName: "",
+    lastName: "",
+    role: "ejecutivo_operaciones" as UserRole,
+    phone: "",
+    isActive: true,
+  });
+
+  const { data: config, isLoading: configLoading } = useQuery<SystemConfig>({
+    queryKey: ["/api/super-admin/config"],
+  });
+
+  const { data: users = [], isLoading: usersLoading } = useQuery<AdminUser[]>({
+    queryKey: ["/api/super-admin/users"],
+  });
+
+  const { data: roles = [] } = useQuery<Role[]>({
+    queryKey: ["/api/admin/roles"],
+  });
+
+  const { data: buildings = [] } = useQuery<Building[]>({
+    queryKey: ["/api/buildings"],
+  });
+
+  const updateConfigMutation = useMutation({
+    mutationFn: (data: typeof configForm) => apiRequest("PATCH", "/api/super-admin/config", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/config"] });
+      toast({ title: "Configuracion actualizada" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error al actualizar", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const createUserMutation = useMutation({
+    mutationFn: (data: typeof userForm) => apiRequest("POST", "/api/super-admin/users", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
+      setShowCreateDialog(false);
+      resetUserForm();
+      toast({ title: "Usuario creado exitosamente" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error al crear usuario", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updateUserMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: typeof userForm }) =>
+      apiRequest("PATCH", `/api/super-admin/users/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
+      setShowEditDialog(false);
+      setSelectedUser(null);
+      resetUserForm();
+      toast({ title: "Usuario actualizado" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error al actualizar", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("PATCH", `/api/super-admin/users/${id}/toggle-active`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
+      toast({ title: "Estado del usuario actualizado" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/super-admin/users/${id}/reset-password`),
+    onSuccess: () => {
+      setShowResetPasswordDialog(false);
+      setSelectedUser(null);
+      toast({ title: "Contrasena reseteada. El usuario recibira un email con instrucciones." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const resetUserForm = () => {
+    setUserForm({
+      email: "",
+      firstName: "",
+      lastName: "",
+      role: "ejecutivo_operaciones",
+      phone: "",
+      isActive: true,
+    });
+  };
+
+  const openEditDialog = (user: AdminUser) => {
+    setSelectedUser(user);
+    setUserForm({
+      email: user.email || "",
+      firstName: user.firstName || "",
+      lastName: user.lastName || "",
+      role: user.profile?.role || "ejecutivo_operaciones",
+      phone: user.profile?.phone || "",
+      isActive: user.profile?.isActive ?? true,
+    });
+    setShowEditDialog(true);
+  };
+
+  const handleSaveConfig = () => {
+    updateConfigMutation.mutate(configForm);
+  };
+
+  // Initialize config form when data loads
+  if (config && configForm.companyName === "" && !configLoading) {
+    setConfigForm({
+      companyName: config.companyName || "BUMA OPS",
+      logoUrl: config.logoUrl || "",
+      primaryColor: config.primaryColor || "#2563eb",
+    });
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="p-4 md:p-6 border-b border-border bg-card">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-primary/10">
+            <Shield className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold" data-testid="text-page-title">
+              Panel Super Admin
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Configuracion del sistema y gestion avanzada
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <ScrollArea className="flex-1">
+        <div className="p-4 md:p-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="mb-6">
+              <TabsTrigger value="config" className="gap-2" data-testid="tab-config">
+                <Settings className="h-4 w-4" />
+                Configuracion
+              </TabsTrigger>
+              <TabsTrigger value="users" className="gap-2" data-testid="tab-users">
+                <Users className="h-4 w-4" />
+                Usuarios
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="config" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Building2 className="h-5 w-5" />
+                    Identidad de la Empresa
+                  </CardTitle>
+                  <CardDescription>
+                    Configura el nombre y logo que se mostraran en toda la plataforma
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="companyName">Nombre de la Empresa</Label>
+                      <Input
+                        id="companyName"
+                        value={configForm.companyName}
+                        onChange={(e) => setConfigForm({ ...configForm, companyName: e.target.value })}
+                        placeholder="Nombre de la empresa"
+                        data-testid="input-company-name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="logoUrl">URL del Logo</Label>
+                      <Input
+                        id="logoUrl"
+                        value={configForm.logoUrl}
+                        onChange={(e) => setConfigForm({ ...configForm, logoUrl: e.target.value })}
+                        placeholder="https://ejemplo.com/logo.png"
+                        data-testid="input-logo-url"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="primaryColor">Color Primario</Label>
+                    <div className="flex gap-2 items-center">
+                      <Input
+                        id="primaryColor"
+                        type="color"
+                        value={configForm.primaryColor}
+                        onChange={(e) => setConfigForm({ ...configForm, primaryColor: e.target.value })}
+                        className="w-16 h-10 p-1"
+                        data-testid="input-primary-color"
+                      />
+                      <Input
+                        value={configForm.primaryColor}
+                        onChange={(e) => setConfigForm({ ...configForm, primaryColor: e.target.value })}
+                        placeholder="#2563eb"
+                        className="flex-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button 
+                      onClick={handleSaveConfig} 
+                      disabled={updateConfigMutation.isPending}
+                      data-testid="button-save-config"
+                    >
+                      <Save className="h-4 w-4 mr-2" />
+                      {updateConfigMutation.isPending ? "Guardando..." : "Guardar Configuracion"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Key className="h-5 w-5" />
+                    Informacion del Sistema
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="p-4 rounded-lg bg-muted/50">
+                      <p className="text-sm text-muted-foreground">Version</p>
+                      <p className="text-lg font-semibold">1.0.0</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-muted/50">
+                      <p className="text-sm text-muted-foreground">Usuarios Activos</p>
+                      <p className="text-lg font-semibold">{users.filter(u => u.profile?.isActive).length}</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-muted/50">
+                      <p className="text-sm text-muted-foreground">Edificios</p>
+                      <p className="text-lg font-semibold">{buildings.length}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="users" className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-lg font-semibold">Gestion de Usuarios</h2>
+                <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-user">
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Nuevo Usuario
+                </Button>
+              </div>
+
+              <Card>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Usuario</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Rol</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {usersLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-8">
+                            Cargando usuarios...
+                          </TableCell>
+                        </TableRow>
+                      ) : users.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-8">
+                            No hay usuarios registrados
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        users.map((user) => (
+                          <TableRow key={user.id} data-testid={`row-user-${user.id}`}>
+                            <TableCell>
+                              <div className="font-medium">
+                                {user.firstName} {user.lastName}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {user.email}
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={user.profile?.role === "super_admin" ? "default" : "secondary"}>
+                                {user.profile ? roleLabels[user.profile.role] : "Sin perfil"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={user.profile?.isActive ? "default" : "outline"}>
+                                {user.profile?.isActive ? "Activo" : "Inactivo"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => openEditDialog(user)}
+                                  data-testid={`button-edit-${user.id}`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => toggleActiveMutation.mutate(user.id)}
+                                  data-testid={`button-toggle-${user.id}`}
+                                >
+                                  <ToggleLeft className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setSelectedUser(user);
+                                    setShowResetPasswordDialog(true);
+                                  }}
+                                  data-testid={`button-reset-password-${user.id}`}
+                                >
+                                  <Key className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </ScrollArea>
+
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Crear Nuevo Usuario</DialogTitle>
+            <DialogDescription>
+              Ingresa los datos del nuevo usuario
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Nombre</Label>
+                <Input
+                  value={userForm.firstName}
+                  onChange={(e) => setUserForm({ ...userForm, firstName: e.target.value })}
+                  data-testid="input-first-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Apellido</Label>
+                <Input
+                  value={userForm.lastName}
+                  onChange={(e) => setUserForm({ ...userForm, lastName: e.target.value })}
+                  data-testid="input-last-name"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={userForm.email}
+                onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+                data-testid="input-email"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Rol</Label>
+              <Select
+                value={userForm.role}
+                onValueChange={(v) => setUserForm({ ...userForm, role: v as UserRole })}
+              >
+                <SelectTrigger data-testid="select-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {roles.map((role) => (
+                    <SelectItem key={role.value} value={role.value}>
+                      {role.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Telefono</Label>
+              <Input
+                value={userForm.phone}
+                onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
+                data-testid="input-phone"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => createUserMutation.mutate(userForm)}
+              disabled={createUserMutation.isPending}
+              data-testid="button-submit-create"
+            >
+              {createUserMutation.isPending ? "Creando..." : "Crear Usuario"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Usuario</DialogTitle>
+            <DialogDescription>
+              Modifica los datos del usuario
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Nombre</Label>
+                <Input
+                  value={userForm.firstName}
+                  onChange={(e) => setUserForm({ ...userForm, firstName: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Apellido</Label>
+                <Input
+                  value={userForm.lastName}
+                  onChange={(e) => setUserForm({ ...userForm, lastName: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={userForm.email}
+                onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Rol</Label>
+              <Select
+                value={userForm.role}
+                onValueChange={(v) => setUserForm({ ...userForm, role: v as UserRole })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {roles.map((role) => (
+                    <SelectItem key={role.value} value={role.value}>
+                      {role.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center justify-between">
+              <Label>Usuario Activo</Label>
+              <Switch
+                checked={userForm.isActive}
+                onCheckedChange={(checked) => setUserForm({ ...userForm, isActive: checked })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => selectedUser && updateUserMutation.mutate({ id: selectedUser.id, data: userForm })}
+              disabled={updateUserMutation.isPending}
+            >
+              {updateUserMutation.isPending ? "Guardando..." : "Guardar Cambios"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showResetPasswordDialog} onOpenChange={setShowResetPasswordDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Resetear Contrasena</DialogTitle>
+            <DialogDescription>
+              Se enviara un email al usuario {selectedUser?.email} con instrucciones para crear una nueva contrasena.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowResetPasswordDialog(false)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => selectedUser && resetPasswordMutation.mutate(selectedUser.id)}
+              disabled={resetPasswordMutation.isPending}
+            >
+              {resetPasswordMutation.isPending ? "Enviando..." : "Resetear Contrasena"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

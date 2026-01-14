@@ -46,6 +46,7 @@ import ReportFinancial from "@/pages/ReportFinancial";
 import ReportEquipment from "@/pages/ReportEquipment";
 import ReportExecutives from "@/pages/ReportExecutives";
 import AdminUsers from "@/pages/AdminUsers";
+import SuperAdminPanel from "@/pages/SuperAdminPanel";
 
 function LoadingScreen() {
   return (
@@ -96,6 +97,7 @@ function AuthenticatedApp() {
   }
 
   const userRole: UserRole = userProfile?.role || "ejecutivo_operaciones";
+  const isSuperAdmin = userRole === "super_admin";
   const isGeneralManager = userRole === "gerente_general";
   const isFinance = isFinanceRole(userRole);
   const isManager = isManagerRole(userRole);
@@ -185,6 +187,11 @@ function AuthenticatedApp() {
                 {userRole === "gerente_general" && (
                   <Route path="/admin/usuarios" component={AdminUsers} />
                 )}
+                
+                {isSuperAdmin && (
+                  <Route path="/super-admin" component={SuperAdminPanel} />
+                )}
+                
                 <Route path="/perfil" component={() => <Profile userRole={userRole} />} />
 
                 <Route component={NotFound} />

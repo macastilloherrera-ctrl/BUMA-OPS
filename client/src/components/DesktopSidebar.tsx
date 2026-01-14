@@ -200,11 +200,22 @@ const financeNavItems = [
   },
 ];
 
+const superAdminNavItems = [
+  {
+    group: "Panel Super Admin",
+    items: [
+      { path: "/super-admin", label: "Configuracion", icon: Shield },
+    ]
+  },
+];
+
 export function DesktopSidebar({ user, userRole, onLogout }: DesktopSidebarProps) {
   const [location] = useLocation();
   
   const getNavItems = () => {
     switch (userRole) {
+      case "super_admin":
+        return superAdminNavItems;
       case "gerente_general":
         return generalManagerNavItems;
       case "gerente_comercial":
@@ -228,6 +239,7 @@ export function DesktopSidebar({ user, userRole, onLogout }: DesktopSidebarProps
 
   const getRoleLabel = () => {
     const labels: Record<UserRole, string> = {
+      super_admin: "Super Admin",
       gerente_general: "Gerente General",
       gerente_operaciones: "Gerente Operaciones",
       gerente_comercial: "Gerente Comercial",

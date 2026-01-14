@@ -4179,21 +4179,233 @@ export async function registerRoutes(
   app.get("/api/admin/roles", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isAdminRole(profile.role)) {
+      if (!profile || !isAdminRole(profile.role) && profile.role !== "super_admin") {
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
       const roles = [
-        { id: "gerente_general", name: "Gerente General", description: "Acceso total a la plataforma" },
-        { id: "gerente_operaciones", name: "Gerente de Operaciones", description: "Gestiona visitas, tickets y equipos" },
-        { id: "gerente_comercial", name: "Gerente Comercial", description: "Acceso a reportes financieros" },
-        { id: "gerente_finanzas", name: "Gerente de Finanzas", description: "Solo lectura en dashboards" },
-        { id: "ejecutivo_operaciones", name: "Ejecutivo de Operaciones", description: "Trabajo de campo, sin acceso a costos" },
+        { value: "super_admin", label: "Super Admin", description: "Configuración del sistema" },
+        { value: "gerente_general", label: "Gerente General", description: "Acceso total a la plataforma" },
+        { value: "gerente_operaciones", label: "Gerente de Operaciones", description: "Gestiona visitas, tickets y equipos" },
+        { value: "gerente_comercial", label: "Gerente Comercial", description: "Acceso a reportes financieros" },
+        { value: "gerente_finanzas", label: "Gerente de Finanzas", description: "Solo lectura en dashboards" },
+        { value: "ejecutivo_operaciones", label: "Ejecutivo de Operaciones", description: "Trabajo de campo, sin acceso a costos" },
       ];
       
       res.json(roles);
     } catch (error) {
       console.error("Error fetching roles:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ==================== SUPER ADMIN ENDPOINTS ====================
+  
+  const isSuperAdminRole = (role: string): boolean => {
+    return role === "super_admin";
+  };
+
+  // Get system configuration
+  app.get("/api/super-admin/config", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isSuperAdminRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado. Se requieren privilegios de Super Admin." });
+      }
+
+      const config = await storage.getSystemConfig();
+      res.json(config || {
+        id: "default",
+        companyName: "BUMA OPS",
+        logoUrl: null,
+        primaryColor: "#2563eb",
+        updatedAt: new Date().toISOString(),
+        updatedBy: null,
+      });
+    } catch (error) {
+      console.error("Error fetching system config:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Update system configuration
+  app.patch("/api/super-admin/config", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isSuperAdminRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { companyName, logoUrl, primaryColor } = req.body;
+      const userId = (req.user as any).id;
+      
+      const updatedConfig = await storage.updateSystemConfig({
+        companyName,
+        logoUrl,
+        primaryColor,
+        updatedBy: userId,
+      });
+      
+      res.json(updatedConfig);
+    } catch (error) {
+      console.error("Error updating system config:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Super Admin: List all users
+  app.get("/api/super-admin/users", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isSuperAdminRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const allUsers = await storage.getUsers();
+      const allProfiles = await storage.getUserProfiles();
+      const buildings = await storage.getBuildings();
+      
+      const profileMap = new Map(allProfiles.map(p => [p.userId, p]));
+      
+      const usersWithProfiles = allUsers.map(user => {
+        const userProfile = profileMap.get(user.id);
+        const assignedBuildings = buildings.filter(b => b.assignedExecutiveId === user.id);
+        
+        return {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          profileImageUrl: user.profileImageUrl,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+          profile: userProfile ? {
+            id: userProfile.id,
+            role: userProfile.role,
+            buildingScope: userProfile.buildingScope,
+            phone: userProfile.phone,
+            isActive: userProfile.isActive,
+          } : null,
+          assignedBuildings: assignedBuildings.map(b => ({ id: b.id, name: b.name })),
+        };
+      });
+      
+      res.json(usersWithProfiles);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Super Admin: Create user
+  app.post("/api/super-admin/users", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isSuperAdminRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { email, firstName, lastName, role, phone, isActive } = req.body;
+      
+      const userId = `user-${Date.now()}`;
+      const newUser = await storage.upsertUser({
+        id: userId,
+        email,
+        firstName,
+        lastName,
+      });
+
+      const buildingScope = role === "ejecutivo_operaciones" ? "assigned" : "all";
+      await storage.createUserProfile({
+        userId: newUser.id,
+        role: role || "ejecutivo_operaciones",
+        buildingScope,
+        phone: phone || null,
+        isActive: isActive ?? true,
+      });
+
+      res.status(201).json({ id: newUser.id, email: newUser.email });
+    } catch (error) {
+      console.error("Error creating user:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Super Admin: Update user
+  app.patch("/api/super-admin/users/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isSuperAdminRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { id } = req.params;
+      const { email, firstName, lastName, role, phone, isActive } = req.body;
+      
+      await storage.upsertUser({
+        id,
+        email,
+        firstName,
+        lastName,
+      });
+
+      const existingProfile = await storage.getUserProfile(id);
+      if (existingProfile) {
+        const buildingScope = role === "ejecutivo_operaciones" ? "assigned" : "all";
+        await storage.updateUserProfile(id, {
+          role,
+          buildingScope,
+          phone,
+          isActive,
+        });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error updating user:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Super Admin: Toggle user active status
+  app.patch("/api/super-admin/users/:id/toggle-active", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isSuperAdminRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { id } = req.params;
+      const userProfile = await storage.getUserProfile(id);
+      
+      if (!userProfile) {
+        return res.status(404).json({ error: "Perfil de usuario no encontrado" });
+      }
+
+      await storage.updateUserProfile(id, { isActive: !userProfile.isActive });
+      res.json({ success: true, isActive: !userProfile.isActive });
+    } catch (error) {
+      console.error("Error toggling user status:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Super Admin: Reset user password (placeholder - would need email integration)
+  app.post("/api/super-admin/users/:id/reset-password", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isSuperAdminRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      // Note: This is a placeholder. In a real system, you would:
+      // 1. Generate a password reset token
+      // 2. Send an email to the user with a reset link
+      // For now, we just acknowledge the request
+      
+      res.json({ success: true, message: "Password reset initiated" });
+    } catch (error) {
+      console.error("Error resetting password:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });

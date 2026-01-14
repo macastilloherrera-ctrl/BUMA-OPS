@@ -4,6 +4,15 @@ import { authStorage } from "./replit_integrations/auth/storage";
 
 export const DEV_USERS = [
   {
+    id: "dev-super-admin",
+    email: "superadmin@buma.local",
+    firstName: "Super",
+    lastName: "Admin",
+    profileImageUrl: null,
+    role: "super_admin" as const,
+    label: "Super Admin",
+  },
+  {
     id: "dev-gerente-general",
     email: "gg@buma.local",
     firstName: "Gerente",
@@ -56,6 +65,8 @@ export function isDevMode(): boolean {
 
 function getRedirectForRole(role: string): string {
   switch (role) {
+    case "super_admin":
+      return "/super-admin";
     case "gerente_general":
       return "/dashboard/overview";
     case "gerente_operaciones":
