@@ -173,6 +173,11 @@ const generalManagerNavItems = [
   {
     group: "Reportes",
     items: [
+      { path: "/reportes/visitas", label: "Informe Visitas", icon: Calendar },
+      { path: "/reportes/tickets", label: "Informe Tickets", icon: Ticket },
+      { path: "/reportes/financiero", label: "Informe Financiero", icon: DollarSign },
+      { path: "/reportes/equipos", label: "Informe Equipos", icon: Wrench },
+      { path: "/reportes/ejecutivos", label: "Informe Ejecutivos", icon: Users },
       { path: "/reportes/egresos", label: "Informe Egresos", icon: FileSpreadsheet },
       { path: "/reportes/cumplimiento", label: "Cumplimiento Normativo", icon: FileCheck },
     ]
