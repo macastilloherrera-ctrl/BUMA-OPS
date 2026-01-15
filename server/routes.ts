@@ -1,5 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import * as fs from "fs";
+import * as path from "path";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -125,8 +127,6 @@ export async function registerRoutes(
   
   // Serve documentation files for download
   app.get("/api/docs", (req, res) => {
-    const fs = require("fs");
-    const path = require("path");
     const docsDir = path.join(process.cwd(), "docs");
     
     if (!fs.existsSync(docsDir)) {
@@ -144,8 +144,6 @@ export async function registerRoutes(
   });
   
   app.get("/api/docs/download/:filename", (req, res) => {
-    const fs = require("fs");
-    const path = require("path");
     const { filename } = req.params;
     const filePath = path.join(process.cwd(), "docs", filename);
     
