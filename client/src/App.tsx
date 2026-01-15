@@ -129,7 +129,7 @@ function AuthenticatedApp() {
             </div>
           </header>
 
-          <main className="flex-1 overflow-hidden">
+          <main className="flex-1 overflow-auto">
             <RouteGuard userRole={userRole}>
               <Switch>
                 <Route path="/" component={() => <Redirect to={roleHome} />} />
