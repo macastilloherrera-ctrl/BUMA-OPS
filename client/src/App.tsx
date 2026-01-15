@@ -47,6 +47,7 @@ import ReportEquipment from "@/pages/ReportEquipment";
 import ReportExecutives from "@/pages/ReportExecutives";
 import AdminUsers from "@/pages/AdminUsers";
 import SuperAdminPanel from "@/pages/SuperAdminPanel";
+import DocumentationDownload from "@/pages/DocumentationDownload";
 
 function LoadingScreen() {
   return (
@@ -189,7 +190,10 @@ function AuthenticatedApp() {
                 )}
                 
                 {isSuperAdmin && (
-                  <Route path="/super-admin" component={SuperAdminPanel} />
+                  <>
+                    <Route path="/super-admin" component={SuperAdminPanel} />
+                    <Route path="/documentacion" component={DocumentationDownload} />
+                  </>
                 )}
                 
                 <Route path="/perfil" component={() => <Profile userRole={userRole} />} />

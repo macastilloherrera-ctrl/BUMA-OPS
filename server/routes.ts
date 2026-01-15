@@ -123,6 +123,41 @@ export async function registerRoutes(
   // Setup Object Storage routes
   registerObjectStorageRoutes(app);
   
+  // Serve documentation files for download
+  app.get("/api/docs", (req, res) => {
+    const fs = require("fs");
+    const path = require("path");
+    const docsDir = path.join(process.cwd(), "docs");
+    
+    if (!fs.existsSync(docsDir)) {
+      return res.json({ files: [] });
+    }
+    
+    const files = fs.readdirSync(docsDir)
+      .filter((f: string) => f.endsWith(".docx"))
+      .map((f: string) => ({
+        name: f,
+        url: `/api/docs/download/${encodeURIComponent(f)}`,
+      }));
+    
+    res.json({ files });
+  });
+  
+  app.get("/api/docs/download/:filename", (req, res) => {
+    const fs = require("fs");
+    const path = require("path");
+    const { filename } = req.params;
+    const filePath = path.join(process.cwd(), "docs", filename);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "Archivo no encontrado" });
+    }
+    
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.sendFile(filePath);
+  });
+  
   // Get current user info with role (combined endpoint)
   app.get("/api/me", isAuthenticated, async (req, res) => {
     try {
