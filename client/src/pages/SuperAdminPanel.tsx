@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { ObjectUploader } from "@/components/ObjectUploader";
-import { Settings, Users, Key, Shield, Building2, Save, RefreshCw, UserPlus, Pencil, ToggleLeft, Upload, FileText, Image } from "lucide-react";
+import { Settings, Users, Key, Shield, Building2, Save, RefreshCw, UserPlus, Pencil, ToggleLeft, Upload, FileText, Image, Download, Book, Code } from "lucide-react";
 import type { UserRole } from "@shared/schema";
 
 interface SystemConfig {
@@ -259,6 +259,10 @@ export default function SuperAdminPanel() {
               <TabsTrigger value="logs" className="gap-2" data-testid="tab-logs">
                 <FileText className="h-4 w-4" />
                 Logs
+              </TabsTrigger>
+              <TabsTrigger value="docs" className="gap-2" data-testid="tab-docs">
+                <Book className="h-4 w-4" />
+                Documentacion
               </TabsTrigger>
             </TabsList>
 
@@ -528,6 +532,65 @@ export default function SuperAdminPanel() {
                         Proximamente podras ver el registro de actividades del sistema aqui.
                       </p>
                     </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="docs" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Book className="h-5 w-5" />
+                    Documentacion del Sistema
+                  </CardTitle>
+                  <CardDescription>
+                    Descarga los manuales y guias de BUMA OPS en formato Word
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <Card className="hover-elevate cursor-pointer" onClick={() => window.open("/api/docs/download/Manual_Usuario_BUMA_OPS.docx", "_blank")}>
+                      <CardContent className="pt-6 text-center">
+                        <Book className="h-12 w-12 text-blue-500 mx-auto mb-4" />
+                        <h3 className="font-semibold mb-2">Manual de Usuario</h3>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          Guia completa para usuarios del sistema con instrucciones por rol
+                        </p>
+                        <Button variant="outline" size="sm" className="gap-2" data-testid="button-download-manual">
+                          <Download className="h-4 w-4" />
+                          Descargar
+                        </Button>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="hover-elevate cursor-pointer" onClick={() => window.open("/api/docs/download/Guia_Administracion_BUMA_OPS.docx", "_blank")}>
+                      <CardContent className="pt-6 text-center">
+                        <Shield className="h-12 w-12 text-green-500 mx-auto mb-4" />
+                        <h3 className="font-semibold mb-2">Guia de Administracion</h3>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          Manual para administradores del sistema y gestion de usuarios
+                        </p>
+                        <Button variant="outline" size="sm" className="gap-2" data-testid="button-download-admin">
+                          <Download className="h-4 w-4" />
+                          Descargar
+                        </Button>
+                      </CardContent>
+                    </Card>
+
+                    <Card className="hover-elevate cursor-pointer" onClick={() => window.open("/api/docs/download/Documentacion_Tecnica_BUMA_OPS.docx", "_blank")}>
+                      <CardContent className="pt-6 text-center">
+                        <Code className="h-12 w-12 text-purple-500 mx-auto mb-4" />
+                        <h3 className="font-semibold mb-2">Documentacion Tecnica</h3>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          Arquitectura, APIs y modelo de datos para desarrolladores
+                        </p>
+                        <Button variant="outline" size="sm" className="gap-2" data-testid="button-download-tech">
+                          <Download className="h-4 w-4" />
+                          Descargar
+                        </Button>
+                      </CardContent>
+                    </Card>
                   </div>
                 </CardContent>
               </Card>

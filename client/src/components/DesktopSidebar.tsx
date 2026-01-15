@@ -24,7 +24,6 @@ import {
   ClipboardList,
   FileSpreadsheet,
   FileCheck,
-  FileText,
   DollarSign,
   BarChart3,
   Shield,
@@ -210,8 +209,7 @@ const superAdminNavItems = [
   {
     group: "Panel Super Admin",
     items: [
-      { path: "/super-admin", label: "Configuracion", icon: Shield },
-      { path: "/documentacion", label: "Documentacion", icon: FileText },
+      { path: "/super-admin", label: "Panel Super Admin", icon: Shield },
     ]
   },
 ];
