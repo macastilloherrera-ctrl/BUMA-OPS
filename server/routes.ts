@@ -1524,7 +1524,7 @@ export async function registerRoutes(
         if (!targetProfile) {
           return res.status(404).json({ error: "Usuario destino no encontrado" });
         }
-        if (targetProfile.role !== "gerente_general" && targetProfile.role !== "gerente_operaciones") {
+        if (targetProfile.role !== "gerente_general" && targetProfile.role !== "gerente_operaciones" && targetProfile.role !== "gerente_comercial") {
           return res.status(400).json({ error: "Solo se puede escalar a gerentes" });
         }
       } else {
@@ -1551,7 +1551,7 @@ export async function registerRoutes(
         assignedById: req.user!.id,
         assignedToRole: targetProfile.role,
         previousAssigneeId,
-        reason: reason || `Escalado a ${targetProfile.role === "gerente_general" ? "Gerente General" : "Gerente de Operaciones"}`,
+        reason: reason || `Escalado a ${targetProfile.role === "gerente_general" ? "Gerente General" : targetProfile.role === "gerente_comercial" ? "Gerente Comercial" : "Gerente de Operaciones"}`,
         isEscalation: true,
       });
       
