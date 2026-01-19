@@ -77,6 +77,26 @@ export default function Tickets() {
 
   const pageTitle = isManager ? (showMine ? "Mis Tickets Asignados" : "Todos los Tickets") : "Mis Tickets";
 
+  // Calculate counts for each tab
+  const getCounts = () => {
+    if (!tickets) return { vencidos: 0, por_vencer: 0, pendientes: 0, resueltos: 0, todos: 0 };
+    
+    let baseTickets = tickets;
+    if (isManager && showMine && userProfile) {
+      baseTickets = tickets.filter((t) => t.assignedExecutiveId === userProfile.userId);
+    }
+    
+    return {
+      vencidos: baseTickets.filter((t) => t.status === "vencido" || isOverdue(t)).length,
+      por_vencer: baseTickets.filter((t) => t.status !== "resuelto" && !isOverdue(t) && isDueSoon(t)).length,
+      pendientes: baseTickets.filter((t) => t.status !== "resuelto" && !isOverdue(t) && !isDueSoon(t)).length,
+      resueltos: baseTickets.filter((t) => t.status === "resuelto").length,
+      todos: baseTickets.length,
+    };
+  };
+  
+  const counts = getCounts();
+
   return (
     <div className="flex flex-col h-full">
       <div className="sticky top-0 bg-background border-b border-border z-10 px-4 py-3">
@@ -117,20 +137,45 @@ export default function Tickets() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <div className="sticky top-0 bg-background px-4 pt-3">
             <TabsList className="w-full grid grid-cols-5 h-10">
-              <TabsTrigger value="vencidos" data-testid="tab-vencidos">
+              <TabsTrigger value="vencidos" data-testid="tab-vencidos" className="gap-1.5">
                 Vencidos
+                {counts.vencidos > 0 && (
+                  <Badge className="bg-red-500 text-white text-[10px] px-1.5 py-0 h-4 min-w-[1rem]" data-testid="count-vencidos">
+                    {counts.vencidos}
+                  </Badge>
+                )}
               </TabsTrigger>
-              <TabsTrigger value="por_vencer" data-testid="tab-por-vencer">
+              <TabsTrigger value="por_vencer" data-testid="tab-por-vencer" className="gap-1.5">
                 Por Vencer
+                {counts.por_vencer > 0 && (
+                  <Badge className="bg-amber-500 text-white text-[10px] px-1.5 py-0 h-4 min-w-[1rem]" data-testid="count-por-vencer">
+                    {counts.por_vencer}
+                  </Badge>
+                )}
               </TabsTrigger>
-              <TabsTrigger value="pendientes" data-testid="tab-pendientes">
+              <TabsTrigger value="pendientes" data-testid="tab-pendientes" className="gap-1.5">
                 Pendientes
+                {counts.pendientes > 0 && (
+                  <Badge className="bg-blue-500 text-white text-[10px] px-1.5 py-0 h-4 min-w-[1rem]" data-testid="count-pendientes">
+                    {counts.pendientes}
+                  </Badge>
+                )}
               </TabsTrigger>
-              <TabsTrigger value="resueltos" data-testid="tab-resueltos">
+              <TabsTrigger value="resueltos" data-testid="tab-resueltos" className="gap-1.5">
                 Resueltos
+                {counts.resueltos > 0 && (
+                  <Badge className="bg-green-500 text-white text-[10px] px-1.5 py-0 h-4 min-w-[1rem]" data-testid="count-resueltos">
+                    {counts.resueltos}
+                  </Badge>
+                )}
               </TabsTrigger>
-              <TabsTrigger value="todos" data-testid="tab-todos">
+              <TabsTrigger value="todos" data-testid="tab-todos" className="gap-1.5">
                 Todos
+                {counts.todos > 0 && (
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 min-w-[1rem]" data-testid="count-todos">
+                    {counts.todos}
+                  </Badge>
+                )}
               </TabsTrigger>
             </TabsList>
           </div>
