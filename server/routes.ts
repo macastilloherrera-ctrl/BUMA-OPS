@@ -1248,6 +1248,9 @@ export async function registerRoutes(
       const buildings = await storage.getBuildings();
       const buildingsMap = new Map(buildings.map((b) => [b.id, b]));
       
+      // Get tickets delegated to current user
+      const delegatedTicketIds = await storage.getTicketsDelegatedToUser(req.user!.id);
+      
       // Get user names from DEV_USERS (includes executives AND managers)
       const { DEV_USERS } = await import("./devAuth");
       
@@ -1266,6 +1269,7 @@ export async function registerRoutes(
         building: buildingsMap.get(t.buildingId),
         executiveName: getUserDisplayName(t.assignedExecutiveId),
         cost: isManager ? t.cost : null,
+        isDelegatedToMe: delegatedTicketIds.has(t.id),
       }));
       
       res.json(ticketsWithBuilding);

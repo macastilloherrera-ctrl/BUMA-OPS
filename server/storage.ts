@@ -82,7 +82,7 @@ import {
   type InsertTicketAssignmentHistory,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, gte, lte, or, sql } from "drizzle-orm";
+import { eq, and, desc, gte, lte, or, sql, ne } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -256,6 +256,7 @@ export interface IStorage {
   // Ticket Assignment History
   getTicketAssignmentHistory(ticketId: string): Promise<TicketAssignmentHistory[]>;
   createTicketAssignmentHistory(history: InsertTicketAssignmentHistory): Promise<TicketAssignmentHistory>;
+  getTicketsDelegatedToUser(userId: string): Promise<Set<string>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1070,6 +1071,20 @@ export class DatabaseStorage implements IStorage {
   async createTicketAssignmentHistory(history: InsertTicketAssignmentHistory): Promise<TicketAssignmentHistory> {
     const [created] = await db.insert(ticketAssignmentHistory).values(history).returning();
     return created;
+  }
+
+  async getTicketsDelegatedToUser(userId: string): Promise<Set<string>> {
+    // Get all assignment history entries where this user was assigned by someone else
+    // (meaning they received a delegated ticket, not the original assignment)
+    const delegations = await db.select({ ticketId: ticketAssignmentHistory.ticketId })
+      .from(ticketAssignmentHistory)
+      .where(
+        and(
+          eq(ticketAssignmentHistory.assignedToId, userId),
+          ne(ticketAssignmentHistory.assignedById, userId)
+        )
+      );
+    return new Set(delegations.map(d => d.ticketId));
   }
 }
 

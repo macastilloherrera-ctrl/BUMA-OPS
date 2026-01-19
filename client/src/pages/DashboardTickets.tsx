@@ -49,6 +49,7 @@ import {
   Calendar,
   RefreshCw,
   Eye,
+  Forward,
 } from "lucide-react";
 import type { Ticket, Building, UserProfile } from "@shared/schema";
 import { format, differenceInDays } from "date-fns";
@@ -57,6 +58,7 @@ import { es } from "date-fns/locale";
 interface TicketWithBuilding extends Ticket {
   building?: Building;
   executiveName?: string;
+  isDelegatedToMe?: boolean;
 }
 
 interface DashboardStats {
@@ -65,6 +67,7 @@ interface DashboardStats {
   pending: number;
   ok: number;
   resolved: number;
+  delegated: number;
 }
 
 export default function DashboardTickets() {
@@ -160,7 +163,7 @@ export default function DashboardTickets() {
   };
 
   const getStats = (): DashboardStats => {
-    if (!tickets) return { critical: 0, warning: 0, pending: 0, ok: 0, resolved: 0 };
+    if (!tickets) return { critical: 0, warning: 0, pending: 0, ok: 0, resolved: 0, delegated: 0 };
     
     const activeTickets = tickets.filter((t) => t.status !== "resuelto");
     
@@ -170,6 +173,7 @@ export default function DashboardTickets() {
       pending: activeTickets.filter((t) => !isOverdue(t) && !isDueSoon(t)).length,
       ok: 0,
       resolved: tickets.filter((t) => t.status === "resuelto").length,
+      delegated: activeTickets.filter((t) => t.isDelegatedToMe).length,
     };
   };
 
@@ -225,7 +229,7 @@ export default function DashboardTickets() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
         <Card className="border-l-4 border-l-red-500">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -278,6 +282,20 @@ export default function DashboardTickets() {
                 </p>
               </div>
               <CheckCircle className="h-10 w-10 text-green-500/30" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-violet-500">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Derivados a Mi</p>
+                <p className="text-4xl font-bold text-violet-500" data-testid="stat-delegated">
+                  {stats.delegated}
+                </p>
+              </div>
+              <Forward className="h-10 w-10 text-violet-500/30" />
             </div>
           </CardContent>
         </Card>
@@ -359,9 +377,24 @@ export default function DashboardTickets() {
                 </TableHeader>
                 <TableBody>
                   {filteredTickets().map((ticket) => (
-                    <TableRow key={ticket.id} data-testid={`row-ticket-${ticket.id}`}>
+                    <TableRow 
+                      key={ticket.id} 
+                      data-testid={`row-ticket-${ticket.id}`}
+                      className={ticket.isDelegatedToMe ? "bg-violet-50 dark:bg-violet-950/20" : ""}
+                    >
                       <TableCell>
-                        <PriorityBadge priority={ticket.priority} />
+                        <div className="flex items-center gap-2">
+                          <PriorityBadge priority={ticket.priority} />
+                          {ticket.isDelegatedToMe && (
+                            <Badge 
+                              className="bg-violet-500 text-white text-xs"
+                              data-testid={`badge-delegated-${ticket.id}`}
+                            >
+                              <Forward className="h-3 w-3 mr-1" />
+                              Derivado
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="font-medium">
                         {ticket.building?.name || "—"}
