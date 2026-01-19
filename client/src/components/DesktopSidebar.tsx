@@ -1,4 +1,4 @@
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   Sidebar,
@@ -284,31 +284,47 @@ export function DesktopSidebar({ user, userRole, onLogout }: DesktopSidebarProps
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
-                  const isActive = location.startsWith(item.path);
+                  const pathBase = item.path.split("?")[0];
+                  const isActive = location.startsWith(pathBase);
                   const Icon = item.icon;
                   const isMisTickets = item.path === "/tickets?mine=true";
                   const showDelegatedBadge = isMisTickets && delegatedCount > 0;
+                  const hasQueryString = item.path.includes("?");
+                  
+                  const handleClick = () => {
+                    if (hasQueryString) {
+                      window.location.href = item.path;
+                    }
+                  };
                   
                   return (
                     <SidebarMenuItem key={item.path}>
                       <SidebarMenuButton
-                        asChild
+                        asChild={!hasQueryString}
                         isActive={isActive}
                         className={showDelegatedBadge ? "bg-violet-500/10" : ""}
                         data-testid={`sidebar-${item.label.toLowerCase().replace(/\s/g, "-")}`}
+                        onClick={hasQueryString ? handleClick : undefined}
                       >
-                        <Link href={item.path} className="flex items-center gap-2 w-full">
-                          <Icon className="h-4 w-4 shrink-0" />
-                          <span className="flex-1">{item.label}</span>
-                          {showDelegatedBadge && (
-                            <Badge 
-                              className="bg-violet-500 text-white text-xs px-1.5 py-0 h-5 min-w-[1.25rem] flex items-center justify-center shrink-0"
-                              data-testid="badge-delegated-count"
-                            >
-                              {delegatedCount}
-                            </Badge>
-                          )}
-                        </Link>
+                        {hasQueryString ? (
+                          <div className="flex items-center gap-2 w-full cursor-pointer">
+                            <Icon className="h-4 w-4 shrink-0" />
+                            <span className="flex-1">{item.label}</span>
+                            {showDelegatedBadge && (
+                              <Badge 
+                                className="bg-violet-500 text-white text-xs px-1.5 py-0 h-5 min-w-[1.25rem] flex items-center justify-center shrink-0"
+                                data-testid="badge-delegated-count"
+                              >
+                                {delegatedCount}
+                              </Badge>
+                            )}
+                          </div>
+                        ) : (
+                          <Link href={item.path} className="flex items-center gap-2 w-full">
+                            <Icon className="h-4 w-4 shrink-0" />
+                            <span className="flex-1">{item.label}</span>
+                          </Link>
+                        )}
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   );
