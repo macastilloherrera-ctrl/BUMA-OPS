@@ -252,10 +252,16 @@ export async function registerRoutes(
       const allProfiles = await db.select().from(userProfiles)
         .where(or(
           eq(userProfiles.role, "gerente_general"),
-          eq(userProfiles.role, "gerente_operaciones")
+          eq(userProfiles.role, "gerente_operaciones"),
+          eq(userProfiles.role, "gerente_comercial")
         ));
       
       const { DEV_USERS } = await import("./devAuth");
+      const roleLabels: Record<string, string> = {
+        gerente_general: "Gerente General",
+        gerente_operaciones: "Gerente de Operaciones",
+        gerente_comercial: "Gerente Comercial",
+      };
       const managersWithNames = allProfiles.map((profile) => {
         const devUser = DEV_USERS.find((u) => u.id === profile.userId);
         return {
@@ -264,7 +270,7 @@ export async function registerRoutes(
           displayName: devUser 
             ? `${devUser.firstName} ${devUser.lastName}` 
             : profile.userId.split("@")[0] || profile.userId,
-          roleName: profile.role === "gerente_general" ? "Gerente General" : "Gerente de Operaciones",
+          roleName: roleLabels[profile.role] || profile.role,
         };
       });
       
