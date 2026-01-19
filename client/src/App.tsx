@@ -122,7 +122,14 @@ function AuthenticatedApp() {
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <div className="flex items-center gap-4">
               <span className="text-sm text-muted-foreground" data-testid="text-user-info">
-                Conectado como: {user.email} ({userRole.replace("_", " ")})
+                Conectado como: {user.email} ({{
+                  super_admin: "Super Admin",
+                  gerente_general: "Gerente General",
+                  gerente_operaciones: "Gerente Operaciones",
+                  gerente_comercial: "Gerente Comercial",
+                  gerente_finanzas: "Gerente Finanzas",
+                  ejecutivo_operaciones: "Ejecutivo Operaciones",
+                }[userRole] || userRole})
               </span>
               <NotificationBell />
               <ThemeToggle />

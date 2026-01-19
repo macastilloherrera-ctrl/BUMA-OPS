@@ -24,8 +24,10 @@ export default function Profile({ userRole = "ejecutivo_operaciones" }: ProfileP
 
   const getRoleLabel = () => {
     const labels: Record<UserRole, string> = {
+      super_admin: "Super Admin",
       gerente_general: "Gerente General",
       gerente_operaciones: "Gerente de Operaciones",
+      gerente_comercial: "Gerente Comercial",
       gerente_finanzas: "Gerente de Finanzas",
       ejecutivo_operaciones: "Ejecutivo de Operaciones",
     };
