@@ -1279,6 +1279,41 @@ export async function registerRoutes(
     }
   });
 
+  // Get tickets delegated to the current user (for sidebar badge)
+  app.get("/api/tickets/delegated-to-me", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+      const profile = await storage.getUserProfile(userId);
+      
+      if (!profile) {
+        return res.json([]);
+      }
+      
+      if (!isManagerRole(profile)) {
+        return res.json([]);
+      }
+      
+      // Use profile.userId since that's what the assignment history uses
+      const delegatedTicketIds = await storage.getTicketsDelegatedToUser(profile.userId);
+      
+      if (delegatedTicketIds.size === 0) {
+        return res.json([]);
+      }
+      
+      // Get only pending/active delegated tickets (not resolved)
+      const allTickets = await storage.getTickets();
+      const delegatedTickets = allTickets.filter(t => 
+        delegatedTicketIds.has(t.id) && t.status !== "resuelto"
+      );
+      console.log(`[delegated-to-me] Returning ${delegatedTickets.length} active delegated tickets`);
+      
+      res.json(delegatedTickets);
+    } catch (error) {
+      console.error("Error getting delegated tickets:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   app.get("/api/tickets/:id", isAuthenticated, async (req, res) => {
     try {
       const ticket = await storage.getTicket(req.params.id);

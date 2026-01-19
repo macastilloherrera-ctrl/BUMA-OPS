@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import {
   Sidebar,
   SidebarContent,
@@ -29,10 +30,11 @@ import {
   Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Logo } from "@/components/Logo";
 import type { User } from "@shared/models/auth";
-import type { UserRole } from "@shared/schema";
+import type { UserRole, Ticket as TicketType } from "@shared/schema";
 
 interface DesktopSidebarProps {
   user: User;
@@ -217,6 +219,17 @@ const superAdminNavItems = [
 export function DesktopSidebar({ user, userRole, onLogout }: DesktopSidebarProps) {
   const [location] = useLocation();
   
+  // Fetch delegated tickets count for managers
+  const isManager = ["gerente_general", "gerente_operaciones", "gerente_comercial"].includes(userRole);
+  
+  const { data: delegatedTickets } = useQuery<TicketType[]>({
+    queryKey: ["/api/tickets/delegated-to-me"],
+    enabled: isManager,
+    staleTime: 30000,
+  });
+  
+  const delegatedCount = delegatedTickets?.length || 0;
+  
   const getNavItems = () => {
     switch (userRole) {
       case "super_admin":
@@ -273,17 +286,28 @@ export function DesktopSidebar({ user, userRole, onLogout }: DesktopSidebarProps
                 {group.items.map((item) => {
                   const isActive = location.startsWith(item.path);
                   const Icon = item.icon;
+                  const isMisTickets = item.path === "/tickets?mine=true";
+                  const showDelegatedBadge = isMisTickets && delegatedCount > 0;
                   
                   return (
                     <SidebarMenuItem key={item.path}>
                       <SidebarMenuButton
                         asChild
                         isActive={isActive}
+                        className={showDelegatedBadge ? "bg-violet-500/10" : ""}
                         data-testid={`sidebar-${item.label.toLowerCase().replace(/\s/g, "-")}`}
                       >
-                        <Link href={item.path}>
-                          <Icon className="h-4 w-4" />
-                          <span>{item.label}</span>
+                        <Link href={item.path} className="flex items-center gap-2 w-full">
+                          <Icon className="h-4 w-4 shrink-0" />
+                          <span className="flex-1">{item.label}</span>
+                          {showDelegatedBadge && (
+                            <Badge 
+                              className="bg-violet-500 text-white text-xs px-1.5 py-0 h-5 min-w-[1.25rem] flex items-center justify-center shrink-0"
+                              data-testid="badge-delegated-count"
+                            >
+                              {delegatedCount}
+                            </Badge>
+                          )}
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
