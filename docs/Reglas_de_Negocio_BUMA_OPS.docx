@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>BUMA OPS - Reglas de Negocio</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; line-height: 1.6; }
+    h1 { color: #1a365d; border-bottom: 3px solid #3182ce; padding-bottom: 10px; }
+    h2 { color: #2c5282; margin-top: 30px; border-bottom: 1px solid #bee3f8; padding-bottom: 5px; }
+    h3 { color: #2b6cb0; }
+    table { border-collapse: collapse; width: 100%; margin: 15px 0; }
+    th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+    th { background-color: #e2e8f0; }
+    blockquote { background: #f7fafc; border-left: 4px solid #3182ce; padding: 10px 15px; margin: 15px 0; }
+    .header-info { color: #666; margin-bottom: 30px; }
+    hr { border: none; border-top: 2px solid #e2e8f0; margin: 30px 0; }
+  </style>
+</head>
+<body>
+
+<h1>BUMA OPS - Reglas de Negocio</h1>
+
+<div class="header-info">
+  <p><strong>Documento de Especificaciones Funcionales</strong></p>
+  <p><strong>Version:</strong> 1.0</p>
+  <p><strong>Fecha:</strong> Enero 2026</p>
+</div>
+
+<hr>
+
+<h2>1. VISITAS</h2>
+
+<h3>1.1 Estados de Visitas</h3>
+<table>
+  <tr><th>Estado</th><th>Descripcion</th><th>Color</th></tr>
+  <tr><td><strong>Borrador</strong></td><td>Visita creada pero no confirmada</td><td>Gris</td></tr>
+  <tr><td><strong>Programada</strong></td><td>Visita confirmada con fecha asignada</td><td>Azul</td></tr>
+  <tr><td><strong>Atrasada</strong></td><td>Fecha programada ya paso y no se ha iniciado</td><td>Rojo</td></tr>
+  <tr><td><strong>En Curso</strong></td><td>Ejecutivo inicio la visita</td><td>Amarillo</td></tr>
+  <tr><td><strong>Realizada</strong></td><td>Visita completada exitosamente</td><td>Verde</td></tr>
+  <tr><td><strong>Cancelada</strong></td><td>Visita cancelada (con motivo)</td><td>Gris oscuro</td></tr>
+</table>
+
+<h3>1.2 Tipos de Visita</h3>
+<ul>
+  <li><strong>Rutina:</strong> Visita programada regular de inspeccion</li>
+  <li><strong>Urgente:</strong> Visita de emergencia por incidente reportado</li>
+</ul>
+
+<h3>1.3 Flujo de Visita</h3>
+<ol>
+  <li><strong>Programacion:</strong> El ejecutivo programa una visita para un edificio en una fecha especifica</li>
+  <li><strong>Inicio:</strong> El dia de la visita, el ejecutivo presiona "Iniciar Visita" (se registra startedAt)</li>
+  <li><strong>Checklist:</strong> El ejecutivo completa el checklist de inspeccion</li>
+  <li><strong>Hallazgos:</strong> Si encuentra problemas, puede crear tickets directamente</li>
+  <li><strong>Fotos:</strong> Puede adjuntar fotos como evidencia</li>
+  <li><strong>Finalizacion:</strong> Al completar, presiona "Finalizar" (se registra completedAt)</li>
+</ol>
+
+<h3>1.4 Calculo de Atrasos</h3>
+<p>Una visita se considera <strong>ATRASADA</strong> cuando:</p>
+<ul>
+  <li>La fecha programada (scheduledDate) es anterior a la fecha actual</li>
+  <li>El estado sigue siendo "programada" (no se ha iniciado)</li>
+</ul>
+
+<h3>1.5 Fechas Importantes</h3>
+<ul>
+  <li><strong>Fecha Programada</strong> (scheduledDate): Cuando debia realizarse la visita</li>
+  <li><strong>Fecha de Inicio</strong> (startedAt): Cuando el ejecutivo inicio la visita</li>
+  <li><strong>Fecha de Realizacion</strong> (completedAt): Cuando se completo efectivamente la visita</li>
+</ul>
+
+<blockquote>
+  <strong>Ejemplo:</strong> Si una visita estaba programada para el 14 de enero pero se realizo el 19 de enero, se mostrara:
+  <ul>
+    <li>Programada: martes, 14 enero 2026</li>
+    <li>Realizada: domingo, 19 enero 2026 a las 15:30</li>
+  </ul>
+</blockquote>
+
+<h3>1.6 Cobertura de Edificios</h3>
+<p>El sistema calcula automaticamente la cobertura de visitas por edificio:</p>
+<ul>
+  <li>Se considera "cubierto" un edificio que ha tenido al menos 4 visitas en los ultimos 30 dias</li>
+  <li>El indicador de cumplimiento normativo usa este criterio (25% del score)</li>
+</ul>
+
+<hr>
+
+<h2>2. TICKETS</h2>
+
+<h3>2.1 Estados de Tickets</h3>
+<table>
+  <tr><th>Estado</th><th>Descripcion</th><th>Color</th></tr>
+  <tr><td><strong>Pendiente</strong></td><td>Ticket abierto sin trabajo iniciado</td><td>Azul</td></tr>
+  <tr><td><strong>En Progreso</strong></td><td>Trabajo en curso</td><td>Amarillo</td></tr>
+  <tr><td><strong>Trabajo Completado</strong></td><td>Trabajo terminado, pendiente cierre</td><td>Naranja</td></tr>
+  <tr><td><strong>Resuelto</strong></td><td>Ticket cerrado completamente</td><td>Verde/Gris</td></tr>
+  <tr><td><strong>Vencido</strong></td><td>Fecha de vencimiento pasada sin resolver</td><td>Rojo</td></tr>
+</table>
+
+<h3>2.2 Prioridades (Semaforo)</h3>
+<table>
+  <tr><th>Prioridad</th><th>Descripcion</th><th>Color</th></tr>
+  <tr><td><strong>Critico</strong></td><td>Requiere atencion inmediata</td><td>Rojo</td></tr>
+  <tr><td><strong>Por Vencer</strong></td><td>Proximo a vencer (7 dias)</td><td>Amarillo</td></tr>
+  <tr><td><strong>Al Dia</strong></td><td>Sin urgencia</td><td>Verde</td></tr>
+</table>
+
+<h3>2.3 Tipos de Ticket</h3>
+<ul>
+  <li><strong>Urgencia:</strong> Problema que requiere atencion inmediata</li>
+  <li><strong>Mantencion:</strong> Trabajo de mantenimiento programado</li>
+  <li><strong>Planificado:</strong> Mejora o proyecto planificado</li>
+</ul>
+
+<h3>2.4 Flujo de Cierre de Ticket</h3>
+<ol>
+  <li><strong>Trabajo Completado:</strong> El ejecutivo marca el trabajo como terminado</li>
+  <li><strong>Revision de Factura:</strong> El sistema pregunta si hay factura asociada</li>
+  <li><strong>Opciones de Cierre:</strong>
+    <ul>
+      <li><strong>CON Factura:</strong> Se ingresa numero y monto de factura - Badge verde "Resuelto"</li>
+      <li><strong>SIN Factura:</strong> Se indica que solo fue gestion - Badge gris "Resuelto"</li>
+      <li><strong>Factura Pendiente:</strong> Proveedor enviara despues - Badge naranja "Resuelto - Factura pendiente"</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>2.5 Colores de Badge "Resuelto"</h3>
+<table>
+  <tr><th>Color</th><th>Significado</th></tr>
+  <tr><td><strong>Verde</strong></td><td>Resuelto CON factura adjunta</td></tr>
+  <tr><td><strong>Gris</strong></td><td>Resuelto SIN factura (no la requeria)</td></tr>
+  <tr><td><strong>Naranja</strong></td><td>Resuelto pero factura PENDIENTE</td></tr>
+</table>
+
+<h3>2.6 Derivacion/Escalamiento</h3>
+<p>Los tickets pueden ser derivados (escalados) a gerentes:</p>
+<ul>
+  <li><strong>Gerente General:</strong> Puede recibir tickets escalados de cualquier area</li>
+  <li><strong>Gerente de Operaciones:</strong> Recibe tickets operativos escalados</li>
+  <li><strong>Gerente Comercial:</strong> Recibe tickets relacionados con cobros o temas comerciales</li>
+</ul>
+
+<p>Cuando un ticket es derivado:</p>
+<ul>
+  <li>Se registra en el historial de asignaciones</li>
+  <li>El ticket aparece con indicador violeta en "Mis Tickets" del destinatario</li>
+  <li>El contador de "Derivados a Mi" se actualiza en el dashboard</li>
+</ul>
+
+<h3>2.7 Historial de Asignaciones</h3>
+<p>Cada cambio de asignacion registra:</p>
+<ul>
+  <li>Quien asigno el ticket</li>
+  <li>A quien fue asignado</li>
+  <li>Fecha y hora</li>
+  <li>Motivo de la derivacion</li>
+  <li>Si fue escalamiento a gerencia</li>
+</ul>
+
+<hr>
+
+<h2>3. ROLES Y PERMISOS</h2>
+
+<h3>3.1 Roles del Sistema</h3>
+<table>
+  <tr><th>Rol</th><th>Descripcion</th></tr>
+  <tr><td><strong>Super Admin</strong></td><td>Configuracion del sistema, branding, gestion avanzada</td></tr>
+  <tr><td><strong>Gerente General</strong></td><td>Acceso total, aprueba equipos, administra usuarios</td></tr>
+  <tr><td><strong>Gerente de Operaciones</strong></td><td>Gestiona visitas/tickets, ve costos, aprueba equipos</td></tr>
+  <tr><td><strong>Gerente Comercial</strong></td><td>Similar a Gerente de Operaciones, enfocado en temas comerciales</td></tr>
+  <tr><td><strong>Gerente de Finanzas</strong></td><td>Solo lectura en dashboards</td></tr>
+  <tr><td><strong>Ejecutivo de Operaciones</strong></td><td>Trabajo de campo, no ve costos</td></tr>
+</table>
+
+<h3>3.2 Visibilidad de Costos</h3>
+<p>Solo los siguientes roles pueden ver costos:</p>
+<ul>
+  <li>Gerente General</li>
+  <li>Gerente de Operaciones</li>
+  <li>Gerente Comercial</li>
+</ul>
+<p>Los ejecutivos <strong>NO</strong> ven informacion de costos ni facturas.</p>
+
+<h3>3.3 Vista "Todos" vs "Mios"</h3>
+<p>Los gerentes tienen acceso a:</p>
+<ul>
+  <li><strong>Todos los Tickets:</strong> Ve todos los tickets del sistema</li>
+  <li><strong>Mis Tickets:</strong> Solo los tickets asignados directamente a ellos</li>
+</ul>
+<p>Los ejecutivos solo ven sus propios tickets asignados.</p>
+
+<hr>
+
+<h2>4. EQUIPOS CRITICOS</h2>
+
+<h3>4.1 Flujo de Aprobacion</h3>
+<ol>
+  <li>El ejecutivo sugiere un nuevo equipo critico (estado: <strong>pendiente</strong>)</li>
+  <li>El gerente revisa y puede:
+    <ul>
+      <li><strong>Aprobar:</strong> El equipo queda registrado oficialmente</li>
+      <li><strong>Rechazar:</strong> Se registra el motivo del rechazo</li>
+    </ul>
+  </li>
+</ol>
+
+<h3>4.2 Tipos de Equipos</h3>
+<ul>
+  <li>Ascensores</li>
+  <li>Bombas de agua</li>
+  <li>Portones electricos</li>
+  <li>Sistema CCTV</li>
+  <li>Sistemas de incendio</li>
+  <li>Otros</li>
+</ul>
+
+<hr>
+
+<h2>5. CUMPLIMIENTO NORMATIVO</h2>
+
+<h3>5.1 Calculo de Score (0-100%)</h3>
+<p>Cada edificio tiene un score de cumplimiento basado en 4 criterios:</p>
+<table>
+  <tr><th>Criterio</th><th>Peso</th><th>Descripcion</th></tr>
+  <tr><td>Reglamento de Copropiedad</td><td>25%</td><td>Documento cargado en el sistema</td></tr>
+  <tr><td>Mantenciones al dia</td><td>25%</td><td>Equipos sin mantenciones vencidas</td></tr>
+  <tr><td>Cobertura de visitas</td><td>25%</td><td>Minimo 4 visitas en ultimos 30 dias</td></tr>
+  <tr><td>Sin tickets urgentes</td><td>25%</td><td>Sin tickets criticos pendientes</td></tr>
+</table>
+
+<h3>5.2 Interpretacion</h3>
+<ul>
+  <li><strong>100%:</strong> Edificio en cumplimiento total</li>
+  <li><strong>75%:</strong> Un criterio no cumplido</li>
+  <li><strong>50%:</strong> Dos criterios no cumplidos</li>
+  <li><strong>25%:</strong> Tres criterios no cumplidos</li>
+  <li><strong>0%:</strong> Ningun criterio cumplido</li>
+</ul>
+
+<hr>
+
+<h2>6. NOTIFICACIONES</h2>
+
+<h3>6.1 Tipos de Notificaciones Internas</h3>
+<ul>
+  <li>Ticket asignado/derivado a usuario</li>
+  <li>Visita proxima a vencer</li>
+  <li>Equipo critico aprobado/rechazado</li>
+  <li>Comentario en ticket asignado</li>
+</ul>
+
+<h3>6.2 Indicadores Visuales</h3>
+<ul>
+  <li>Badge rojo en campana de notificaciones (contador de no leidas)</li>
+  <li>Badge violeta en "Mis Tickets" cuando hay tickets derivados</li>
+  <li>Resaltado de filas con tickets delegados</li>
+</ul>
+
+<hr>
+
+<h2>7. REPORTES</h2>
+
+<h3>7.1 Informe de Cumplimiento Normativo</h3>
+<p>Muestra el score de cada edificio con detalle de criterios cumplidos.</p>
+
+<h3>7.2 Informe de Egresos (Formato Edipro)</h3>
+<p>Solo accesible para Gerente General y Gerente Comercial.</p>
+<p>Incluye facturas de tickets cerrados con totales por periodo.</p>
+
+<hr>
+
+<p style="text-align: center; color: #666; margin-top: 40px;">
+  <em>Documento generado automaticamente por BUMA OPS - Enero 2026</em>
+</p>
+
+</body>
+</html>

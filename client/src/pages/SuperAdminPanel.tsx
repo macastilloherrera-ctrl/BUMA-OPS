@@ -591,6 +591,20 @@ export default function SuperAdminPanel() {
                         </Button>
                       </CardContent>
                     </Card>
+
+                    <Card className="hover-elevate cursor-pointer" onClick={() => window.open("/api/docs/download/Reglas_de_Negocio_BUMA_OPS.docx", "_blank")}>
+                      <CardContent className="pt-6 text-center">
+                        <FileText className="h-12 w-12 text-orange-500 mx-auto mb-4" />
+                        <h3 className="font-semibold mb-2">Reglas de Negocio</h3>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          Estados, flujos y logica de visitas, tickets y roles
+                        </p>
+                        <Button variant="outline" size="sm" className="gap-2" data-testid="button-download-rules">
+                          <Download className="h-4 w-4" />
+                          Descargar
+                        </Button>
+                      </CardContent>
+                    </Card>
                   </div>
                 </CardContent>
               </Card>
