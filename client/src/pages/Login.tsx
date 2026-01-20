@@ -33,7 +33,7 @@ function getRedirectByRole(role: string): string {
     case "gerente_finanzas":
       return "/dashboard/tickets";
     case "ejecutivo_operaciones":
-      return "/visits";
+      return "/visitas";
     default:
       return "/dashboard/tickets";
   }

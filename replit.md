@@ -7,8 +7,29 @@ Plataforma interna de operaciones para gestionar visitas a terreno, tickets oper
 - **Frontend**: React + TypeScript + Tailwind CSS + Shadcn UI
 - **Backend**: Express + Node.js
 - **Base de Datos**: PostgreSQL (Neon) con Drizzle ORM
-- **Autenticacion**: Replit Auth (OpenID Connect)
+- **Autenticacion**: Email/contraseña tradicional con bcrypt (para emails @buma.cl)
 - **Almacenamiento**: Replit Object Storage para fotos
+
+## Sistema de Autenticacion
+El sistema usa autenticacion tradicional con email y contraseña diseñado para empleados BUMA con correos @buma.cl.
+
+### Flujo de Autenticacion
+1. Super Admin crea usuario con contraseña temporal
+2. Usuario inicia sesion con email y contraseña
+3. En primer ingreso, se obliga a cambiar contraseña
+4. Sistema valida usuario activo antes de permitir acceso
+5. Saludo de voz con nombre del usuario al ingresar
+
+### Rutas de API
+- `POST /api/auth/login` - Iniciar sesion
+- `POST /api/auth/logout` - Cerrar sesion  
+- `POST /api/auth/change-password` - Cambiar contraseña
+- `POST /api/super-admin/users/:id/reset-password` - Reset contraseña (Super Admin)
+
+### Campos de Usuario para Auth
+- `passwordHash` - Hash bcrypt de la contraseña
+- `mustChangePassword` - Flag para forzar cambio en primer login
+- `lastLoginAt` - Timestamp del ultimo login
 
 ## Estructura del Proyecto
 ```
