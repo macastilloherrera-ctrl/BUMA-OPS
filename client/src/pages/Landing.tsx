@@ -34,15 +34,20 @@ export default function Landing() {
       <main className="flex-1 flex items-center justify-center">
         <div className="text-center">
           <Logo size="lg" className="mx-auto mb-8" />
-          {isDevMode ? (
-            <Link href="/dev-login">
-              <Button size="lg" data-testid="button-dev-login">Iniciar Sesion</Button>
+          <div className="space-y-4">
+            <Link href="/login">
+              <Button size="lg" data-testid="button-login">Iniciar Sesión</Button>
             </Link>
-          ) : (
-            <Button size="lg" asChild data-testid="button-login">
-              <a href="/api/login">Iniciar Sesion</a>
-            </Button>
-          )}
+            {isDevMode && (
+              <div className="pt-4">
+                <Link href="/dev-login">
+                  <Button size="lg" variant="outline" data-testid="button-dev-login">
+                    Modo Desarrollo
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
       </main>
     </div>

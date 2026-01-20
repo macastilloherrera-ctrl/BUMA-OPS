@@ -37,6 +37,8 @@ import Maintainers from "@/pages/Maintainers";
 import CalendarView from "@/pages/CalendarView";
 import VisitReport from "@/pages/VisitReport";
 import DevLogin from "@/pages/DevLogin";
+import Login from "@/pages/Login";
+import ChangePassword from "@/pages/ChangePassword";
 import Executives from "@/pages/Executives";
 import ExpenseReport from "@/pages/ExpenseReport";
 import RegulatoryComplianceReport from "@/pages/RegulatoryComplianceReport";
@@ -220,10 +222,17 @@ function AppRouter() {
   }
 
   if (!isAuthenticated) {
+    if (location === "/login") {
+      return <Login />;
+    }
     if (location === "/dev-login") {
       return <DevLogin />;
     }
     return <Landing />;
+  }
+
+  if (location === "/change-password") {
+    return <ChangePassword />;
   }
 
   return <AuthenticatedApp />;
