@@ -2,12 +2,14 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import * as fs from "fs";
 import * as path from "path";
+import * as bcrypt from "bcryptjs";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { registerDevAuthRoutes, isDevMode } from "./devAuth";
 import { db } from "./db";
 import { eq, or } from "drizzle-orm";
+import { users as usersTable } from "@shared/schema";
 import {
   insertBuildingSchema,
   insertBuildingStaffSchema,
@@ -4386,11 +4388,20 @@ export async function registerRoutes(
       const { email, firstName, lastName, role, phone, password, isActive } = req.body;
       
       const userId = `user-${Date.now()}`;
+      
+      // Hash password if provided
+      let passwordHash = null;
+      if (password && password.trim() !== "") {
+        passwordHash = await bcrypt.hash(password, 10);
+      }
+      
       const newUser = await storage.upsertUser({
         id: userId,
         email,
         firstName,
         lastName,
+        passwordHash,
+        mustChangePassword: true,
       });
 
       const buildingScope = role === "ejecutivo_operaciones" ? "assigned" : "all";
@@ -4402,9 +4413,7 @@ export async function registerRoutes(
         isActive: isActive ?? true,
       });
       
-      if (password) {
-        console.log(`[super-admin] User created: ${newUser.id} with access note: ${password}`);
-      }
+      console.log(`[super-admin] User created: ${newUser.id} with password: ${password ? "yes" : "no"}`);
 
       res.status(201).json({ id: newUser.id, email: newUser.email });
     } catch (error) {
@@ -4472,7 +4481,7 @@ export async function registerRoutes(
     }
   });
 
-  // Super Admin: Reset user password (placeholder - would need email integration)
+  // Super Admin: Reset user password
   app.post("/api/super-admin/users/:id/reset-password", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
@@ -4480,16 +4489,146 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
-      // Note: This is a placeholder. In a real system, you would:
-      // 1. Generate a password reset token
-      // 2. Send an email to the user with a reset link
-      // For now, we just acknowledge the request
+      const { id } = req.params;
+      const { newPassword } = req.body;
       
-      res.json({ success: true, message: "Password reset initiated" });
+      if (!newPassword || newPassword.trim() === "") {
+        return res.status(400).json({ error: "Debe proporcionar una nueva contraseña" });
+      }
+      
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await db.update(usersTable).set({ 
+        passwordHash, 
+        mustChangePassword: true,
+        updatedAt: new Date()
+      }).where(eq(usersTable.id, id));
+      
+      res.json({ success: true, message: "Contraseña reseteada exitosamente" });
     } catch (error) {
       console.error("Error resetting password:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
+  });
+
+  // ========================
+  // TRADITIONAL AUTH ROUTES
+  // ========================
+
+  // Login with email and password
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ error: "Email y contraseña son requeridos" });
+      }
+      
+      // Find user by email
+      const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase().trim()));
+      
+      if (!user) {
+        return res.status(401).json({ error: "Credenciales inválidas" });
+      }
+      
+      // Check if user has password
+      if (!user.passwordHash) {
+        return res.status(401).json({ error: "Usuario no tiene contraseña configurada. Contacte al administrador." });
+      }
+      
+      // Verify password
+      const isValidPassword = await bcrypt.compare(password, user.passwordHash);
+      if (!isValidPassword) {
+        return res.status(401).json({ error: "Credenciales inválidas" });
+      }
+      
+      // Check if user profile is active
+      const userProfile = await storage.getUserProfile(user.id);
+      if (!userProfile || !userProfile.isActive) {
+        return res.status(401).json({ error: "Usuario inactivo. Contacte al administrador." });
+      }
+      
+      // Update last login
+      await db.update(usersTable).set({ 
+        lastLoginAt: new Date(),
+        updatedAt: new Date()
+      }).where(eq(usersTable.id, user.id));
+      
+      // Login the user using Passport
+      req.login(user, (err) => {
+        if (err) {
+          console.error("Error logging in:", err);
+          return res.status(500).json({ error: "Error al iniciar sesión" });
+        }
+        
+        res.json({
+          success: true,
+          user: {
+            id: user.id,
+            email: user.email,
+            firstName: user.firstName,
+            lastName: user.lastName,
+          },
+          mustChangePassword: user.mustChangePassword,
+          role: userProfile.role,
+        });
+      });
+    } catch (error) {
+      console.error("Error in login:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Change password (for first login or user-initiated)
+  app.post("/api/auth/change-password", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const { currentPassword, newPassword } = req.body;
+      
+      if (!newPassword || newPassword.trim().length < 6) {
+        return res.status(400).json({ error: "La nueva contraseña debe tener al menos 6 caracteres" });
+      }
+      
+      // Get user
+      const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId));
+      if (!user) {
+        return res.status(404).json({ error: "Usuario no encontrado" });
+      }
+      
+      // If user is changing password (not first login), verify current password
+      if (!user.mustChangePassword && user.passwordHash) {
+        if (!currentPassword) {
+          return res.status(400).json({ error: "Contraseña actual es requerida" });
+        }
+        const isValid = await bcrypt.compare(currentPassword, user.passwordHash);
+        if (!isValid) {
+          return res.status(401).json({ error: "Contraseña actual incorrecta" });
+        }
+      }
+      
+      // Hash new password and update
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await db.update(usersTable).set({ 
+        passwordHash, 
+        mustChangePassword: false,
+        updatedAt: new Date()
+      }).where(eq(usersTable.id, userId));
+      
+      res.json({ success: true, message: "Contraseña actualizada exitosamente" });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Logout
+  app.post("/api/auth/logout", (req, res) => {
+    req.logout((err) => {
+      if (err) {
+        console.error("Error logging out:", err);
+        return res.status(500).json({ error: "Error al cerrar sesión" });
+      }
+      res.json({ success: true });
+    });
   });
 
   return httpServer;
