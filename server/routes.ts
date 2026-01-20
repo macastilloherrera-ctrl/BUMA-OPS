@@ -4553,8 +4553,24 @@ export async function registerRoutes(
         updatedAt: new Date()
       }).where(eq(usersTable.id, user.id));
       
+      // Create session object in the format expected by Passport
+      const now = Math.floor(Date.now() / 1000);
+      const sessionUser = {
+        id: user.id,
+        claims: {
+          sub: user.id,
+          email: user.email,
+          first_name: user.firstName,
+          last_name: user.lastName,
+          profile_image_url: user.profileImageUrl,
+        },
+        expires_at: now + 86400 * 7, // 7 days
+        access_token: "password-auth-token",
+        refresh_token: "password-auth-refresh",
+      };
+      
       // Login the user using Passport
-      req.login(user, (err) => {
+      req.login(sessionUser, (err) => {
         if (err) {
           console.error("Error logging in:", err);
           return res.status(500).json({ error: "Error al iniciar sesión" });
