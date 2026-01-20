@@ -676,16 +676,16 @@ export default function SuperAdminPanel() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Nota de acceso</Label>
+              <Label>Contraseña temporal</Label>
               <Input
                 type="text"
                 value={userForm.password}
                 onChange={(e) => setUserForm({ ...userForm, password: e.target.value })}
-                placeholder="Referencia interna (ej: enviado por email)"
+                placeholder="Mínimo 6 caracteres"
                 data-testid="input-password"
               />
               <p className="text-xs text-muted-foreground">
-                El usuario iniciara sesion con su cuenta de Replit
+                El usuario deberá cambiar esta contraseña en su primer ingreso
               </p>
             </div>
           </div>
@@ -694,8 +694,8 @@ export default function SuperAdminPanel() {
               Cancelar
             </Button>
             <Button
-              onClick={() => createUserMutation.mutate({ ...userForm, password: userForm.password || "pendiente" })}
-              disabled={createUserMutation.isPending}
+              onClick={() => createUserMutation.mutate(userForm)}
+              disabled={createUserMutation.isPending || !userForm.password || userForm.password.length < 6}
               data-testid="button-submit-create"
             >
               {createUserMutation.isPending ? "Creando..." : "Crear Usuario"}
