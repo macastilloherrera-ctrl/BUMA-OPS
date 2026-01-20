@@ -112,24 +112,21 @@ export default function ChangePassword() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="newPassword">Nueva contraseña</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <div className="relative flex items-center">
                   <Input
                     id="newPassword"
                     type={showNewPassword ? "text" : "password"}
                     placeholder="Mínimo 6 caracteres"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    className="pl-10 pr-10"
+                    className="pr-10"
                     disabled={changePasswordMutation.isPending}
                     autoComplete="new-password"
                     data-testid="input-new-password"
                   />
-                  <Button
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                    className="absolute right-3 text-muted-foreground hover:text-foreground transition-colors"
                     onClick={() => setShowNewPassword(!showNewPassword)}
                     tabIndex={-1}
                     data-testid="button-toggle-new-password"
@@ -139,30 +136,27 @@ export default function ChangePassword() {
                     ) : (
                       <Eye className="h-4 w-4" />
                     )}
-                  </Button>
+                  </button>
                 </div>
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Confirmar contraseña</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <div className="relative flex items-center">
                   <Input
                     id="confirmPassword"
                     type={showConfirmPassword ? "text" : "password"}
                     placeholder="Repite tu nueva contraseña"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="pl-10 pr-10"
+                    className="pr-10"
                     disabled={changePasswordMutation.isPending}
                     autoComplete="new-password"
                     data-testid="input-confirm-password"
                   />
-                  <Button
+                  <button
                     type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                    className="absolute right-3 text-muted-foreground hover:text-foreground transition-colors"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     tabIndex={-1}
                     data-testid="button-toggle-confirm-password"
@@ -172,7 +166,7 @@ export default function ChangePassword() {
                     ) : (
                       <Eye className="h-4 w-4" />
                     )}
-                  </Button>
+                  </button>
                 </div>
                 {confirmPassword && (
                   <div className="flex items-center gap-2 text-sm">
