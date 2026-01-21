@@ -73,7 +73,7 @@ import {
   Users,
   UserCheck,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
 const DEV_USERS_MAP: Record<string, string> = {
@@ -840,7 +840,7 @@ Equipo BUMA Property Management
                         Fecha Vencimiento
                       </p>
                       <p className="text-sm font-medium text-orange-600 dark:text-orange-400">
-                        {format(new Date(ticket.endDate), "dd MMM yyyy", { locale: es })}
+                        {format(parseISO(ticket.endDate), "dd MMM yyyy", { locale: es })}
                       </p>
                     </div>
                   )}
