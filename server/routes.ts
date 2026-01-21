@@ -3149,8 +3149,8 @@ export async function registerRoutes(
         const pri = t.priority as keyof typeof semaforo;
         if (semaforo[pri]) {
           semaforo[pri].total++;
-          if (t.status === "pendiente" || t.status === "en_curso") semaforo[pri].abiertos++;
-          else if (t.status === "trabajo_completado") semaforo[pri].enProgreso++;
+          if (t.status === "pendiente") semaforo[pri].abiertos++;
+          else if (t.status === "en_curso" || t.status === "trabajo_completado") semaforo[pri].enProgreso++;
           else if (t.status === "resuelto") semaforo[pri].resueltos++;
         }
       });
@@ -3228,8 +3228,8 @@ export async function registerRoutes(
       
       const summary = {
         total: data.length,
-        abiertos: tickets.filter(t => t.status === "pendiente" || t.status === "en_curso").length,
-        enProgreso: tickets.filter(t => t.status === "trabajo_completado").length,
+        abiertos: tickets.filter(t => t.status === "pendiente").length,
+        enProgreso: tickets.filter(t => t.status === "en_curso" || t.status === "trabajo_completado").length,
         resueltos: tickets.filter(t => t.status === "resuelto").length,
         prioridadAlta: tickets.filter(t => t.priority === "rojo").length,
         prioridadMedia: tickets.filter(t => t.priority === "amarillo").length,
