@@ -103,6 +103,7 @@ interface TicketWithDetails {
   requiresExecutiveVisit?: boolean;
   requiresInvoice?: boolean;
   scheduledDate?: string | null;
+  endDate?: string | null;
   approvedQuoteId?: string | null;
   approvedBy?: string | null;
   approvedAt?: string | null;
@@ -117,6 +118,8 @@ interface TicketWithDetails {
   closedAt?: string | null;
   closedBy?: string | null;
   createdAt?: string | null;
+  createdBy?: string | null;
+  createdByName?: string | null;
   building?: Building;
   cost?: string | null;
 }
@@ -827,6 +830,25 @@ Equipo BUMA Property Management
                       <p className="text-sm font-medium">
                         {format(new Date(ticket.createdAt), "dd MMM yyyy", { locale: es })}
                       </p>
+                    </div>
+                  )}
+
+                  {ticket.endDate && (
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        Fecha Vencimiento
+                      </p>
+                      <p className="text-sm font-medium text-orange-600 dark:text-orange-400">
+                        {format(new Date(ticket.endDate), "dd MMM yyyy", { locale: es })}
+                      </p>
+                    </div>
+                  )}
+
+                  {ticket.createdByName && (
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">Creado por</p>
+                      <p className="text-sm font-medium">{ticket.createdByName}</p>
                     </div>
                   )}
                 </div>

@@ -1336,9 +1336,17 @@ export async function registerRoutes(
       
       const building = await storage.getBuilding(ticket.buildingId);
       
+      // Get creator name
+      let createdByName = null;
+      if (ticket.createdBy) {
+        const creator = await storage.getUser(ticket.createdBy);
+        createdByName = creator ? `${creator.firstName || ""} ${creator.lastName || ""}`.trim() || creator.email : null;
+      }
+      
       res.json({
         ...ticket,
         building,
+        createdByName,
         cost: isManager ? ticket.cost : null,
       });
     } catch (error) {
