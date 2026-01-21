@@ -62,6 +62,7 @@ const ticketSchema = z.object({
   maintainerId: z.string().optional(),
   startDate: z.string().min(1, "La fecha de inicio es obligatoria"),
   scheduledDate: z.string().optional(),
+  endDate: z.string().min(1, "La fecha de vencimiento es obligatoria"),
 });
 
 type TicketForm = z.infer<typeof ticketSchema>;
@@ -144,6 +145,7 @@ export default function NewTicket() {
       maintainerId: "",
       startDate: new Date().toISOString().split("T")[0],
       scheduledDate: "",
+      endDate: "",
     },
   });
 
@@ -183,6 +185,7 @@ export default function NewTicket() {
         payload.maintainerId = data.maintainerId;
       }
       if (data.scheduledDate) payload.scheduledDate = new Date(data.scheduledDate).toISOString();
+      if (data.endDate) payload.endDate = new Date(data.endDate).toISOString();
       
       const ticketResponse = await apiRequest("POST", "/api/tickets", payload);
       const ticketData = await ticketResponse.json();
@@ -445,23 +448,43 @@ export default function NewTicket() {
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="startDate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Fecha de Inicio *</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="date"
-                        {...field}
-                        data-testid="input-start-date"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="startDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Fecha de Inicio *</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="date"
+                          {...field}
+                          data-testid="input-start-date"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="endDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Fecha de Vencimiento *</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="date"
+                          {...field}
+                          data-testid="input-end-date"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
               {selectedType === "planificado" && (
                 <FormField
