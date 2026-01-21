@@ -840,7 +840,11 @@ Equipo BUMA Property Management
                         Fecha Vencimiento
                       </p>
                       <p className="text-sm font-medium text-orange-600 dark:text-orange-400">
-                        {format(parseISO(ticket.endDate), "dd MMM yyyy", { locale: es })}
+                        {(() => {
+                          const dateStr = ticket.endDate.split('T')[0];
+                          const [year, month, day] = dateStr.split('-').map(Number);
+                          return format(new Date(year, month - 1, day), "dd MMM yyyy", { locale: es });
+                        })()}
                       </p>
                     </div>
                   )}
