@@ -192,8 +192,7 @@ export default function NewTicket() {
       
       if (uploadedImages.length > 0 && ticketData.id) {
         for (const img of uploadedImages) {
-          await apiRequest("POST", "/api/ticket-photos", {
-            ticketId: ticketData.id,
+          await apiRequest("POST", `/api/tickets/${ticketData.id}/photos`, {
             photoType: "inicial",
             objectStorageKey: img.objectPath,
             description: img.name,

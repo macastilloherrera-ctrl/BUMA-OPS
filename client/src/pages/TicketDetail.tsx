@@ -2208,58 +2208,71 @@ Equipo BUMA Property Management
               </div>
             ) : photos && photos.length > 0 ? (
               <div className="grid grid-cols-2 gap-3">
-                {photos.map((photo) => (
-                  <div
-                    key={photo.id}
-                    className="relative group rounded-md overflow-hidden border"
-                    data-testid={`photo-${photo.id}`}
-                  >
-                    <img
-                      src={photo.objectStorageKey}
-                      alt={photo.description || "Foto del ticket"}
-                      className="aspect-square object-cover w-full"
-                    />
-                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                      <Button
-                        variant="secondary"
-                        size="icon"
-                        onClick={() => {
-                          const link = document.createElement('a');
-                          link.href = photo.objectStorageKey;
-                          link.download = photo.description || 'foto';
-                          document.body.appendChild(link);
-                          link.click();
-                          document.body.removeChild(link);
-                        }}
-                        data-testid={`download-photo-${photo.id}`}
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="icon"
-                        onClick={() => deletePhotoMutation.mutate(photo.id)}
-                        disabled={deletePhotoMutation.isPending}
-                        data-testid={`delete-photo-${photo.id}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    {photo.description && (
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1 truncate">
-                        {photo.description}
-                      </div>
-                    )}
-                    <Badge
-                      variant="secondary"
-                      className="absolute top-1 left-1 text-xs"
+                {photos.map((photo) => {
+                  const photoUrl = photo.objectStorageKey.startsWith('/objects/') 
+                    ? photo.objectStorageKey 
+                    : `/objects/${photo.objectStorageKey}`;
+                  return (
+                    <div
+                      key={photo.id}
+                      className="relative group rounded-md overflow-hidden border"
+                      data-testid={`photo-${photo.id}`}
                     >
-                      {photo.photoType === "inicial" ? "Inicial" : 
-                       photo.photoType === "trabajo" ? "Trabajo" : 
-                       photo.photoType === "final" ? "Final" : photo.photoType}
-                    </Badge>
-                  </div>
-                ))}
+                      <img
+                        src={photoUrl}
+                        alt={photo.description || "Foto del ticket"}
+                        className="aspect-square object-cover w-full"
+                      />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <Button
+                          variant="secondary"
+                          size="icon"
+                          onClick={async () => {
+                            try {
+                              const response = await fetch(photoUrl);
+                              const blob = await response.blob();
+                              const url = window.URL.createObjectURL(blob);
+                              const link = document.createElement('a');
+                              link.href = url;
+                              link.download = photo.description || 'foto.jpg';
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                              window.URL.revokeObjectURL(url);
+                            } catch (error) {
+                              console.error('Error downloading photo:', error);
+                            }
+                          }}
+                          data-testid={`download-photo-${photo.id}`}
+                        >
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          onClick={() => deletePhotoMutation.mutate(photo.id)}
+                          disabled={deletePhotoMutation.isPending}
+                          data-testid={`delete-photo-${photo.id}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      {photo.description && (
+                        <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1 truncate">
+                          {photo.description}
+                        </div>
+                      )}
+                      <Badge
+                        variant="secondary"
+                        className="absolute top-1 left-1 text-xs"
+                      >
+                        {photo.photoType === "inicial" ? "Inicial" : 
+                         photo.photoType === "trabajo" ? "Trabajo" : 
+                         photo.photoType === "final" ? "Final" : photo.photoType}
+                      </Badge>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-12">
