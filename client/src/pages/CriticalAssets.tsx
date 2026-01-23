@@ -34,8 +34,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Wrench, Plus, Building2, Check, X, Pencil, Trash2, Calendar, AlertTriangle, Clock } from "lucide-react";
-import type { CriticalAsset, Building } from "@shared/schema";
+import { Wrench, Plus, Building2, Check, X, Pencil, Trash2, Calendar, AlertTriangle, Clock, History, ClipboardCheck } from "lucide-react";
+import type { CriticalAsset, Building, MaintenanceRecord } from "@shared/schema";
 
 const assetSchema = z.object({
   buildingId: z.string().min(1, "Selecciona un edificio"),
@@ -49,6 +49,15 @@ const assetSchema = z.object({
 });
 
 type AssetForm = z.infer<typeof assetSchema>;
+
+const maintenanceRecordSchema = z.object({
+  performedAt: z.string().min(1, "La fecha es requerida"),
+  maintainerName: z.string().optional(),
+  observations: z.string().optional(),
+  cost: z.string().optional(),
+});
+
+type MaintenanceRecordForm = z.infer<typeof maintenanceRecordSchema>;
 
 interface AssetWithBuilding extends CriticalAsset {
   buildingName?: string;
@@ -111,6 +120,10 @@ export default function CriticalAssets() {
   const [maintenanceFilter, setMaintenanceFilter] = useState(params.get("maintenance") || "all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<CriticalAsset | null>(null);
+  const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false);
+  const [selectedAssetForMaintenance, setSelectedAssetForMaintenance] = useState<CriticalAsset | null>(null);
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [selectedAssetForHistory, setSelectedAssetForHistory] = useState<CriticalAsset | null>(null);
 
   const { data: assets, isLoading } = useQuery<AssetWithBuilding[]>({
     queryKey: ["/api/critical-assets"],
@@ -194,6 +207,58 @@ export default function CriticalAssets() {
       });
     },
   });
+
+  const { data: maintenanceHistory, isLoading: historyLoading } = useQuery<MaintenanceRecord[]>({
+    queryKey: ["/api/critical-assets", selectedAssetForHistory?.id, "maintenance-records"],
+    enabled: !!selectedAssetForHistory,
+  });
+
+  const maintenanceForm = useForm<MaintenanceRecordForm>({
+    resolver: zodResolver(maintenanceRecordSchema),
+    defaultValues: {
+      performedAt: new Date().toISOString().split("T")[0],
+      maintainerName: "",
+      observations: "",
+      cost: "",
+    },
+  });
+
+  const createMaintenanceRecordMutation = useMutation({
+    mutationFn: async (data: MaintenanceRecordForm & { assetId: string }) => {
+      return apiRequest("POST", `/api/critical-assets/${data.assetId}/maintenance-records`, {
+        performedAt: data.performedAt,
+        maintainerName: data.maintainerName,
+        observations: data.observations,
+        cost: data.cost ? parseFloat(data.cost) : null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/critical-assets"] });
+      toast({
+        title: "Mantencion registrada",
+        description: "La mantencion ha sido registrada y la proxima fecha actualizada",
+      });
+      setMaintenanceDialogOpen(false);
+      setSelectedAssetForMaintenance(null);
+      maintenanceForm.reset();
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "No se pudo registrar la mantencion",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const onSubmitMaintenance = (data: MaintenanceRecordForm) => {
+    if (selectedAssetForMaintenance) {
+      createMaintenanceRecordMutation.mutate({
+        ...data,
+        assetId: selectedAssetForMaintenance.id,
+      });
+    }
+  };
 
   const onSubmit = (data: AssetForm) => {
     createAssetMutation.mutate(data);
@@ -629,6 +694,40 @@ export default function CriticalAssets() {
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
+                        {asset.status === "aprobado" && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setSelectedAssetForMaintenance(asset);
+                                maintenanceForm.reset({
+                                  performedAt: new Date().toISOString().split("T")[0],
+                                  maintainerName: asset.maintainerName || "",
+                                  observations: "",
+                                  cost: "",
+                                });
+                                setMaintenanceDialogOpen(true);
+                              }}
+                              data-testid={`button-register-maintenance-${asset.id}`}
+                              title="Registrar mantencion"
+                            >
+                              <ClipboardCheck className="h-4 w-4 text-green-600" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setSelectedAssetForHistory(asset);
+                                setHistoryDialogOpen(true);
+                              }}
+                              data-testid={`button-history-${asset.id}`}
+                              title="Ver historial"
+                            >
+                              <History className="h-4 w-4 text-blue-600" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -638,6 +737,156 @@ export default function CriticalAssets() {
           </div>
         )}
       </div>
+
+      {/* Modal para registrar mantencion */}
+      <Dialog open={maintenanceDialogOpen} onOpenChange={setMaintenanceDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Registrar Mantencion</DialogTitle>
+          </DialogHeader>
+          {selectedAssetForMaintenance && (
+            <div className="mb-4 p-3 bg-muted rounded-md">
+              <p className="font-medium">{selectedAssetForMaintenance.name}</p>
+              <p className="text-sm text-muted-foreground">{selectedAssetForMaintenance.type}</p>
+              {selectedAssetForMaintenance.maintenanceFrequency && (
+                <p className="text-sm text-muted-foreground">
+                  Frecuencia: {maintenanceFrequencies.find(f => f.value === selectedAssetForMaintenance.maintenanceFrequency)?.label}
+                </p>
+              )}
+            </div>
+          )}
+          <Form {...maintenanceForm}>
+            <form onSubmit={maintenanceForm.handleSubmit(onSubmitMaintenance)} className="space-y-4">
+              <FormField
+                control={maintenanceForm.control}
+                name="performedAt"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Fecha de mantencion</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} data-testid="input-maintenance-date" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={maintenanceForm.control}
+                name="maintainerName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Realizada por</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Nombre del mantenedor o empresa" {...field} data-testid="input-maintainer-name" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={maintenanceForm.control}
+                name="cost"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Costo (opcional)</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="0" {...field} data-testid="input-maintenance-cost" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={maintenanceForm.control}
+                name="observations"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Observaciones</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Detalles de la mantencion realizada..." {...field} data-testid="input-maintenance-observations" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <div className="flex gap-2 pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setMaintenanceDialogOpen(false)}
+                  className="flex-1"
+                  data-testid="button-cancel-maintenance"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1"
+                  disabled={createMaintenanceRecordMutation.isPending}
+                  data-testid="button-submit-maintenance"
+                >
+                  {createMaintenanceRecordMutation.isPending ? "Guardando..." : "Registrar"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal para ver historial de mantenciones */}
+      <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Historial de Mantenciones</DialogTitle>
+          </DialogHeader>
+          {selectedAssetForHistory && (
+            <div className="mb-4 p-3 bg-muted rounded-md">
+              <p className="font-medium">{selectedAssetForHistory.name}</p>
+              <p className="text-sm text-muted-foreground">{selectedAssetForHistory.type}</p>
+            </div>
+          )}
+          {historyLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : maintenanceHistory && maintenanceHistory.length > 0 ? (
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              {maintenanceHistory.map((record) => (
+                <Card key={record.id} data-testid={`maintenance-record-${record.id}`}>
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium">
+                          {formatDate(record.performedAt)}
+                        </p>
+                        {record.maintainerName && (
+                          <p className="text-sm text-muted-foreground">
+                            Realizada por: {record.maintainerName}
+                          </p>
+                        )}
+                        {record.observations && (
+                          <p className="text-sm mt-1">{record.observations}</p>
+                        )}
+                      </div>
+                      {record.cost && (
+                        <Badge variant="secondary">
+                          ${parseFloat(record.cost).toLocaleString()}
+                        </Badge>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-muted-foreground">
+              <History className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <p>No hay registros de mantenciones</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
