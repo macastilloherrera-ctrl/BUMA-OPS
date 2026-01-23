@@ -247,6 +247,15 @@ export const maintainerCategoryLinks = pgTable("maintainer_category_links", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Maintenance frequency enum
+export const maintenanceFrequencyEnum = pgEnum("maintenance_frequency", [
+  "mensual",
+  "bimestral",
+  "trimestral",
+  "semestral",
+  "anual",
+]);
+
 // Critical Assets table
 export const criticalAssets = pgTable("critical_assets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -257,6 +266,10 @@ export const criticalAssets = pgTable("critical_assets", {
   status: assetStatusEnum("status").notNull().default("pendiente"),
   suggestedBy: varchar("suggested_by"),
   approvedBy: varchar("approved_by"),
+  maintenanceFrequency: maintenanceFrequencyEnum("maintenance_frequency"),
+  lastMaintenanceDate: timestamp("last_maintenance_date"),
+  nextMaintenanceDate: timestamp("next_maintenance_date"),
+  maintainerName: varchar("maintainer_name", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
