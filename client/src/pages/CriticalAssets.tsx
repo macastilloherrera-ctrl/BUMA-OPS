@@ -34,7 +34,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Wrench, Plus, Building2, Check, X, Pencil, Trash2 } from "lucide-react";
+import { Wrench, Plus, Building2, Check, X, Pencil, Trash2, Calendar, AlertTriangle, Clock } from "lucide-react";
 import type { CriticalAsset, Building } from "@shared/schema";
 
 const assetSchema = z.object({
@@ -42,6 +42,10 @@ const assetSchema = z.object({
   name: z.string().min(1, "El nombre es requerido"),
   type: z.string().min(1, "El tipo es requerido"),
   description: z.string().optional(),
+  maintenanceFrequency: z.string().optional(),
+  lastMaintenanceDate: z.string().optional(),
+  nextMaintenanceDate: z.string().optional(),
+  maintainerName: z.string().optional(),
 });
 
 type AssetForm = z.infer<typeof assetSchema>;
@@ -63,12 +67,48 @@ const assetTypes = [
   "Otro",
 ];
 
+const maintenanceFrequencies = [
+  { value: "mensual", label: "Mensual" },
+  { value: "bimestral", label: "Bimestral" },
+  { value: "trimestral", label: "Trimestral" },
+  { value: "semestral", label: "Semestral" },
+  { value: "anual", label: "Anual" },
+];
+
+function getMaintenanceStatus(nextMaintenanceDate: string | Date | null | undefined) {
+  if (!nextMaintenanceDate) return null;
+  
+  const now = new Date();
+  const nextDate = new Date(nextMaintenanceDate);
+  
+  if (isNaN(nextDate.getTime())) return null;
+  
+  const diffDays = Math.ceil((nextDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  
+  if (diffDays < 0) {
+    return { status: "vencida", label: "Vencida", variant: "destructive" as const, days: Math.abs(diffDays) };
+  } else if (diffDays <= 7) {
+    return { status: "proxima", label: "Proxima", variant: "secondary" as const, days: diffDays };
+  } else if (diffDays <= 30) {
+    return { status: "cercana", label: "En 30 dias", variant: "outline" as const, days: diffDays };
+  }
+  return { status: "ok", label: "Al dia", variant: "default" as const, days: diffDays };
+}
+
+function formatDate(date: string | Date | null | undefined) {
+  if (!date) return "-";
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" });
+}
+
 export default function CriticalAssets() {
   const { toast } = useToast();
   const search = useSearch();
   const params = new URLSearchParams(search);
-  const buildingFilter = params.get("building") || "all";
   
+  const [buildingFilter, setBuildingFilter] = useState(params.get("building") || "all");
+  const [maintenanceFilter, setMaintenanceFilter] = useState(params.get("maintenance") || "all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<CriticalAsset | null>(null);
 
@@ -87,15 +127,26 @@ export default function CriticalAssets() {
       name: "",
       type: "",
       description: "",
+      maintenanceFrequency: "",
+      lastMaintenanceDate: "",
+      nextMaintenanceDate: "",
+      maintainerName: "",
     },
   });
 
   const createAssetMutation = useMutation({
     mutationFn: async (data: AssetForm) => {
+      const payload = {
+        ...data,
+        lastMaintenanceDate: data.lastMaintenanceDate ? new Date(data.lastMaintenanceDate).toISOString() : null,
+        nextMaintenanceDate: data.nextMaintenanceDate ? new Date(data.nextMaintenanceDate).toISOString() : null,
+        maintenanceFrequency: data.maintenanceFrequency || null,
+        maintainerName: data.maintainerName || null,
+      };
       if (editingAsset) {
-        return apiRequest("PATCH", `/api/critical-assets/${editingAsset.id}`, data);
+        return apiRequest("PATCH", `/api/critical-assets/${editingAsset.id}`, payload);
       }
-      return apiRequest("POST", "/api/critical-assets", { ...data, status: "pendiente" });
+      return apiRequest("POST", "/api/critical-assets", { ...payload, status: "pendiente" });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/critical-assets"] });
@@ -155,6 +206,10 @@ export default function CriticalAssets() {
       name: asset.name,
       type: asset.type,
       description: asset.description || "",
+      maintenanceFrequency: asset.maintenanceFrequency || "",
+      lastMaintenanceDate: asset.lastMaintenanceDate ? new Date(asset.lastMaintenanceDate).toISOString().split("T")[0] : "",
+      nextMaintenanceDate: asset.nextMaintenanceDate ? new Date(asset.nextMaintenanceDate).toISOString().split("T")[0] : "",
+      maintainerName: asset.maintainerName || "",
     });
     setIsDialogOpen(true);
   };
@@ -165,9 +220,18 @@ export default function CriticalAssets() {
     form.reset();
   };
 
-  const filteredAssets = assets?.filter((a) =>
-    buildingFilter === "all" || a.buildingId === buildingFilter
-  );
+  const filteredAssets = assets?.filter((a) => {
+    if (buildingFilter !== "all" && a.buildingId !== buildingFilter) return false;
+    
+    if (maintenanceFilter !== "all") {
+      const status = getMaintenanceStatus(a.nextMaintenanceDate);
+      if (maintenanceFilter === "vencida" && status?.status !== "vencida") return false;
+      if (maintenanceFilter === "proxima" && !["vencida", "proxima"].includes(status?.status || "")) return false;
+      if (maintenanceFilter === "sin_fecha" && a.nextMaintenanceDate) return false;
+    }
+    
+    return true;
+  });
 
   const getStatusBadge = (status: string) => {
     const config: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
@@ -178,6 +242,18 @@ export default function CriticalAssets() {
     const { label, variant } = config[status] || config.pendiente;
     return <Badge variant={variant}>{label}</Badge>;
   };
+
+  const overdueCount = assets?.filter(a => {
+    const status = getMaintenanceStatus(a.nextMaintenanceDate);
+    return status?.status === "vencida";
+  }).length || 0;
+
+  const upcomingCount = assets?.filter(a => {
+    const status = getMaintenanceStatus(a.nextMaintenanceDate);
+    return status?.status === "proxima";
+  }).length || 0;
+
+  const noDateCount = assets?.filter(a => !a.nextMaintenanceDate && a.status === "aprobado").length || 0;
 
   return (
     <div className="flex flex-col h-full">
@@ -191,7 +267,7 @@ export default function CriticalAssets() {
                 Sugerir Equipo
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
                   {editingAsset ? "Editar Equipo" : "Sugerir Equipo Critico"}
@@ -282,6 +358,92 @@ export default function CriticalAssets() {
                       </FormItem>
                     )}
                   />
+                  
+                  <div className="border-t pt-4 mt-4">
+                    <h4 className="font-medium text-sm mb-3">Informacion de Mantencion</h4>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField
+                        control={form.control}
+                        name="maintenanceFrequency"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Frecuencia</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value || ""}>
+                              <FormControl>
+                                <SelectTrigger data-testid="select-frequency">
+                                  <SelectValue placeholder="Seleccionar" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {maintenanceFrequencies.map((freq) => (
+                                  <SelectItem key={freq.value} value={freq.value}>
+                                    {freq.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="maintainerName"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Proveedor</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Nombre proveedor"
+                                {...field}
+                                data-testid="input-maintainer"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3 mt-3">
+                      <FormField
+                        control={form.control}
+                        name="lastMaintenanceDate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Ultima Mantencion</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="date"
+                                {...field}
+                                data-testid="input-last-maintenance"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="nextMaintenanceDate"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Proxima Mantencion</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="date"
+                                {...field}
+                                data-testid="input-next-maintenance"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+                  
                   <div className="flex gap-2 pt-4">
                     <Button
                       type="button"
@@ -305,17 +467,36 @@ export default function CriticalAssets() {
             </DialogContent>
           </Dialog>
         </div>
-        <div className="mt-3">
+        
+        <div className="flex gap-2 mt-3 flex-wrap">
+          {overdueCount > 0 && (
+            <Badge variant="destructive" className="gap-1" data-testid="badge-overdue-count">
+              <AlertTriangle className="h-3 w-3" />
+              {overdueCount} vencidas
+            </Badge>
+          )}
+          {upcomingCount > 0 && (
+            <Badge variant="secondary" className="gap-1" data-testid="badge-upcoming-count">
+              <Clock className="h-3 w-3" />
+              {upcomingCount} proximas
+            </Badge>
+          )}
+          {noDateCount > 0 && (
+            <Badge variant="outline" className="gap-1" data-testid="badge-no-date-count">
+              <Calendar className="h-3 w-3" />
+              {noDateCount} sin fecha
+            </Badge>
+          )}
+        </div>
+        
+        <div className="flex gap-2 mt-3">
           <Select
             value={buildingFilter}
-            onValueChange={(val) => {
-              const url = val === "all" ? "/equipos" : `/equipos?building=${val}`;
-              window.history.pushState({}, "", url);
-            }}
+            onValueChange={(val) => setBuildingFilter(val)}
           >
-            <SelectTrigger data-testid="filter-building">
+            <SelectTrigger className="w-[180px]" data-testid="filter-building">
               <Building2 className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Filtrar por edificio" />
+              <SelectValue placeholder="Edificio" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos los edificios</SelectItem>
@@ -326,6 +507,22 @@ export default function CriticalAssets() {
               ))}
             </SelectContent>
           </Select>
+          
+          <Select
+            value={maintenanceFilter}
+            onValueChange={(val) => setMaintenanceFilter(val)}
+          >
+            <SelectTrigger className="w-[180px]" data-testid="filter-maintenance">
+              <Wrench className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Estado mantencion" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas las mantenciones</SelectItem>
+              <SelectItem value="vencida">Vencidas</SelectItem>
+              <SelectItem value="proxima">Proximas (7 dias)</SelectItem>
+              <SelectItem value="sin_fecha">Sin fecha programada</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -333,7 +530,7 @@ export default function CriticalAssets() {
         {isLoading ? (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-20 w-full" />
+              <Skeleton key={i} className="h-24 w-full" />
             ))}
           </div>
         ) : filteredAssets?.length === 0 ? (
@@ -343,66 +540,101 @@ export default function CriticalAssets() {
           </div>
         ) : (
           <div className="space-y-3">
-            {filteredAssets?.map((asset) => (
-              <Card
-                key={asset.id}
-                className="hover-elevate"
-                data-testid={`card-asset-${asset.id}`}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <h3 className="font-medium">{asset.name}</h3>
-                        {getStatusBadge(asset.status)}
+            {filteredAssets?.map((asset) => {
+              const maintenanceStatus = getMaintenanceStatus(asset.nextMaintenanceDate);
+              return (
+                <Card
+                  key={asset.id}
+                  className="hover-elevate"
+                  data-testid={`card-asset-${asset.id}`}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <h3 className="font-medium">{asset.name}</h3>
+                          {getStatusBadge(asset.status)}
+                          {maintenanceStatus && maintenanceStatus.status === "vencida" && (
+                            <Badge variant="destructive" className="gap-1" data-testid={`badge-overdue-${asset.id}`}>
+                              <AlertTriangle className="h-3 w-3" />
+                              Vencida hace {maintenanceStatus.days} dias
+                            </Badge>
+                          )}
+                          {maintenanceStatus && maintenanceStatus.status === "proxima" && (
+                            <Badge variant="secondary" className="gap-1" data-testid={`badge-upcoming-${asset.id}`}>
+                              <Clock className="h-3 w-3" />
+                              En {maintenanceStatus.days} dias
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
+                          <span>{asset.type}</span>
+                          <span className="flex items-center gap-1">
+                            <Building2 className="h-3.5 w-3.5" />
+                            {asset.buildingName || "Edificio"}
+                          </span>
+                          {asset.maintainerName && (
+                            <span className="flex items-center gap-1">
+                              <Wrench className="h-3.5 w-3.5" />
+                              {asset.maintainerName}
+                            </span>
+                          )}
+                        </div>
+                        {asset.description && (
+                          <p className="text-sm text-muted-foreground mt-2">
+                            {asset.description}
+                          </p>
+                        )}
+                        
+                        {(asset.lastMaintenanceDate || asset.nextMaintenanceDate || asset.maintenanceFrequency) && (
+                          <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2 pt-2 border-t flex-wrap" data-testid={`maintenance-info-${asset.id}`}>
+                            {asset.maintenanceFrequency && (
+                              <span data-testid={`text-frequency-${asset.id}`}>Frecuencia: {maintenanceFrequencies.find(f => f.value === asset.maintenanceFrequency)?.label || asset.maintenanceFrequency}</span>
+                            )}
+                            {asset.lastMaintenanceDate && (
+                              <span data-testid={`text-last-maintenance-${asset.id}`}>Ultima: {formatDate(asset.lastMaintenanceDate)}</span>
+                            )}
+                            {asset.nextMaintenanceDate && (
+                              <span data-testid={`text-next-maintenance-${asset.id}`}>Proxima: {formatDate(asset.nextMaintenanceDate)}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <span>{asset.type}</span>
-                        <span className="flex items-center gap-1">
-                          <Building2 className="h-3.5 w-3.5" />
-                          {asset.buildingName || "Edificio"}
-                        </span>
+                      <div className="flex items-center gap-1">
+                        {asset.status === "pendiente" && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => approveAssetMutation.mutate(asset.id)}
+                              data-testid={`button-approve-${asset.id}`}
+                            >
+                              <Check className="h-4 w-4 text-green-500" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => deleteAssetMutation.mutate(asset.id)}
+                              data-testid={`button-reject-${asset.id}`}
+                            >
+                              <X className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleEdit(asset)}
+                          data-testid={`button-edit-${asset.id}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                       </div>
-                      {asset.description && (
-                        <p className="text-sm text-muted-foreground mt-2">
-                          {asset.description}
-                        </p>
-                      )}
                     </div>
-                    <div className="flex items-center gap-1">
-                      {asset.status === "pendiente" && (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => approveAssetMutation.mutate(asset.id)}
-                            data-testid={`button-approve-${asset.id}`}
-                          >
-                            <Check className="h-4 w-4 text-green-500" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => deleteAssetMutation.mutate(asset.id)}
-                            data-testid={`button-reject-${asset.id}`}
-                          >
-                            <X className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleEdit(asset)}
-                        data-testid={`button-edit-${asset.id}`}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>
