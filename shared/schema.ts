@@ -3,6 +3,7 @@ import { pgTable, text, varchar, integer, timestamp, boolean, decimal, pgEnum } 
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+import { users } from "./models/auth";
 export * from "./models/auth";
 
 // Enums
@@ -274,6 +275,19 @@ export const criticalAssets = pgTable("critical_assets", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Maintenance Records table - Historial de mantenciones realizadas
+export const maintenanceRecords = pgTable("maintenance_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  assetId: varchar("asset_id").notNull(),
+  performedAt: timestamp("performed_at").notNull(),
+  performedBy: varchar("performed_by"), // userId del ejecutivo que registra
+  maintainerName: varchar("maintainer_name", { length: 255 }), // Nombre del mantenedor externo
+  observations: text("observations"),
+  cost: decimal("cost", { precision: 12, scale: 2 }),
+  ticketId: varchar("ticket_id"), // Si fue generado por un ticket automático
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Visits table
 export const visits = pgTable("visits", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -540,10 +554,26 @@ export const buildingFilesRelations = relations(buildingFiles, ({ one }) => ({
   }),
 }));
 
-export const criticalAssetsRelations = relations(criticalAssets, ({ one }) => ({
+export const criticalAssetsRelations = relations(criticalAssets, ({ one, many }) => ({
   building: one(buildings, {
     fields: [criticalAssets.buildingId],
     references: [buildings.id],
+  }),
+  maintenanceRecords: many(maintenanceRecords),
+}));
+
+export const maintenanceRecordsRelations = relations(maintenanceRecords, ({ one }) => ({
+  asset: one(criticalAssets, {
+    fields: [maintenanceRecords.assetId],
+    references: [criticalAssets.id],
+  }),
+  performedByUser: one(users, {
+    fields: [maintenanceRecords.performedBy],
+    references: [users.id],
+  }),
+  ticket: one(tickets, {
+    fields: [maintenanceRecords.ticketId],
+    references: [tickets.id],
   }),
 }));
 
@@ -702,6 +732,11 @@ export const insertCriticalAssetSchema = createInsertSchema(criticalAssets).omit
   id: true,
   createdAt: true,
   updatedAt: true,
+});
+
+export const insertMaintenanceRecordSchema = createInsertSchema(maintenanceRecords).omit({
+  id: true,
+  createdAt: true,
 });
 
 export const insertMaintainerCategorySchema = createInsertSchema(maintainerCategories).omit({
@@ -932,6 +967,9 @@ export type BuildingFile = typeof buildingFiles.$inferSelect;
 
 export type InsertCriticalAsset = z.infer<typeof insertCriticalAssetSchema>;
 export type CriticalAsset = typeof criticalAssets.$inferSelect;
+
+export type InsertMaintenanceRecord = z.infer<typeof insertMaintenanceRecordSchema>;
+export type MaintenanceRecord = typeof maintenanceRecords.$inferSelect;
 
 export type InsertMaintainerCategory = z.infer<typeof insertMaintainerCategorySchema>;
 export type MaintainerCategory = typeof maintainerCategories.$inferSelect;

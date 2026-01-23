@@ -702,6 +702,128 @@ export async function registerRoutes(
     }
   });
 
+  // === Maintenance Records ===
+  // Get maintenance history for an asset
+  app.get("/api/critical-assets/:id/maintenance-records", isAuthenticated, async (req, res) => {
+    try {
+      const records = await storage.getMaintenanceRecords(req.params.id);
+      res.json(records);
+    } catch (error) {
+      console.error("Error getting maintenance records:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Register a new maintenance record
+  app.post("/api/critical-assets/:id/maintenance-records", isAuthenticated, async (req, res) => {
+    try {
+      const asset = await storage.getCriticalAsset(req.params.id);
+      if (!asset) {
+        return res.status(404).json({ error: "Equipo no encontrado" });
+      }
+
+      const { performedAt, maintainerName, observations, cost } = req.body;
+      
+      // Create the maintenance record
+      const record = await storage.createMaintenanceRecord({
+        assetId: req.params.id,
+        performedAt: new Date(performedAt),
+        performedBy: req.user!.id,
+        maintainerName,
+        observations,
+        cost: cost ? String(cost) : null,
+      });
+
+      // Calculate next maintenance date based on frequency
+      let nextDate: Date | null = null;
+      if (asset.maintenanceFrequency) {
+        const baseDate = new Date(performedAt);
+        const frequencyMonths: Record<string, number> = {
+          mensual: 1,
+          bimestral: 2,
+          trimestral: 3,
+          semestral: 6,
+          anual: 12,
+        };
+        const months = frequencyMonths[asset.maintenanceFrequency] || 1;
+        nextDate = new Date(baseDate);
+        nextDate.setMonth(nextDate.getMonth() + months);
+      }
+
+      // Update asset with new maintenance dates
+      await storage.updateCriticalAsset(req.params.id, {
+        lastMaintenanceDate: new Date(performedAt),
+        nextMaintenanceDate: nextDate,
+        maintainerName: maintainerName || asset.maintainerName,
+      });
+
+      res.status(201).json(record);
+    } catch (error) {
+      console.error("Error creating maintenance record:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Check for overdue maintenance and create tickets
+  app.post("/api/maintenance/check-overdue", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const overdueAssets = await storage.getAssetsWithOverdueMaintenance();
+      const createdTickets: any[] = [];
+
+      for (const asset of overdueAssets) {
+        // Get the building to find the assigned executive
+        const building = await storage.getBuilding(asset.buildingId);
+        if (!building || !building.assignedExecutiveId) continue;
+
+        // Check if there's already an open maintenance ticket for this asset
+        const existingTickets = await storage.getTickets();
+        const hasOpenTicket = existingTickets.some(
+          (t) =>
+            t.type === "mantencion" &&
+            t.buildingId === asset.buildingId &&
+            t.title.includes(asset.name) &&
+            !["resuelto", "vencido"].includes(t.status)
+        );
+
+        if (hasOpenTicket) continue;
+
+        // Calculate days overdue
+        const daysOverdue = Math.floor(
+          (new Date().getTime() - new Date(asset.nextMaintenanceDate!).getTime()) /
+            (1000 * 60 * 60 * 24)
+        );
+
+        // Create maintenance ticket
+        const ticket = await storage.createTicket({
+          buildingId: asset.buildingId,
+          title: `Mantención vencida: ${asset.name}`,
+          description: `La mantención del equipo "${asset.name}" (${asset.type}) está vencida hace ${daysOverdue} días. Frecuencia requerida: ${asset.maintenanceFrequency || "No especificada"}.`,
+          type: "mantencion",
+          priority: daysOverdue > 30 ? "rojo" : daysOverdue > 14 ? "amarillo" : "verde",
+          status: "pendiente",
+          assignedTo: building.assignedExecutiveId,
+          createdBy: req.user!.id,
+        });
+
+        createdTickets.push({
+          ticketId: ticket.id,
+          assetName: asset.name,
+          buildingId: asset.buildingId,
+          daysOverdue,
+        });
+      }
+
+      res.json({
+        message: `Se revisaron ${overdueAssets.length} equipos con mantención vencida`,
+        ticketsCreated: createdTickets.length,
+        tickets: createdTickets,
+      });
+    } catch (error) {
+      console.error("Error checking overdue maintenance:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   // === Visits ===
   app.get("/api/visits", isAuthenticated, async (req, res) => {
     try {

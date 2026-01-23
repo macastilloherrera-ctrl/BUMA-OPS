@@ -8,6 +8,7 @@ import {
   buildingFolders,
   buildingFiles,
   criticalAssets,
+  maintenanceRecords,
   maintainerCategories,
   maintainers,
   maintainerCategoryLinks,
@@ -44,6 +45,8 @@ import {
   type InsertBuildingFile,
   type CriticalAsset,
   type InsertCriticalAsset,
+  type MaintenanceRecord,
+  type InsertMaintenanceRecord,
   type MaintainerCategory,
   type InsertMaintainerCategory,
   type Maintainer,
@@ -82,7 +85,7 @@ import {
   type InsertTicketAssignmentHistory,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, gte, lte, or, sql, ne } from "drizzle-orm";
+import { eq, and, desc, gte, lte, lt, or, sql, ne } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -144,6 +147,11 @@ export interface IStorage {
   createCriticalAsset(asset: InsertCriticalAsset): Promise<CriticalAsset>;
   updateCriticalAsset(id: string, data: Partial<InsertCriticalAsset>): Promise<CriticalAsset | undefined>;
   deleteCriticalAsset(id: string): Promise<boolean>;
+
+  // Maintenance Records
+  getMaintenanceRecords(assetId: string): Promise<MaintenanceRecord[]>;
+  createMaintenanceRecord(record: InsertMaintenanceRecord): Promise<MaintenanceRecord>;
+  getAssetsWithOverdueMaintenance(): Promise<CriticalAsset[]>;
 
   // Visits
   getVisits(executiveId?: string): Promise<Visit[]>;
@@ -516,6 +524,29 @@ export class DatabaseStorage implements IStorage {
   async deleteCriticalAsset(id: string): Promise<boolean> {
     await db.delete(criticalAssets).where(eq(criticalAssets.id, id));
     return true;
+  }
+
+  // Maintenance Records
+  async getMaintenanceRecords(assetId: string): Promise<MaintenanceRecord[]> {
+    return db.select().from(maintenanceRecords)
+      .where(eq(maintenanceRecords.assetId, assetId))
+      .orderBy(desc(maintenanceRecords.performedAt));
+  }
+
+  async createMaintenanceRecord(record: InsertMaintenanceRecord): Promise<MaintenanceRecord> {
+    const [newRecord] = await db.insert(maintenanceRecords).values(record).returning();
+    return newRecord;
+  }
+
+  async getAssetsWithOverdueMaintenance(): Promise<CriticalAsset[]> {
+    const now = new Date();
+    return db.select().from(criticalAssets)
+      .where(
+        and(
+          eq(criticalAssets.status, "aprobado"),
+          lt(criticalAssets.nextMaintenanceDate, now)
+        )
+      );
   }
 
   // Visits
