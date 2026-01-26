@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: buma-ops-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-buma}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-buma_secure_password_2024}
+      POSTGRES_DB: ${POSTGRES_DB:-buma_ops}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U buma -d buma_ops"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: buma-ops-app
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-buma}:${POSTGRES_PASSWORD:-buma_secure_password_2024}@postgres:5432/${POSTGRES_DB:-buma_ops}
+      SESSION_SECRET: ${SESSION_SECRET:-cambiar_esta_clave_en_produccion}
+      NODE_ENV: production
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+    name: buma-ops-postgres-data
+  uploads_data:
+    name: buma-ops-uploads
