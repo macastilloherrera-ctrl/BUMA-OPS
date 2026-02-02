@@ -28,6 +28,10 @@ import {
   executiveDocuments,
   notifications,
   systemConfig,
+  projects,
+  projectMilestones,
+  projectDocuments,
+  projectUpdates,
   type User,
   type UserProfile,
   type InsertUserProfile,
@@ -83,6 +87,14 @@ import {
   type InsertNotification,
   type TicketAssignmentHistory,
   type InsertTicketAssignmentHistory,
+  type Project,
+  type InsertProject,
+  type ProjectMilestone,
+  type InsertProjectMilestone,
+  type ProjectDocument,
+  type InsertProjectDocument,
+  type ProjectUpdate,
+  type InsertProjectUpdate,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, gte, lte, lt, or, sql, ne } from "drizzle-orm";
@@ -265,6 +277,30 @@ export interface IStorage {
   getTicketAssignmentHistory(ticketId: string): Promise<TicketAssignmentHistory[]>;
   createTicketAssignmentHistory(history: InsertTicketAssignmentHistory): Promise<TicketAssignmentHistory>;
   getTicketsDelegatedToUser(userId: string): Promise<Set<string>>;
+
+  // Projects
+  getProjects(filters?: { buildingId?: string; status?: string; executiveId?: string }): Promise<Project[]>;
+  getProject(id: string): Promise<Project | undefined>;
+  createProject(project: InsertProject): Promise<Project>;
+  updateProject(id: string, data: Partial<InsertProject>): Promise<Project | undefined>;
+  deleteProject(id: string): Promise<boolean>;
+
+  // Project Milestones
+  getProjectMilestones(projectId: string): Promise<ProjectMilestone[]>;
+  getProjectMilestone(id: string): Promise<ProjectMilestone | undefined>;
+  createProjectMilestone(milestone: InsertProjectMilestone): Promise<ProjectMilestone>;
+  updateProjectMilestone(id: string, data: Partial<InsertProjectMilestone>): Promise<ProjectMilestone | undefined>;
+  deleteProjectMilestone(id: string): Promise<boolean>;
+
+  // Project Documents
+  getProjectDocuments(projectId: string): Promise<ProjectDocument[]>;
+  createProjectDocument(doc: InsertProjectDocument): Promise<ProjectDocument>;
+  deleteProjectDocument(id: string): Promise<boolean>;
+
+  // Project Updates
+  getProjectUpdates(projectId: string): Promise<ProjectUpdate[]>;
+  createProjectUpdate(update: InsertProjectUpdate): Promise<ProjectUpdate>;
+  updateProjectUpdate(id: string, data: Partial<InsertProjectUpdate>): Promise<ProjectUpdate | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1116,6 +1152,118 @@ export class DatabaseStorage implements IStorage {
         )
       );
     return new Set(delegations.map(d => d.ticketId));
+  }
+
+  // ============================================
+  // PROJECTS
+  // ============================================
+
+  async getProjects(filters?: { buildingId?: string; status?: string; executiveId?: string }): Promise<Project[]> {
+    const conditions = [];
+    if (filters?.buildingId) {
+      conditions.push(eq(projects.buildingId, filters.buildingId));
+    }
+    if (filters?.status) {
+      conditions.push(eq(projects.status, filters.status as any));
+    }
+    if (filters?.executiveId) {
+      conditions.push(eq(projects.assignedExecutiveId, filters.executiveId));
+    }
+    
+    if (conditions.length > 0) {
+      return db.select().from(projects).where(and(...conditions)).orderBy(desc(projects.createdAt));
+    }
+    return db.select().from(projects).orderBy(desc(projects.createdAt));
+  }
+
+  async getProject(id: string): Promise<Project | undefined> {
+    const [project] = await db.select().from(projects).where(eq(projects.id, id));
+    return project || undefined;
+  }
+
+  async createProject(project: InsertProject): Promise<Project> {
+    const [newProject] = await db.insert(projects).values(project).returning();
+    return newProject;
+  }
+
+  async updateProject(id: string, data: Partial<InsertProject>): Promise<Project | undefined> {
+    const [updated] = await db.update(projects)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(projects.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteProject(id: string): Promise<boolean> {
+    const result = await db.delete(projects).where(eq(projects.id, id));
+    return true;
+  }
+
+  // Project Milestones
+  async getProjectMilestones(projectId: string): Promise<ProjectMilestone[]> {
+    return db.select().from(projectMilestones)
+      .where(eq(projectMilestones.projectId, projectId))
+      .orderBy(projectMilestones.orderIndex);
+  }
+
+  async getProjectMilestone(id: string): Promise<ProjectMilestone | undefined> {
+    const [milestone] = await db.select().from(projectMilestones).where(eq(projectMilestones.id, id));
+    return milestone || undefined;
+  }
+
+  async createProjectMilestone(milestone: InsertProjectMilestone): Promise<ProjectMilestone> {
+    const [newMilestone] = await db.insert(projectMilestones).values(milestone).returning();
+    return newMilestone;
+  }
+
+  async updateProjectMilestone(id: string, data: Partial<InsertProjectMilestone>): Promise<ProjectMilestone | undefined> {
+    const [updated] = await db.update(projectMilestones)
+      .set(data)
+      .where(eq(projectMilestones.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteProjectMilestone(id: string): Promise<boolean> {
+    await db.delete(projectMilestones).where(eq(projectMilestones.id, id));
+    return true;
+  }
+
+  // Project Documents
+  async getProjectDocuments(projectId: string): Promise<ProjectDocument[]> {
+    return db.select().from(projectDocuments)
+      .where(eq(projectDocuments.projectId, projectId))
+      .orderBy(desc(projectDocuments.createdAt));
+  }
+
+  async createProjectDocument(doc: InsertProjectDocument): Promise<ProjectDocument> {
+    const [newDoc] = await db.insert(projectDocuments).values(doc).returning();
+    return newDoc;
+  }
+
+  async deleteProjectDocument(id: string): Promise<boolean> {
+    await db.delete(projectDocuments).where(eq(projectDocuments.id, id));
+    return true;
+  }
+
+  // Project Updates
+  async getProjectUpdates(projectId: string): Promise<ProjectUpdate[]> {
+    return db.select().from(projectUpdates)
+      .where(eq(projectUpdates.projectId, projectId))
+      .orderBy(desc(projectUpdates.createdAt));
+  }
+
+  async createProjectUpdate(update: InsertProjectUpdate): Promise<ProjectUpdate> {
+    const [newUpdate] = await db.insert(projectUpdates).values(update).returning();
+    return newUpdate;
+  }
+
+  async updateProjectUpdate(id: string, data: Partial<InsertProjectUpdate>): Promise<ProjectUpdate | undefined> {
+    const [updated] = await db.update(projectUpdates)
+      .set(data)
+      .where(eq(projectUpdates.id, id))
+      .returning();
+    return updated || undefined;
   }
 }
 

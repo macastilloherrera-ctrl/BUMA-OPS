@@ -1051,3 +1051,143 @@ export type ChecklistType = "rutina" | "emergencia";
 export type EmploymentStatus = "activo" | "inactivo" | "licencia" | "vacaciones";
 export type ExecutiveDocType = "cv" | "certificado_estudios" | "contrato" | "cedula_identidad" | "certificado_afp" | "certificado_salud" | "otro";
 export type NotificationType = "ticket_asignado" | "ticket_derivado" | "ticket_actualizado";
+
+// ============================================
+// MÓDULO DE PROYECTOS
+// ============================================
+
+// Project Enums
+export const projectStatusEnum = pgEnum("project_status", [
+  "planificado",
+  "en_ejecucion",
+  "pausado",
+  "completado",
+  "cancelado"
+]);
+
+export const projectAwardTypeEnum = pgEnum("project_award_type", [
+  "asignacion_directa",
+  "licitacion"
+]);
+
+export const milestoneStatusEnum = pgEnum("milestone_status", [
+  "pendiente",
+  "en_curso",
+  "completado",
+  "retrasado"
+]);
+
+export const projectDocumentTypeEnum = pgEnum("project_document_type", [
+  "cotizacion",
+  "adjudicacion",
+  "contrato",
+  "comunicado",
+  "fiscalizacion",
+  "acta",
+  "cierre",
+  "otro"
+]);
+
+// Projects table
+export const projects = pgTable("projects", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  buildingId: varchar("building_id").notNull(),
+  status: projectStatusEnum("status").notNull().default("planificado"),
+  
+  // Fechas
+  startDate: timestamp("start_date").notNull(),
+  plannedEndDate: timestamp("planned_end_date").notNull(),
+  actualEndDate: timestamp("actual_end_date"),
+  
+  // Presupuesto
+  approvedBudget: decimal("approved_budget", { precision: 12, scale: 2 }),
+  actualCost: decimal("actual_cost", { precision: 12, scale: 2 }),
+  
+  // Empresa contratista
+  contractorName: varchar("contractor_name", { length: 255 }),
+  contractorContact: varchar("contractor_contact", { length: 255 }),
+  contractorPhone: varchar("contractor_phone", { length: 50 }),
+  contractorEmail: varchar("contractor_email", { length: 255 }),
+  
+  // Adjudicación
+  awardType: projectAwardTypeEnum("award_type"),
+  awardJustification: text("award_justification"),
+  quotesReceived: integer("quotes_received").default(0),
+  
+  // Responsables
+  createdBy: varchar("created_by").notNull(),
+  assignedExecutiveId: varchar("assigned_executive_id"),
+  
+  // Auditoría
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Project Milestones table (Hitos)
+export const projectMilestones = pgTable("project_milestones", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  orderIndex: integer("order_index").notNull().default(0),
+  status: milestoneStatusEnum("status").notNull().default("pendiente"),
+  dueDate: timestamp("due_date"),
+  completedAt: timestamp("completed_at"),
+  completedBy: varchar("completed_by"),
+  observations: text("observations"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Project Documents table
+export const projectDocuments = pgTable("project_documents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull(),
+  documentType: projectDocumentTypeEnum("document_type").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  fileUrl: text("file_url").notNull(),
+  uploadedBy: varchar("uploaded_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Project Updates table (Fiscalizaciones y actualizaciones de avance)
+export const projectUpdates = pgTable("project_updates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull(),
+  updateType: varchar("update_type", { length: 50 }).notNull(), // fiscalizacion, cambio_solicitado, nota, reunion
+  title: varchar("title", { length: 255 }).notNull(),
+  description: text("description"),
+  photoUrls: text("photo_urls").array(),
+  requiresCommitteeApproval: boolean("requires_committee_approval").default(false),
+  committeeApproved: boolean("committee_approved"),
+  committeeApprovedAt: timestamp("committee_approved_at"),
+  committeeApprovedBy: varchar("committee_approved_by"),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Project Schemas
+export const insertProjectSchema = createInsertSchema(projects).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertProjectMilestoneSchema = createInsertSchema(projectMilestones).omit({ id: true, createdAt: true });
+export const insertProjectDocumentSchema = createInsertSchema(projectDocuments).omit({ id: true, createdAt: true });
+export const insertProjectUpdateSchema = createInsertSchema(projectUpdates).omit({ id: true, createdAt: true });
+
+// Project Types
+export type InsertProject = z.infer<typeof insertProjectSchema>;
+export type Project = typeof projects.$inferSelect;
+
+export type InsertProjectMilestone = z.infer<typeof insertProjectMilestoneSchema>;
+export type ProjectMilestone = typeof projectMilestones.$inferSelect;
+
+export type InsertProjectDocument = z.infer<typeof insertProjectDocumentSchema>;
+export type ProjectDocument = typeof projectDocuments.$inferSelect;
+
+export type InsertProjectUpdate = z.infer<typeof insertProjectUpdateSchema>;
+export type ProjectUpdate = typeof projectUpdates.$inferSelect;
+
+export type ProjectStatus = "planificado" | "en_ejecucion" | "pausado" | "completado" | "cancelado";
+export type ProjectAwardType = "asignacion_directa" | "licitacion";
+export type MilestoneStatus = "pendiente" | "en_curso" | "completado" | "retrasado";
+export type ProjectDocumentType = "cotizacion" | "adjudicacion" | "contrato" | "comunicado" | "fiscalizacion" | "acta" | "cierre" | "otro";
