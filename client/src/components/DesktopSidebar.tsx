@@ -28,6 +28,7 @@ import {
   DollarSign,
   BarChart3,
   Shield,
+  FolderKanban,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -64,6 +65,7 @@ const managerNavItems = [
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2 },
       { path: "/equipos", label: "Equipos Criticos", icon: Wrench },
+      { path: "/proyectos", label: "Proyectos", icon: FolderKanban },
       { path: "/mantenedores", label: "Mantenedores", icon: HardHat },
       { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
     ]
@@ -103,6 +105,7 @@ const managerWithReportsNavItems = [
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2 },
       { path: "/equipos", label: "Equipos Criticos", icon: Wrench },
+      { path: "/proyectos", label: "Proyectos", icon: FolderKanban },
       { path: "/mantenedores", label: "Mantenedores", icon: HardHat },
       { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
     ]
@@ -135,6 +138,7 @@ const executiveNavItems = [
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2 },
       { path: "/equipos", label: "Equipos Criticos", icon: Wrench },
+      { path: "/proyectos", label: "Proyectos", icon: FolderKanban },
     ]
   },
   {
@@ -168,6 +172,7 @@ const generalManagerNavItems = [
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2 },
       { path: "/equipos", label: "Equipos Criticos", icon: Wrench },
+      { path: "/proyectos", label: "Proyectos", icon: FolderKanban },
       { path: "/mantenedores", label: "Mantenedores", icon: HardHat },
       { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
     ]

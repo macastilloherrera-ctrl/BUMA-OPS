@@ -49,6 +49,9 @@ import ReportEquipment from "@/pages/ReportEquipment";
 import ReportExecutives from "@/pages/ReportExecutives";
 import AdminUsers from "@/pages/AdminUsers";
 import SuperAdminPanel from "@/pages/SuperAdminPanel";
+import Projects from "@/pages/Projects";
+import NewProject from "@/pages/NewProject";
+import ProjectDetail from "@/pages/ProjectDetail";
 
 function LoadingScreen() {
   return (
@@ -172,6 +175,10 @@ function AuthenticatedApp() {
                 <Route path="/edificios" component={Buildings} />
                 <Route path="/edificios/:id" component={BuildingDetail} />
                 <Route path="/equipos" component={CriticalAssets} />
+                
+                <Route path="/proyectos" component={Projects} />
+                <Route path="/proyectos/nuevo" component={NewProject} />
+                <Route path="/proyectos/:id" component={ProjectDetail} />
                 
                 {isManager && (
                   <>
