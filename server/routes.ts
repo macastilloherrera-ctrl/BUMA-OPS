@@ -4641,6 +4641,340 @@ export async function registerRoutes(
   });
 
   // ========================
+  // PROJECTS MODULE
+  // ========================
+
+  // Check if user can manage projects (Gerente General, Operaciones, Comercial)
+  const canManageProjects = (role: string) => {
+    return ["super_admin", "gerente_general", "gerente_operaciones", "gerente_comercial"].includes(role);
+  };
+
+  // Get all projects
+  app.get("/api/projects", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile) {
+        return res.status(403).json({ error: "Perfil no encontrado" });
+      }
+
+      const filters: { buildingId?: string; status?: string; executiveId?: string } = {};
+      
+      if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
+      if (req.query.status) filters.status = req.query.status as string;
+      
+      // Ejecutivos solo ven proyectos de sus edificios asignados
+      if (profile.role === "ejecutivo_operaciones") {
+        filters.executiveId = (req.user as any).id;
+      }
+      
+      const projects = await storage.getProjects(filters);
+      
+      // Enrich with building info
+      const buildings = await storage.getBuildings();
+      const buildingMap = new Map(buildings.map(b => [b.id, b]));
+      
+      const enrichedProjects = projects.map(project => ({
+        ...project,
+        building: buildingMap.get(project.buildingId),
+      }));
+      
+      res.json(enrichedProjects);
+    } catch (error) {
+      console.error("Error fetching projects:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Get single project with milestones, documents, and updates
+  app.get("/api/projects/:id", isAuthenticated, async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: "Proyecto no encontrado" });
+      }
+      
+      const [milestones, documents, updates, building] = await Promise.all([
+        storage.getProjectMilestones(project.id),
+        storage.getProjectDocuments(project.id),
+        storage.getProjectUpdates(project.id),
+        storage.getBuilding(project.buildingId),
+      ]);
+      
+      res.json({
+        ...project,
+        building,
+        milestones,
+        documents,
+        updates,
+      });
+    } catch (error) {
+      console.error("Error fetching project:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Create project (only managers)
+  app.post("/api/projects", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !canManageProjects(profile.role)) {
+        return res.status(403).json({ error: "No tiene permisos para crear proyectos" });
+      }
+      
+      const projectData = {
+        ...req.body,
+        createdBy: (req.user as any).id,
+      };
+      
+      const project = await storage.createProject(projectData);
+      
+      // Create default milestones if provided
+      if (req.body.milestones && Array.isArray(req.body.milestones)) {
+        for (let i = 0; i < req.body.milestones.length; i++) {
+          const m = req.body.milestones[i];
+          await storage.createProjectMilestone({
+            projectId: project.id,
+            name: m.name,
+            description: m.description,
+            orderIndex: i,
+            dueDate: m.dueDate ? new Date(m.dueDate) : undefined,
+          });
+        }
+      }
+      
+      res.status(201).json(project);
+    } catch (error) {
+      console.error("Error creating project:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Update project
+  app.patch("/api/projects/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !canManageProjects(profile.role)) {
+        return res.status(403).json({ error: "No tiene permisos para editar proyectos" });
+      }
+      
+      const updated = await storage.updateProject(req.params.id, req.body);
+      if (!updated) {
+        return res.status(404).json({ error: "Proyecto no encontrado" });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating project:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Delete project
+  app.delete("/api/projects/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !canManageProjects(profile.role)) {
+        return res.status(403).json({ error: "No tiene permisos para eliminar proyectos" });
+      }
+      
+      await storage.deleteProject(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting project:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // === Project Milestones ===
+
+  // Get project milestones
+  app.get("/api/projects/:projectId/milestones", isAuthenticated, async (req, res) => {
+    try {
+      const milestones = await storage.getProjectMilestones(req.params.projectId);
+      res.json(milestones);
+    } catch (error) {
+      console.error("Error fetching milestones:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Create milestone
+  app.post("/api/projects/:projectId/milestones", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !canManageProjects(profile.role)) {
+        return res.status(403).json({ error: "No tiene permisos" });
+      }
+      
+      const milestone = await storage.createProjectMilestone({
+        ...req.body,
+        projectId: req.params.projectId,
+      });
+      
+      res.status(201).json(milestone);
+    } catch (error) {
+      console.error("Error creating milestone:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Update milestone
+  app.patch("/api/projects/:projectId/milestones/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      const isManager = profile && canManageProjects(profile.role);
+      const isExecutive = profile?.role === "ejecutivo_operaciones";
+      
+      // Ejecutivos solo pueden cambiar status y observaciones
+      if (!isManager && !isExecutive) {
+        return res.status(403).json({ error: "No tiene permisos" });
+      }
+      
+      const updateData: any = {};
+      
+      if (isManager) {
+        // Managers can update everything
+        Object.assign(updateData, req.body);
+      } else {
+        // Executives can only update status and observations
+        if (req.body.status) updateData.status = req.body.status;
+        if (req.body.observations) updateData.observations = req.body.observations;
+      }
+      
+      // If completing, set completedAt and completedBy
+      if (updateData.status === "completado") {
+        updateData.completedAt = new Date();
+        updateData.completedBy = (req.user as any).id;
+      }
+      
+      const updated = await storage.updateProjectMilestone(req.params.id, updateData);
+      if (!updated) {
+        return res.status(404).json({ error: "Hito no encontrado" });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating milestone:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Delete milestone
+  app.delete("/api/projects/:projectId/milestones/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !canManageProjects(profile.role)) {
+        return res.status(403).json({ error: "No tiene permisos" });
+      }
+      
+      await storage.deleteProjectMilestone(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting milestone:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // === Project Documents ===
+
+  // Get project documents
+  app.get("/api/projects/:projectId/documents", isAuthenticated, async (req, res) => {
+    try {
+      const documents = await storage.getProjectDocuments(req.params.projectId);
+      res.json(documents);
+    } catch (error) {
+      console.error("Error fetching documents:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Upload project document
+  app.post("/api/projects/:projectId/documents", isAuthenticated, async (req, res) => {
+    try {
+      const document = await storage.createProjectDocument({
+        ...req.body,
+        projectId: req.params.projectId,
+        uploadedBy: (req.user as any).id,
+      });
+      
+      res.status(201).json(document);
+    } catch (error) {
+      console.error("Error creating document:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Delete project document
+  app.delete("/api/projects/:projectId/documents/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !canManageProjects(profile.role)) {
+        return res.status(403).json({ error: "No tiene permisos" });
+      }
+      
+      await storage.deleteProjectDocument(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting document:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // === Project Updates (Fiscalizaciones) ===
+
+  // Get project updates
+  app.get("/api/projects/:projectId/updates", isAuthenticated, async (req, res) => {
+    try {
+      const updates = await storage.getProjectUpdates(req.params.projectId);
+      res.json(updates);
+    } catch (error) {
+      console.error("Error fetching updates:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Create project update (fiscalización)
+  app.post("/api/projects/:projectId/updates", isAuthenticated, async (req, res) => {
+    try {
+      const update = await storage.createProjectUpdate({
+        ...req.body,
+        projectId: req.params.projectId,
+        createdBy: (req.user as any).id,
+      });
+      
+      res.status(201).json(update);
+    } catch (error) {
+      console.error("Error creating update:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Approve committee request in update
+  app.patch("/api/projects/:projectId/updates/:id/approve", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !canManageProjects(profile.role)) {
+        return res.status(403).json({ error: "No tiene permisos para aprobar" });
+      }
+      
+      const updated = await storage.updateProjectUpdate(req.params.id, {
+        committeeApproved: true,
+        committeeApprovedAt: new Date(),
+        committeeApprovedBy: (req.user as any).id,
+      });
+      
+      if (!updated) {
+        return res.status(404).json({ error: "Actualización no encontrada" });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error approving update:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ========================
   // TRADITIONAL AUTH ROUTES
   // ========================
 
