@@ -79,6 +79,32 @@ El sistema usa autenticacion tradicional con email y contraseña diseñado para 
 - Gestion de edificios asignados para ejecutivos
 - API: `/api/admin/users`, `/api/admin/roles`
 
+### Proyectos (Obras y Mejoras)
+Modulo para gestionar obras y mejoras a largo plazo en edificios.
+
+**Permisos:**
+- Gerentes (General, Operaciones, Comercial): Crear, editar, eliminar proyectos
+- Ejecutivos: Ver proyectos, actualizar estado/observaciones de hitos
+
+**Tablas de BD:**
+- `projects`: Proyecto principal (nombre, edificio, fechas, presupuesto, contratista)
+- `projectMilestones`: Hitos del proyecto con estado (pendiente/en_progreso/completado)
+- `projectDocuments`: Documentos asociados (cotizaciones, contratos, actas)
+- `projectUpdates`: Fiscalizaciones y actualizaciones de avance
+
+**Sistema Semaforo:**
+- Verde: >15 dias hasta fecha de termino
+- Amarillo: 5-15 dias hasta fecha de termino
+- Rojo: <5 dias o vencido
+
+**Rutas de API:**
+- `GET/POST /api/projects` - Listar/crear proyectos
+- `GET/PATCH/DELETE /api/projects/:id` - Ver/editar/eliminar proyecto
+- `POST/PATCH/DELETE /api/projects/:id/milestones/:id` - Gestion de hitos
+- `POST/DELETE /api/projects/:id/documents/:id` - Gestion de documentos
+- `POST /api/projects/:id/updates` - Crear fiscalizacion
+- `PATCH /api/projects/:id/updates/:id/approve` - Aprobar fiscalizacion
+
 ### Reportes (Todos los perfiles)
 - **Cumplimiento Normativo**: Informe por edificio con scoring binario (0-100%)
   - Reglamento de copropiedad cargado (25%)
