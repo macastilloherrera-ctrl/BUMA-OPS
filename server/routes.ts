@@ -4724,6 +4724,9 @@ export async function registerRoutes(
       const projectData = {
         ...req.body,
         createdBy: (req.user as any).id,
+        startDate: req.body.startDate ? new Date(req.body.startDate) : undefined,
+        plannedEndDate: req.body.plannedEndDate ? new Date(req.body.plannedEndDate) : undefined,
+        actualEndDate: req.body.actualEndDate ? new Date(req.body.actualEndDate) : undefined,
       };
       
       const project = await storage.createProject(projectData);

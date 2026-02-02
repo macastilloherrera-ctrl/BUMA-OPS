@@ -96,6 +96,7 @@ export default function NewProject() {
         plannedEndDate: new Date(data.plannedEndDate),
         approvedBudget: data.approvedBudget || undefined,
         quotesReceived: data.quotesReceived ? parseInt(data.quotesReceived) : undefined,
+        assignedExecutiveId: data.assignedExecutiveId === "none" ? undefined : data.assignedExecutiveId,
         milestones: data.milestones.map((m, i) => ({
           ...m,
           dueDate: m.dueDate || undefined,
@@ -213,7 +214,7 @@ export default function NewProject() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">Sin asignar</SelectItem>
+                          <SelectItem value="none">Sin asignar</SelectItem>
                           {executives?.map((exec) => (
                             <SelectItem key={exec.id} value={exec.id}>
                               {exec.firstName} {exec.lastName}
