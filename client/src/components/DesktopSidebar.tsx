@@ -47,7 +47,7 @@ const managerNavItems = [
   { 
     group: "Dashboards",
     items: [
-      { path: "/dashboard/tickets", label: "Tickets Semaforo", icon: Ticket },
+      { path: "/dashboard/tickets", label: "Tickets Semáforo", icon: Ticket },
       { path: "/dashboard/visitas", label: "Panel Visitas", icon: Calendar },
       { path: "/calendario", label: "Calendario", icon: CalendarDays },
     ]
@@ -61,11 +61,18 @@ const managerNavItems = [
     ]
   },
   {
-    group: "Gestion",
+    group: "Proyectos",
+    items: [
+      { path: "/proyectos/semaforo", label: "Proyectos Semáforo", icon: FolderKanban },
+      { path: "/proyectos", label: "Panel Proyectos", icon: ClipboardList },
+      { path: "/proyectos/calendario", label: "Calendario Proyectos", icon: CalendarDays },
+    ]
+  },
+  {
+    group: "Gestión",
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2 },
-      { path: "/equipos", label: "Equipos Criticos", icon: Wrench },
-      { path: "/proyectos", label: "Proyectos", icon: FolderKanban },
+      { path: "/equipos", label: "Equipos Críticos", icon: Wrench },
       { path: "/mantenedores", label: "Mantenedores", icon: HardHat },
       { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
     ]
@@ -87,7 +94,7 @@ const managerWithReportsNavItems = [
   { 
     group: "Dashboards",
     items: [
-      { path: "/dashboard/tickets", label: "Tickets Semaforo", icon: Ticket },
+      { path: "/dashboard/tickets", label: "Tickets Semáforo", icon: Ticket },
       { path: "/dashboard/visitas", label: "Panel Visitas", icon: Calendar },
       { path: "/calendario", label: "Calendario", icon: CalendarDays },
     ]
@@ -101,11 +108,18 @@ const managerWithReportsNavItems = [
     ]
   },
   {
-    group: "Gestion",
+    group: "Proyectos",
+    items: [
+      { path: "/proyectos/semaforo", label: "Proyectos Semáforo", icon: FolderKanban },
+      { path: "/proyectos", label: "Panel Proyectos", icon: ClipboardList },
+      { path: "/proyectos/calendario", label: "Calendario Proyectos", icon: CalendarDays },
+    ]
+  },
+  {
+    group: "Gestión",
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2 },
-      { path: "/equipos", label: "Equipos Criticos", icon: Wrench },
-      { path: "/proyectos", label: "Proyectos", icon: FolderKanban },
+      { path: "/equipos", label: "Equipos Críticos", icon: Wrench },
       { path: "/mantenedores", label: "Mantenedores", icon: HardHat },
       { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
     ]
@@ -134,11 +148,18 @@ const executiveNavItems = [
     ]
   },
   {
+    group: "Proyectos",
+    items: [
+      { path: "/proyectos/semaforo", label: "Proyectos Semáforo", icon: FolderKanban },
+      { path: "/proyectos", label: "Panel Proyectos", icon: ClipboardList },
+      { path: "/proyectos/calendario", label: "Calendario Proyectos", icon: CalendarDays },
+    ]
+  },
+  {
     group: "Consulta",
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2 },
-      { path: "/equipos", label: "Equipos Criticos", icon: Wrench },
-      { path: "/proyectos", label: "Proyectos", icon: FolderKanban },
+      { path: "/equipos", label: "Equipos Críticos", icon: Wrench },
     ]
   },
   {
@@ -154,7 +175,7 @@ const generalManagerNavItems = [
     group: "Dashboards",
     items: [
       { path: "/dashboard/overview", label: "Panel General", icon: LayoutDashboard },
-      { path: "/dashboard/tickets", label: "Tickets Semaforo", icon: Ticket },
+      { path: "/dashboard/tickets", label: "Tickets Semáforo", icon: Ticket },
       { path: "/dashboard/visitas", label: "Panel Visitas", icon: Calendar },
       { path: "/calendario", label: "Calendario", icon: CalendarDays },
     ]
@@ -168,11 +189,18 @@ const generalManagerNavItems = [
     ]
   },
   {
-    group: "Gestion",
+    group: "Proyectos",
+    items: [
+      { path: "/proyectos/semaforo", label: "Proyectos Semáforo", icon: FolderKanban },
+      { path: "/proyectos", label: "Panel Proyectos", icon: ClipboardList },
+      { path: "/proyectos/calendario", label: "Calendario Proyectos", icon: CalendarDays },
+    ]
+  },
+  {
+    group: "Gestión",
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2 },
-      { path: "/equipos", label: "Equipos Criticos", icon: Wrench },
-      { path: "/proyectos", label: "Proyectos", icon: FolderKanban },
+      { path: "/equipos", label: "Equipos Críticos", icon: Wrench },
       { path: "/mantenedores", label: "Mantenedores", icon: HardHat },
       { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
     ]

@@ -131,7 +131,11 @@ export default function Projects() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
+        <Card 
+          className={`cursor-pointer hover-elevate ${statusFilter === "all" ? "ring-2 ring-primary" : ""}`}
+          onClick={() => setStatusFilter("all")}
+          data-testid="card-stat-total"
+        >
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <FolderKanban className="h-8 w-8 text-primary" />
@@ -142,7 +146,11 @@ export default function Projects() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card 
+          className={`cursor-pointer hover-elevate ${statusFilter === "en_ejecucion" ? "ring-2 ring-blue-500" : ""}`}
+          onClick={() => setStatusFilter("en_ejecucion")}
+          data-testid="card-stat-en-ejecucion"
+        >
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <AlertCircle className="h-8 w-8 text-blue-500" />
@@ -153,7 +161,11 @@ export default function Projects() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card 
+          className={`cursor-pointer hover-elevate ${statusFilter === "planificado" ? "ring-2 ring-yellow-500" : ""}`}
+          onClick={() => setStatusFilter("planificado")}
+          data-testid="card-stat-planificados"
+        >
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <Clock className="h-8 w-8 text-yellow-500" />
@@ -164,7 +176,11 @@ export default function Projects() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card 
+          className={`cursor-pointer hover-elevate ${statusFilter === "completado" ? "ring-2 ring-green-500" : ""}`}
+          onClick={() => setStatusFilter("completado")}
+          data-testid="card-stat-completados"
+        >
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <CheckCircle2 className="h-8 w-8 text-green-500" />

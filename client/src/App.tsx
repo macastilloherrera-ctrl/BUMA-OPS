@@ -52,6 +52,8 @@ import SuperAdminPanel from "@/pages/SuperAdminPanel";
 import Projects from "@/pages/Projects";
 import NewProject from "@/pages/NewProject";
 import ProjectDetail from "@/pages/ProjectDetail";
+import ProjectsSemaforo from "@/pages/ProjectsSemaforo";
+import ProjectsCalendar from "@/pages/ProjectsCalendar";
 
 function LoadingScreen() {
   return (
@@ -177,6 +179,8 @@ function AuthenticatedApp() {
                 <Route path="/equipos" component={CriticalAssets} />
                 
                 <Route path="/proyectos" component={Projects} />
+                <Route path="/proyectos/semaforo" component={ProjectsSemaforo} />
+                <Route path="/proyectos/calendario" component={ProjectsCalendar} />
                 <Route path="/proyectos/nuevo" component={NewProject} />
                 <Route path="/proyectos/:id" component={ProjectDetail} />
                 
