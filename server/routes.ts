@@ -5114,5 +5114,138 @@ export async function registerRoutes(
     });
   });
 
+  // ==========================================
+  // Insurance Policy Expiry Check & Auto-Ticket Generation
+  // ==========================================
+  
+  // Check insurance policies and generate tickets for expiring ones
+  app.post("/api/system/check-insurance-policies", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getProfileByUserId(req.user!.id);
+      // Only super_admin or gerente_general can trigger this manually
+      if (!profile || !["super_admin", "gerente_general"].includes(profile.role)) {
+        return res.status(403).json({ error: "No autorizado" });
+      }
+
+      const result = await checkAndCreateInsuranceTickets();
+      res.json(result);
+    } catch (error) {
+      console.error("Error checking insurance policies:", error);
+      res.status(500).json({ error: "Error al verificar pólizas" });
+    }
+  });
+
+  // Function to check insurance policies and create tickets
+  async function checkAndCreateInsuranceTickets(): Promise<{ created: number; skipped: number; errors: number }> {
+    const buildings = await storage.getBuildings();
+    const now = new Date();
+    const nowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    let created = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    for (const building of buildings) {
+      try {
+        // Skip buildings without insurance expiry date
+        if (!building.insuranceExpiryDate) {
+          continue;
+        }
+
+        const expiryDate = new Date(building.insuranceExpiryDate);
+        const expiryStart = new Date(expiryDate.getFullYear(), expiryDate.getMonth(), expiryDate.getDate());
+        const daysRemaining = Math.floor((expiryStart.getTime() - nowStart.getTime()) / (1000 * 60 * 60 * 24));
+
+        // Only process if policy is expiring within 30 days or already expired
+        if (daysRemaining > 30) {
+          continue;
+        }
+
+        // Check if there's already an open ticket for this insurance policy
+        const existingTickets = await storage.getTickets();
+        const hasOpenInsuranceTicket = existingTickets.some(ticket => 
+          ticket.buildingId === building.id &&
+          ticket.description.includes("[PÓLIZA DE SEGURO]") &&
+          !["resuelto"].includes(ticket.status)
+        );
+
+        if (hasOpenInsuranceTicket) {
+          skipped++;
+          continue;
+        }
+
+        // Determine priority based on days remaining
+        let priority: "rojo" | "amarillo" | "verde";
+        let urgencyText: string;
+        
+        if (daysRemaining < 0) {
+          priority = "rojo";
+          urgencyText = `VENCIDA hace ${Math.abs(daysRemaining)} días`;
+        } else if (daysRemaining < 15) {
+          priority = "rojo";
+          urgencyText = `Vence en ${daysRemaining} días`;
+        } else {
+          priority = "amarillo";
+          urgencyText = `Vence en ${daysRemaining} días`;
+        }
+
+        // Create the ticket
+        const description = `[PÓLIZA DE SEGURO] ${urgencyText}\n\nEdificio: ${building.name}\nAseguradora: ${building.insurerName || "No especificada"}\nFecha vencimiento: ${expiryDate.toLocaleDateString("es-CL")}\n\nSe requiere gestionar la renovación de la póliza de seguro del edificio.`;
+
+        await storage.createTicket({
+          buildingId: building.id,
+          ticketType: "planificado",
+          description,
+          priority,
+          status: "pendiente",
+          assignedExecutiveId: building.assignedExecutiveId || null,
+          requiresMaintainerVisit: false,
+          requiresExecutiveVisit: true,
+          requiresInvoice: true,
+          createdBy: "SYSTEM",
+          endDate: expiryDate,
+        });
+
+        created++;
+        console.log(`[Insurance Check] Created ticket for building ${building.name} - ${urgencyText}`);
+      } catch (error) {
+        console.error(`[Insurance Check] Error processing building ${building.id}:`, error);
+        errors++;
+      }
+    }
+
+    console.log(`[Insurance Check] Complete: ${created} created, ${skipped} skipped, ${errors} errors`);
+    return { created, skipped, errors };
+  }
+
+  // Run insurance check on server startup and then daily
+  setTimeout(async () => {
+    console.log("[Insurance Check] Running initial insurance policy check...");
+    await checkAndCreateInsuranceTickets();
+  }, 10000); // Run 10 seconds after startup
+
+  // Schedule daily check at 8:00 AM
+  const scheduleDaily = () => {
+    const now = new Date();
+    const next8AM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0, 0);
+    if (now >= next8AM) {
+      next8AM.setDate(next8AM.getDate() + 1);
+    }
+    const msUntilNext8AM = next8AM.getTime() - now.getTime();
+    
+    setTimeout(async () => {
+      console.log("[Insurance Check] Running scheduled daily insurance policy check...");
+      await checkAndCreateInsuranceTickets();
+      // Schedule next check
+      setInterval(async () => {
+        console.log("[Insurance Check] Running scheduled daily insurance policy check...");
+        await checkAndCreateInsuranceTickets();
+      }, 24 * 60 * 60 * 1000); // Every 24 hours
+    }, msUntilNext8AM);
+    
+    console.log(`[Insurance Check] Next scheduled check at ${next8AM.toLocaleString()}`);
+  };
+  scheduleDaily();
+
   return httpServer;
 }
