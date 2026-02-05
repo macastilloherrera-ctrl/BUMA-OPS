@@ -341,12 +341,19 @@ export default function Buildings() {
   const getInsuranceTrafficLight = (building: Building): "verde" | "amarillo" | "rojo" | null => {
     if (!building.insuranceExpiryDate) return null;
     
+    // Use date-only comparison to avoid timezone issues
     const expiryDate = new Date(building.insuranceExpiryDate);
     const now = new Date();
-    const daysRemaining = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     
+    // Reset both dates to start of day for accurate comparison
+    const expiryStart = new Date(expiryDate.getFullYear(), expiryDate.getMonth(), expiryDate.getDate());
+    const nowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    const daysRemaining = Math.floor((expiryStart.getTime() - nowStart.getTime()) / (1000 * 60 * 60 * 24));
+    
+    // Business rules: <15 days = red, 15-30 days = yellow, >30 days = green
     if (daysRemaining < 0) return "rojo";
-    if (daysRemaining <= 15) return "rojo";
+    if (daysRemaining < 15) return "rojo";
     if (daysRemaining <= 30) return "amarillo";
     return "verde";
   };
@@ -1310,7 +1317,11 @@ export default function Buildings() {
                         </CardTitle>
                       </Link>
                       {!hasCompleteDocumentation(building) && (
-                        <Flag className="h-4 w-4 text-destructive" title="Documentación incompleta" />
+                        <Flag 
+                          className="h-4 w-4 text-destructive" 
+                          aria-label="Documentación incompleta"
+                          data-testid={`icon-incomplete-docs-${building.id}`}
+                        />
                       )}
                     </div>
                     {getStatusBadge(building.status, building)}
@@ -1333,11 +1344,11 @@ export default function Buildings() {
                       {(() => {
                         const insuranceStatus = getInsuranceTrafficLight(building);
                         if (insuranceStatus === "rojo") {
-                          return <Badge variant="destructive" className="text-xs">Póliza Vencida</Badge>;
+                          return <Badge variant="destructive" className="text-xs" data-testid={`badge-insurance-expired-${building.id}`}>Póliza Vencida</Badge>;
                         } else if (insuranceStatus === "amarillo") {
-                          return <Badge className="text-xs bg-yellow-500 hover:bg-yellow-600">Próx. Vencer</Badge>;
+                          return <Badge variant="secondary" className="text-xs" data-testid={`badge-insurance-warning-${building.id}`}>Próx. Vencer</Badge>;
                         } else if (insuranceStatus === "verde") {
-                          return <Badge className="text-xs bg-green-500 hover:bg-green-600">Vigente</Badge>;
+                          return <Badge variant="default" className="text-xs" data-testid={`badge-insurance-valid-${building.id}`}>Vigente</Badge>;
                         }
                         return null;
                       })()}
