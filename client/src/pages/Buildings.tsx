@@ -39,7 +39,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Plus, MapPin, User, Search, Pencil, Trash2, UserPlus, Settings2, Upload, FileText, X } from "lucide-react";
+import { Building2, Plus, MapPin, User, Search, Pencil, Trash2, UserPlus, Settings2, Upload, FileText, X, Shield, AlertTriangle, Flag, Calendar } from "lucide-react";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import type { Building, UserProfile, BuildingStaff, BuildingFeature } from "@shared/schema";
 import { Link, useSearch } from "wouter";
@@ -88,6 +88,20 @@ export default function Buildings() {
   const [editingBuilding, setEditingBuilding] = useState<Building | null>(null);
   const [regulationDocumentPath, setRegulationDocumentPath] = useState<string | null>(null);
   const [regulationFileName, setRegulationFileName] = useState<string | null>(null);
+  // Insurance policy states
+  const [insurancePolicyPath, setInsurancePolicyPath] = useState<string | null>(null);
+  const [insurancePolicyFileName, setInsurancePolicyFileName] = useState<string | null>(null);
+  const [insuranceExpiryDate, setInsuranceExpiryDate] = useState<string>("");
+  const [insurerName, setInsurerName] = useState<string>("");
+  // Additional document states
+  const [emergencyPlanPath, setEmergencyPlanPath] = useState<string | null>(null);
+  const [emergencyPlanFileName, setEmergencyPlanFileName] = useState<string | null>(null);
+  const [bumaContractPath, setBumaContractPath] = useState<string | null>(null);
+  const [bumaContractFileName, setBumaContractFileName] = useState<string | null>(null);
+  const [adminSoftwareContractPath, setAdminSoftwareContractPath] = useState<string | null>(null);
+  const [adminSoftwareContractFileName, setAdminSoftwareContractFileName] = useState<string | null>(null);
+  const [bumaAdminPowersPath, setBumaAdminPowersPath] = useState<string | null>(null);
+  const [bumaAdminPowersFileName, setBumaAdminPowersFileName] = useState<string | null>(null);
 
   const { data: buildings, isLoading } = useQuery<BuildingWithExecutive[]>({
     queryKey: ["/api/buildings"],
@@ -181,6 +195,13 @@ export default function Buildings() {
       const buildingPayload = {
         ...buildingData,
         regulationDocumentUrl: regulationDocumentPath,
+        insurancePolicyUrl: insurancePolicyPath,
+        insuranceExpiryDate: insuranceExpiryDate ? new Date(insuranceExpiryDate) : null,
+        insurerName: insurerName || null,
+        emergencyPlanUrl: emergencyPlanPath,
+        bumaContractUrl: bumaContractPath,
+        adminSoftwareContractUrl: adminSoftwareContractPath,
+        bumaAdminPowersUrl: bumaAdminPowersPath,
       };
       
       let building: Building;
@@ -242,6 +263,20 @@ export default function Buildings() {
     setEditingBuilding(building);
     setRegulationDocumentPath(building.regulationDocumentUrl || null);
     setRegulationFileName(building.regulationDocumentUrl ? "Documento existente" : null);
+    // Insurance policy
+    setInsurancePolicyPath(building.insurancePolicyUrl || null);
+    setInsurancePolicyFileName(building.insurancePolicyUrl ? "Documento existente" : null);
+    setInsuranceExpiryDate(building.insuranceExpiryDate ? new Date(building.insuranceExpiryDate).toISOString().split("T")[0] : "");
+    setInsurerName(building.insurerName || "");
+    // Other documents
+    setEmergencyPlanPath(building.emergencyPlanUrl || null);
+    setEmergencyPlanFileName(building.emergencyPlanUrl ? "Documento existente" : null);
+    setBumaContractPath(building.bumaContractUrl || null);
+    setBumaContractFileName(building.bumaContractUrl ? "Documento existente" : null);
+    setAdminSoftwareContractPath(building.adminSoftwareContractUrl || null);
+    setAdminSoftwareContractFileName(building.adminSoftwareContractUrl ? "Documento existente" : null);
+    setBumaAdminPowersPath(building.bumaAdminPowersUrl || null);
+    setBumaAdminPowersFileName(building.bumaAdminPowersUrl ? "Documento existente" : null);
     form.reset({
       name: building.name,
       address: building.address,
@@ -266,6 +301,20 @@ export default function Buildings() {
     setEditingBuilding(null);
     setRegulationDocumentPath(null);
     setRegulationFileName(null);
+    // Reset insurance policy
+    setInsurancePolicyPath(null);
+    setInsurancePolicyFileName(null);
+    setInsuranceExpiryDate("");
+    setInsurerName("");
+    // Reset other documents
+    setEmergencyPlanPath(null);
+    setEmergencyPlanFileName(null);
+    setBumaContractPath(null);
+    setBumaContractFileName(null);
+    setAdminSoftwareContractPath(null);
+    setAdminSoftwareContractFileName(null);
+    setBumaAdminPowersPath(null);
+    setBumaAdminPowersFileName(null);
     form.reset();
   };
 
@@ -276,9 +325,37 @@ export default function Buildings() {
     return matchesSearch && matchesStatus;
   });
 
-  const getStatusBadge = (status: string, hasRegulation: boolean = true) => {
-    if (status === "activo" && !hasRegulation) {
-      return <Badge variant="destructive">Activo - Sin Reglamento</Badge>;
+  // Check if building has complete documentation
+  const hasCompleteDocumentation = (building: Building): boolean => {
+    return !!(
+      building.regulationDocumentUrl &&
+      building.insurancePolicyUrl &&
+      building.emergencyPlanUrl &&
+      building.bumaContractUrl &&
+      building.adminSoftwareContractUrl &&
+      building.bumaAdminPowersUrl
+    );
+  };
+
+  // Get insurance policy traffic light
+  const getInsuranceTrafficLight = (building: Building): "verde" | "amarillo" | "rojo" | null => {
+    if (!building.insuranceExpiryDate) return null;
+    
+    const expiryDate = new Date(building.insuranceExpiryDate);
+    const now = new Date();
+    const daysRemaining = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysRemaining < 0) return "rojo";
+    if (daysRemaining <= 15) return "rojo";
+    if (daysRemaining <= 30) return "amarillo";
+    return "verde";
+  };
+
+  const getStatusBadge = (status: string, building?: Building) => {
+    const hasComplete = building ? hasCompleteDocumentation(building) : true;
+    
+    if (status === "activo" && !hasComplete) {
+      return <Badge variant="destructive">Activo - Doc. Incompleta</Badge>;
     }
     const config: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
       activo: { label: "Activo", variant: "default" },
@@ -749,77 +826,411 @@ export default function Buildings() {
                       </AccordionItem>
                     </Accordion>
 
-                    <div className="space-y-2 pt-2">
-                      <label className="text-sm font-medium">Reglamento de Copropiedad</label>
-                      {regulationDocumentPath ? (
-                        <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-md">
-                          <FileText className="h-4 w-4 text-muted-foreground" />
-                          <span className="text-sm flex-1 truncate">{regulationFileName || "Documento cargado"}</span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => {
-                              setRegulationDocumentPath(null);
-                              setRegulationFileName(null);
-                            }}
-                            data-testid="button-remove-regulation"
-                          >
-                            <X className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </div>
-                      ) : (
-                        <ObjectUploader
-                          maxNumberOfFiles={1}
-                          maxFileSize={20 * 1024 * 1024}
-                          onGetUploadParameters={async (file) => {
-                            const res = await fetch("/api/uploads/request-url", {
-                              method: "POST",
-                              headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({
-                                name: file.name,
-                                size: file.size,
-                                contentType: file.type,
-                              }),
-                            });
-                            if (!res.ok) {
-                              toast({
-                                title: "Error",
-                                description: "No se pudo obtener URL de subida",
-                                variant: "destructive",
-                              });
-                              throw new Error("Failed to get upload URL");
-                            }
-                            const { uploadURL, objectPath } = await res.json();
-                            (file.meta as Record<string, unknown>).objectPath = objectPath;
-                            (file.meta as Record<string, unknown>).fileName = file.name;
-                            return {
-                              method: "PUT" as const,
-                              url: uploadURL,
-                              headers: { "Content-Type": file.type || "application/octet-stream" },
-                            };
-                          }}
-                          onComplete={(result) => {
-                            const file = result.successful?.[0];
-                            if (file?.meta?.objectPath) {
-                              setRegulationDocumentPath(file.meta.objectPath as string);
-                              setRegulationFileName(file.meta.fileName as string);
-                              toast({
-                                title: "Archivo cargado",
-                                description: "El reglamento se guardara al crear el edificio",
-                              });
-                            }
-                          }}
-                          buttonClassName="w-full"
-                        >
-                          <Upload className="h-4 w-4 mr-1" />
-                          Subir Reglamento (PDF, DOC)
-                        </ObjectUploader>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        Opcional. Puede agregarlo despues desde el detalle del edificio.
-                      </p>
-                    </div>
+                    <Accordion type="multiple" className="w-full" defaultValue={[]}>
+                      <AccordionItem value="documents">
+                        <AccordionTrigger className="text-sm font-medium">
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4" />
+                            Documentación del Edificio
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="space-y-4 pt-2">
+                            {/* Reglamento de Copropiedad */}
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium">Reglamento de Copropiedad</label>
+                              {regulationDocumentPath ? (
+                                <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-md">
+                                  <FileText className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm flex-1 truncate">{regulationFileName || "Documento cargado"}</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setRegulationDocumentPath(null);
+                                      setRegulationFileName(null);
+                                    }}
+                                    data-testid="button-remove-regulation"
+                                  >
+                                    <X className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <ObjectUploader
+                                  maxNumberOfFiles={1}
+                                  maxFileSize={20 * 1024 * 1024}
+                                  onGetUploadParameters={async (file) => {
+                                    const res = await fetch("/api/uploads/request-url", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        name: file.name,
+                                        size: file.size,
+                                        contentType: file.type,
+                                      }),
+                                    });
+                                    if (!res.ok) {
+                                      toast({
+                                        title: "Error",
+                                        description: "No se pudo obtener URL de subida",
+                                        variant: "destructive",
+                                      });
+                                      throw new Error("Failed to get upload URL");
+                                    }
+                                    const { uploadURL, objectPath } = await res.json();
+                                    (file.meta as Record<string, unknown>).objectPath = objectPath;
+                                    (file.meta as Record<string, unknown>).fileName = file.name;
+                                    return {
+                                      method: "PUT" as const,
+                                      url: uploadURL,
+                                      headers: { "Content-Type": file.type || "application/octet-stream" },
+                                    };
+                                  }}
+                                  onComplete={(result) => {
+                                    const file = result.successful?.[0];
+                                    if (file?.meta?.objectPath) {
+                                      setRegulationDocumentPath(file.meta.objectPath as string);
+                                      setRegulationFileName(file.meta.fileName as string);
+                                      toast({
+                                        title: "Archivo cargado",
+                                        description: "El reglamento se guardará al guardar el edificio",
+                                      });
+                                    }
+                                  }}
+                                  buttonClassName="w-full"
+                                >
+                                  <Upload className="h-4 w-4 mr-1" />
+                                  Subir Reglamento de Copropiedad
+                                </ObjectUploader>
+                              )}
+                            </div>
+
+                            {/* Póliza de Seguro */}
+                            <div className="space-y-2 p-3 border rounded-md">
+                              <div className="flex items-center gap-2">
+                                <Shield className="h-4 w-4 text-primary" />
+                                <label className="text-sm font-medium">Póliza de Seguro</label>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-xs text-muted-foreground">Aseguradora</label>
+                                  <Input
+                                    placeholder="Nombre de la aseguradora"
+                                    value={insurerName}
+                                    onChange={(e) => setInsurerName(e.target.value)}
+                                    data-testid="input-insurer-name"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-xs text-muted-foreground">Fecha Vencimiento</label>
+                                  <Input
+                                    type="date"
+                                    value={insuranceExpiryDate}
+                                    onChange={(e) => setInsuranceExpiryDate(e.target.value)}
+                                    data-testid="input-insurance-expiry"
+                                  />
+                                </div>
+                              </div>
+                              {insurancePolicyPath ? (
+                                <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-md">
+                                  <FileText className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm flex-1 truncate">{insurancePolicyFileName || "Documento cargado"}</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setInsurancePolicyPath(null);
+                                      setInsurancePolicyFileName(null);
+                                    }}
+                                    data-testid="button-remove-insurance"
+                                  >
+                                    <X className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <ObjectUploader
+                                  maxNumberOfFiles={1}
+                                  maxFileSize={20 * 1024 * 1024}
+                                  onGetUploadParameters={async (file) => {
+                                    const res = await fetch("/api/uploads/request-url", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        name: file.name,
+                                        size: file.size,
+                                        contentType: file.type,
+                                      }),
+                                    });
+                                    if (!res.ok) throw new Error("Failed to get upload URL");
+                                    const { uploadURL, objectPath } = await res.json();
+                                    (file.meta as Record<string, unknown>).objectPath = objectPath;
+                                    (file.meta as Record<string, unknown>).fileName = file.name;
+                                    return {
+                                      method: "PUT" as const,
+                                      url: uploadURL,
+                                      headers: { "Content-Type": file.type || "application/octet-stream" },
+                                    };
+                                  }}
+                                  onComplete={(result) => {
+                                    const file = result.successful?.[0];
+                                    if (file?.meta?.objectPath) {
+                                      setInsurancePolicyPath(file.meta.objectPath as string);
+                                      setInsurancePolicyFileName(file.meta.fileName as string);
+                                    }
+                                  }}
+                                  buttonClassName="w-full"
+                                >
+                                  <Upload className="h-4 w-4 mr-1" />
+                                  Subir Póliza de Seguro
+                                </ObjectUploader>
+                              )}
+                            </div>
+
+                            {/* Plan de Emergencia */}
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium">Plan de Emergencia</label>
+                              {emergencyPlanPath ? (
+                                <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-md">
+                                  <FileText className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm flex-1 truncate">{emergencyPlanFileName || "Documento cargado"}</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setEmergencyPlanPath(null);
+                                      setEmergencyPlanFileName(null);
+                                    }}
+                                    data-testid="button-remove-emergency-plan"
+                                  >
+                                    <X className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <ObjectUploader
+                                  maxNumberOfFiles={1}
+                                  maxFileSize={20 * 1024 * 1024}
+                                  onGetUploadParameters={async (file) => {
+                                    const res = await fetch("/api/uploads/request-url", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        name: file.name,
+                                        size: file.size,
+                                        contentType: file.type,
+                                      }),
+                                    });
+                                    if (!res.ok) throw new Error("Failed to get upload URL");
+                                    const { uploadURL, objectPath } = await res.json();
+                                    (file.meta as Record<string, unknown>).objectPath = objectPath;
+                                    (file.meta as Record<string, unknown>).fileName = file.name;
+                                    return {
+                                      method: "PUT" as const,
+                                      url: uploadURL,
+                                      headers: { "Content-Type": file.type || "application/octet-stream" },
+                                    };
+                                  }}
+                                  onComplete={(result) => {
+                                    const file = result.successful?.[0];
+                                    if (file?.meta?.objectPath) {
+                                      setEmergencyPlanPath(file.meta.objectPath as string);
+                                      setEmergencyPlanFileName(file.meta.fileName as string);
+                                    }
+                                  }}
+                                  buttonClassName="w-full"
+                                >
+                                  <Upload className="h-4 w-4 mr-1" />
+                                  Subir Plan de Emergencia
+                                </ObjectUploader>
+                              )}
+                            </div>
+
+                            {/* Contrato BUMA */}
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium">Contrato BUMA con Edificio</label>
+                              {bumaContractPath ? (
+                                <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-md">
+                                  <FileText className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm flex-1 truncate">{bumaContractFileName || "Documento cargado"}</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setBumaContractPath(null);
+                                      setBumaContractFileName(null);
+                                    }}
+                                    data-testid="button-remove-buma-contract"
+                                  >
+                                    <X className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <ObjectUploader
+                                  maxNumberOfFiles={1}
+                                  maxFileSize={20 * 1024 * 1024}
+                                  onGetUploadParameters={async (file) => {
+                                    const res = await fetch("/api/uploads/request-url", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        name: file.name,
+                                        size: file.size,
+                                        contentType: file.type,
+                                      }),
+                                    });
+                                    if (!res.ok) throw new Error("Failed to get upload URL");
+                                    const { uploadURL, objectPath } = await res.json();
+                                    (file.meta as Record<string, unknown>).objectPath = objectPath;
+                                    (file.meta as Record<string, unknown>).fileName = file.name;
+                                    return {
+                                      method: "PUT" as const,
+                                      url: uploadURL,
+                                      headers: { "Content-Type": file.type || "application/octet-stream" },
+                                    };
+                                  }}
+                                  onComplete={(result) => {
+                                    const file = result.successful?.[0];
+                                    if (file?.meta?.objectPath) {
+                                      setBumaContractPath(file.meta.objectPath as string);
+                                      setBumaContractFileName(file.meta.fileName as string);
+                                    }
+                                  }}
+                                  buttonClassName="w-full"
+                                >
+                                  <Upload className="h-4 w-4 mr-1" />
+                                  Subir Contrato BUMA
+                                </ObjectUploader>
+                              )}
+                            </div>
+
+                            {/* Contrato SW Administración */}
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium">Contrato SW de Administración</label>
+                              {adminSoftwareContractPath ? (
+                                <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-md">
+                                  <FileText className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm flex-1 truncate">{adminSoftwareContractFileName || "Documento cargado"}</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setAdminSoftwareContractPath(null);
+                                      setAdminSoftwareContractFileName(null);
+                                    }}
+                                    data-testid="button-remove-sw-contract"
+                                  >
+                                    <X className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <ObjectUploader
+                                  maxNumberOfFiles={1}
+                                  maxFileSize={20 * 1024 * 1024}
+                                  onGetUploadParameters={async (file) => {
+                                    const res = await fetch("/api/uploads/request-url", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        name: file.name,
+                                        size: file.size,
+                                        contentType: file.type,
+                                      }),
+                                    });
+                                    if (!res.ok) throw new Error("Failed to get upload URL");
+                                    const { uploadURL, objectPath } = await res.json();
+                                    (file.meta as Record<string, unknown>).objectPath = objectPath;
+                                    (file.meta as Record<string, unknown>).fileName = file.name;
+                                    return {
+                                      method: "PUT" as const,
+                                      url: uploadURL,
+                                      headers: { "Content-Type": file.type || "application/octet-stream" },
+                                    };
+                                  }}
+                                  onComplete={(result) => {
+                                    const file = result.successful?.[0];
+                                    if (file?.meta?.objectPath) {
+                                      setAdminSoftwareContractPath(file.meta.objectPath as string);
+                                      setAdminSoftwareContractFileName(file.meta.fileName as string);
+                                    }
+                                  }}
+                                  buttonClassName="w-full"
+                                >
+                                  <Upload className="h-4 w-4 mr-1" />
+                                  Subir Contrato SW Administración
+                                </ObjectUploader>
+                              )}
+                            </div>
+
+                            {/* Poderes de Administración BUMA */}
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium">Poderes de Administración BUMA</label>
+                              {bumaAdminPowersPath ? (
+                                <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-md">
+                                  <FileText className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm flex-1 truncate">{bumaAdminPowersFileName || "Documento cargado"}</span>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setBumaAdminPowersPath(null);
+                                      setBumaAdminPowersFileName(null);
+                                    }}
+                                    data-testid="button-remove-admin-powers"
+                                  >
+                                    <X className="h-4 w-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              ) : (
+                                <ObjectUploader
+                                  maxNumberOfFiles={1}
+                                  maxFileSize={20 * 1024 * 1024}
+                                  onGetUploadParameters={async (file) => {
+                                    const res = await fetch("/api/uploads/request-url", {
+                                      method: "POST",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({
+                                        name: file.name,
+                                        size: file.size,
+                                        contentType: file.type,
+                                      }),
+                                    });
+                                    if (!res.ok) throw new Error("Failed to get upload URL");
+                                    const { uploadURL, objectPath } = await res.json();
+                                    (file.meta as Record<string, unknown>).objectPath = objectPath;
+                                    (file.meta as Record<string, unknown>).fileName = file.name;
+                                    return {
+                                      method: "PUT" as const,
+                                      url: uploadURL,
+                                      headers: { "Content-Type": file.type || "application/octet-stream" },
+                                    };
+                                  }}
+                                  onComplete={(result) => {
+                                    const file = result.successful?.[0];
+                                    if (file?.meta?.objectPath) {
+                                      setBumaAdminPowersPath(file.meta.objectPath as string);
+                                      setBumaAdminPowersFileName(file.meta.fileName as string);
+                                    }
+                                  }}
+                                  buttonClassName="w-full"
+                                >
+                                  <Upload className="h-4 w-4 mr-1" />
+                                  Subir Poderes de Administración
+                                </ObjectUploader>
+                              )}
+                            </div>
+
+                            <p className="text-xs text-muted-foreground">
+                              Los documentos son opcionales. Puede agregarlos después desde el detalle del edificio.
+                            </p>
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
 
                     <div className="flex gap-2 pt-4">
                       <Button
@@ -892,12 +1303,17 @@ export default function Buildings() {
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between gap-2">
-                    <Link href={`/edificios/${building.id}`}>
-                      <CardTitle className="text-lg hover:underline cursor-pointer" data-testid={`link-building-name-${building.id}`}>
-                        {building.name}
-                      </CardTitle>
-                    </Link>
-                    {getStatusBadge(building.status, !!building.regulationDocumentUrl)}
+                    <div className="flex items-center gap-2">
+                      <Link href={`/edificios/${building.id}`}>
+                        <CardTitle className="text-lg hover:underline cursor-pointer" data-testid={`link-building-name-${building.id}`}>
+                          {building.name}
+                        </CardTitle>
+                      </Link>
+                      {!hasCompleteDocumentation(building) && (
+                        <Flag className="h-4 w-4 text-destructive" title="Documentación incompleta" />
+                      )}
+                    </div>
+                    {getStatusBadge(building.status, building)}
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -909,6 +1325,24 @@ export default function Buildings() {
                     <User className="h-4 w-4 flex-shrink-0" />
                     <span>{building.executiveName || "Sin asignar"}</span>
                   </div>
+                  {/* Insurance policy traffic light */}
+                  {building.insurerName && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Shield className="h-4 w-4 flex-shrink-0" />
+                      <span className="text-muted-foreground">{building.insurerName}</span>
+                      {(() => {
+                        const insuranceStatus = getInsuranceTrafficLight(building);
+                        if (insuranceStatus === "rojo") {
+                          return <Badge variant="destructive" className="text-xs">Póliza Vencida</Badge>;
+                        } else if (insuranceStatus === "amarillo") {
+                          return <Badge className="text-xs bg-yellow-500 hover:bg-yellow-600">Próx. Vencer</Badge>;
+                        } else if (insuranceStatus === "verde") {
+                          return <Badge className="text-xs bg-green-500 hover:bg-green-600">Vigente</Badge>;
+                        }
+                        return null;
+                      })()}
+                    </div>
+                  )}
                   {(building.departmentCount || building.elevatorCount) ? (
                     <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
                       {building.departmentCount ? (
