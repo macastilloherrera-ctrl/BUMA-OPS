@@ -162,6 +162,15 @@ export const buildings = pgTable("buildings", {
   gateCount: integer("gate_count").default(0),
   extinguisherCount: integer("extinguisher_count").default(0),
   visitorParkingCount: integer("visitor_parking_count").default(0),
+  // Insurance policy fields
+  insurancePolicyUrl: text("insurance_policy_url"),
+  insuranceExpiryDate: timestamp("insurance_expiry_date"),
+  insurerName: varchar("insurer_name", { length: 255 }),
+  // Additional documents
+  emergencyPlanUrl: text("emergency_plan_url"),
+  bumaContractUrl: text("buma_contract_url"),
+  adminSoftwareContractUrl: text("admin_software_contract_url"),
+  bumaAdminPowersUrl: text("buma_admin_powers_url"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
