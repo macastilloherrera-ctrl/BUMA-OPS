@@ -5118,6 +5118,9 @@ export async function registerRoutes(
   // Insurance Policy Expiry Check & Auto-Ticket Generation
   // ==========================================
   
+  // Guard to prevent multiple scheduler registrations during hot reloads
+  const INSURANCE_CHECK_INITIALIZED = (global as any).__INSURANCE_CHECK_INITIALIZED__;
+  
   // Check insurance policies and generate tickets for expiring ones
   app.post("/api/system/check-insurance-policies", isAuthenticated, async (req, res) => {
     try {
@@ -5135,9 +5138,14 @@ export async function registerRoutes(
     }
   });
 
+  // Closed statuses that indicate ticket is resolved/done
+  const CLOSED_STATUSES = ["resuelto"];
+
   // Function to check insurance policies and create tickets
   async function checkAndCreateInsuranceTickets(): Promise<{ created: number; skipped: number; errors: number }> {
     const buildings = await storage.getBuildings();
+    // Load all tickets ONCE before iterating (avoid N+1 queries)
+    const allTickets = await storage.getTickets();
     const now = new Date();
     const nowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     
@@ -5161,12 +5169,11 @@ export async function registerRoutes(
           continue;
         }
 
-        // Check if there's already an open ticket for this insurance policy
-        const existingTickets = await storage.getTickets();
-        const hasOpenInsuranceTicket = existingTickets.some(ticket => 
+        // Check if there's already an open insurance ticket for this building
+        const hasOpenInsuranceTicket = allTickets.some(ticket => 
           ticket.buildingId === building.id &&
-          ticket.description.includes("[PÓLIZA DE SEGURO]") &&
-          !["resuelto"].includes(ticket.status)
+          ticket.description.startsWith("[PÓLIZA DE SEGURO]") &&
+          !CLOSED_STATUSES.includes(ticket.status)
         );
 
         if (hasOpenInsuranceTicket) {
@@ -5189,7 +5196,17 @@ export async function registerRoutes(
           urgencyText = `Vence en ${daysRemaining} días`;
         }
 
-        // Create the ticket
+        // Create the ticket - use building's executive as creator, or first super_admin
+        let creatorId = building.assignedExecutiveId;
+        if (!creatorId) {
+          // Fallback: use a gerente_general or super_admin
+          const profiles = await storage.getUserProfiles();
+          const adminProfile = profiles.find(p => 
+            p.role === "gerente_general" || p.role === "super_admin"
+          );
+          creatorId = adminProfile?.userId || "SYSTEM";
+        }
+
         const description = `[PÓLIZA DE SEGURO] ${urgencyText}\n\nEdificio: ${building.name}\nAseguradora: ${building.insurerName || "No especificada"}\nFecha vencimiento: ${expiryDate.toLocaleDateString("es-CL")}\n\nSe requiere gestionar la renovación de la póliza de seguro del edificio.`;
 
         await storage.createTicket({
@@ -5202,7 +5219,7 @@ export async function registerRoutes(
           requiresMaintainerVisit: false,
           requiresExecutiveVisit: true,
           requiresInvoice: true,
-          createdBy: "SYSTEM",
+          createdBy: creatorId,
           endDate: expiryDate,
         });
 
@@ -5218,34 +5235,41 @@ export async function registerRoutes(
     return { created, skipped, errors };
   }
 
-  // Run insurance check on server startup and then daily
-  setTimeout(async () => {
-    console.log("[Insurance Check] Running initial insurance policy check...");
-    await checkAndCreateInsuranceTickets();
-  }, 10000); // Run 10 seconds after startup
-
-  // Schedule daily check at 8:00 AM
-  const scheduleDaily = () => {
-    const now = new Date();
-    const next8AM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0, 0);
-    if (now >= next8AM) {
-      next8AM.setDate(next8AM.getDate() + 1);
-    }
-    const msUntilNext8AM = next8AM.getTime() - now.getTime();
+  // Run insurance check on server startup and schedule daily (with guard for hot reloads)
+  if (!INSURANCE_CHECK_INITIALIZED) {
+    (global as any).__INSURANCE_CHECK_INITIALIZED__ = true;
     
+    // Initial check 10 seconds after startup
     setTimeout(async () => {
-      console.log("[Insurance Check] Running scheduled daily insurance policy check...");
+      console.log("[Insurance Check] Running initial insurance policy check...");
       await checkAndCreateInsuranceTickets();
-      // Schedule next check
-      setInterval(async () => {
+    }, 10000);
+
+    // Schedule daily check at 8:00 AM
+    const scheduleDaily = () => {
+      const now = new Date();
+      const next8AM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0, 0);
+      if (now >= next8AM) {
+        next8AM.setDate(next8AM.getDate() + 1);
+      }
+      const msUntilNext8AM = next8AM.getTime() - now.getTime();
+      
+      setTimeout(async () => {
         console.log("[Insurance Check] Running scheduled daily insurance policy check...");
         await checkAndCreateInsuranceTickets();
-      }, 24 * 60 * 60 * 1000); // Every 24 hours
-    }, msUntilNext8AM);
-    
-    console.log(`[Insurance Check] Next scheduled check at ${next8AM.toLocaleString()}`);
-  };
-  scheduleDaily();
+        // Schedule subsequent checks every 24 hours
+        setInterval(async () => {
+          console.log("[Insurance Check] Running scheduled daily insurance policy check...");
+          await checkAndCreateInsuranceTickets();
+        }, 24 * 60 * 60 * 1000);
+      }, msUntilNext8AM);
+      
+      console.log(`[Insurance Check] Next scheduled check at ${next8AM.toLocaleString()}`);
+    };
+    scheduleDaily();
+  } else {
+    console.log("[Insurance Check] Scheduler already initialized, skipping...");
+  }
 
   return httpServer;
 }
