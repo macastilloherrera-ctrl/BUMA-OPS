@@ -12,8 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { ArrowLeft, Plus, Trash2, GripVertical, CalendarCheck, RotateCcw } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, GripVertical, CalendarCheck, RotateCcw, Upload, FileText, Award, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { ObjectUploader } from "@/components/ObjectUploader";
 import type { Building, User } from "@shared/schema";
 
 const projectSchema = z.object({
@@ -63,9 +64,16 @@ function getNextReviewNumber(milestones: { name: string; isReview?: boolean }[])
   return maxNum + 1;
 }
 
+interface UploadedQuote {
+  name: string;
+  objectPath: string;
+  isAdjudicada: boolean;
+}
+
 export default function NewProject() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const [uploadedQuotes, setUploadedQuotes] = useState<UploadedQuote[]>([]);
 
   const { data: buildings } = useQuery<Building[]>({
     queryKey: ["/api/buildings"],
@@ -139,11 +147,36 @@ export default function NewProject() {
           isReview: m.isReview || false,
         })),
       };
-      return apiRequest("POST", "/api/projects", payload);
+      const res = await apiRequest("POST", "/api/projects", payload);
+      const project = await res.json();
+      return project;
     },
-    onSuccess: () => {
+    onSuccess: async (project: any) => {
+      let failedQuotes = 0;
+      if (uploadedQuotes.length > 0) {
+        for (const quote of uploadedQuotes) {
+          try {
+            await apiRequest("POST", `/api/projects/${project.id}/documents`, {
+              name: quote.name,
+              documentType: quote.isAdjudicada ? "adjudicacion" : "cotizacion",
+              fileUrl: quote.objectPath,
+            });
+          } catch (err) {
+            console.error("Error creating quote document:", err);
+            failedQuotes++;
+          }
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
-      toast({ title: "Proyecto creado exitosamente" });
+      if (failedQuotes > 0) {
+        toast({
+          title: "Proyecto creado con advertencia",
+          description: `${failedQuotes} cotización(es) no pudieron ser registradas. Puede subirlas desde el detalle del proyecto.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Proyecto creado exitosamente" });
+      }
       navigate("/proyectos");
     },
     onError: (error: any) => {
@@ -154,6 +187,21 @@ export default function NewProject() {
       });
     },
   });
+
+  const removeQuote = (index: number) => {
+    setUploadedQuotes(prev => {
+      const wasAdjudicada = prev[index]?.isAdjudicada;
+      const remaining = prev.filter((_, i) => i !== index);
+      if (wasAdjudicada && remaining.length > 0) {
+        remaining[0].isAdjudicada = true;
+      }
+      return remaining;
+    });
+  };
+
+  const setQuoteAdjudicada = (index: number) => {
+    setUploadedQuotes(prev => prev.map((q, i) => ({ ...q, isAdjudicada: i === index })));
+  };
 
   const onSubmit = (data: ProjectFormData) => {
     createProjectMutation.mutate(data);
@@ -435,6 +483,100 @@ export default function NewProject() {
                   </FormItem>
                 )}
               />
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <label className="text-sm font-medium">Cotizaciones Adjuntas</label>
+                  <ObjectUploader
+                    maxNumberOfFiles={1}
+                    maxFileSize={20 * 1024 * 1024}
+                    onGetUploadParameters={async (file) => {
+                      const res = await fetch("/api/uploads/request-url", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          name: file.name,
+                          size: file.size,
+                          contentType: file.type,
+                        }),
+                      });
+                      if (!res.ok) throw new Error("Failed to get upload URL");
+                      const { uploadURL, objectPath } = await res.json();
+                      (file.meta as Record<string, unknown>).objectPath = objectPath;
+                      (file.meta as Record<string, unknown>).fileName = file.name;
+                      return {
+                        method: "PUT" as const,
+                        url: uploadURL,
+                        headers: { "Content-Type": file.type || "application/octet-stream" },
+                      };
+                    }}
+                    onComplete={(result) => {
+                      const file = result.successful?.[0];
+                      if (file?.meta?.objectPath) {
+                        setUploadedQuotes(prev => [...prev, {
+                          name: (file.meta.fileName as string) || "Cotización",
+                          objectPath: file.meta.objectPath as string,
+                          isAdjudicada: prev.length === 0,
+                        }]);
+                        toast({ title: "Cotización subida" });
+                      }
+                    }}
+                    buttonClassName=""
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Subir Cotización
+                  </ObjectUploader>
+                </div>
+
+                {uploadedQuotes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No se han subido cotizaciones aún. Puede subirlas ahora o después de crear el proyecto.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {uploadedQuotes.map((quote, index) => (
+                      <div
+                        key={index}
+                        className={`flex items-center gap-3 p-3 border rounded-lg ${quote.isAdjudicada ? "border-green-300 bg-green-50/50 dark:border-green-800 dark:bg-green-950/30" : ""}`}
+                        data-testid={`uploaded-quote-${index}`}
+                      >
+                        <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{quote.name}</p>
+                          {quote.isAdjudicada && (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <Award className="h-3 w-3 text-green-600" />
+                              <span className="text-xs text-green-600 font-medium">Cotización Adjudicada</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {!quote.isAdjudicada && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setQuoteAdjudicada(index)}
+                              data-testid={`button-adjudicar-${index}`}
+                            >
+                              <Award className="h-3 w-3 mr-1" />
+                              Adjudicar
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="text-destructive"
+                            onClick={() => removeQuote(index)}
+                            data-testid={`button-remove-quote-${index}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
 

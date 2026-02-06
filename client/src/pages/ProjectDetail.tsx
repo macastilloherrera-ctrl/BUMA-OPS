@@ -32,8 +32,11 @@ import {
   Trash2,
   CalendarCheck,
   RotateCcw,
-  ExternalLink
+  ExternalLink,
+  Award,
+  Download
 } from "lucide-react";
+import { ObjectUploader } from "@/components/ObjectUploader";
 import type { 
   Project, 
   ProjectMilestone, 
@@ -203,6 +206,64 @@ export default function ProjectDetail() {
     },
   });
 
+  const uploadDocumentMutation = useMutation({
+    mutationFn: async (data: { name: string; documentType: string; fileUrl: string; description?: string }) => {
+      return apiRequest("POST", `/api/projects/${id}/documents`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
+      toast({ title: "Documento subido exitosamente" });
+    },
+    onError: () => {
+      toast({ title: "Error al registrar documento", variant: "destructive" });
+    },
+  });
+
+  const setAdjudicadaMutation = useMutation({
+    mutationFn: async (documentId: string) => {
+      return apiRequest("PATCH", `/api/projects/${id}/documents/${documentId}/set-adjudicada`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
+      toast({ title: "Cotización marcada como adjudicada" });
+    },
+    onError: () => {
+      toast({ title: "Error al marcar cotización", variant: "destructive" });
+    },
+  });
+
+  const deleteDocumentMutation = useMutation({
+    mutationFn: async (documentId: string) => {
+      return apiRequest("DELETE", `/api/projects/${id}/documents/${documentId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
+      toast({ title: "Documento eliminado" });
+    },
+    onError: () => {
+      toast({ title: "Error al eliminar documento", variant: "destructive" });
+    },
+  });
+
+  const handleDownloadDocument = async (doc: ProjectDocument) => {
+    try {
+      const objectPath = doc.fileUrl.startsWith("/objects/") ? doc.fileUrl : `/objects/${doc.fileUrl}`;
+      const response = await fetch(objectPath);
+      if (!response.ok) throw new Error("Error al descargar");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = doc.name;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Error al descargar archivo", variant: "destructive" });
+    }
+  };
+
   const isManager = (user as any)?.role && ["super_admin", "gerente_general", "gerente_operaciones", "gerente_comercial"].includes((user as any).role);
 
   const getNextReviewNumber = () => {
@@ -353,7 +414,7 @@ export default function ProjectDetail() {
             Fiscalizaciones ({project.updates.length})
           </TabsTrigger>
           <TabsTrigger value="documents" data-testid="tab-documents">
-            Documentos ({project.documents.length})
+            Cotizaciones y Documentos ({project.documents.length})
           </TabsTrigger>
         </TabsList>
 
@@ -539,42 +600,223 @@ export default function ProjectDetail() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="documents" className="mt-4">
+        <TabsContent value="documents" className="mt-4 space-y-4">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Documentos del Proyecto</CardTitle>
-              <Button variant="outline" data-testid="button-upload-document">
-                <Upload className="h-4 w-4 mr-2" />
-                Subir Documento
-              </Button>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
+              <CardTitle>Cotizaciones</CardTitle>
+              {isManager && (
+                <ObjectUploader
+                  maxNumberOfFiles={1}
+                  maxFileSize={20 * 1024 * 1024}
+                  onGetUploadParameters={async (file) => {
+                    const res = await fetch("/api/uploads/request-url", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        name: file.name,
+                        size: file.size,
+                        contentType: file.type,
+                      }),
+                    });
+                    if (!res.ok) throw new Error("Failed to get upload URL");
+                    const { uploadURL, objectPath } = await res.json();
+                    (file.meta as Record<string, unknown>).objectPath = objectPath;
+                    (file.meta as Record<string, unknown>).fileName = file.name;
+                    return {
+                      method: "PUT" as const,
+                      url: uploadURL,
+                      headers: { "Content-Type": file.type || "application/octet-stream" },
+                    };
+                  }}
+                  onComplete={(result) => {
+                    const file = result.successful?.[0];
+                    if (file?.meta?.objectPath) {
+                      uploadDocumentMutation.mutate({
+                        name: (file.meta.fileName as string) || "Cotización",
+                        documentType: "cotizacion",
+                        fileUrl: file.meta.objectPath as string,
+                      });
+                    }
+                  }}
+                  buttonClassName=""
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Subir Cotización
+                </ObjectUploader>
+              )}
             </CardHeader>
             <CardContent>
-              {project.documents.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">No hay documentos cargados</p>
-              ) : (
-                <div className="space-y-2">
-                  {project.documents.map((doc) => (
-                    <div 
-                      key={doc.id} 
-                      className="flex items-center gap-4 p-3 border rounded-lg hover-elevate"
-                      data-testid={`document-${doc.id}`}
-                    >
-                      <FileText className="h-5 w-5 text-muted-foreground" />
-                      <div className="flex-1">
-                        <p className="font-medium">{doc.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {documentTypeLabels[doc.documentType]} • {formatDate(doc.createdAt)}
-                        </p>
-                      </div>
-                      <Button variant="ghost" size="sm" asChild>
-                        <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">
-                          Ver
-                        </a>
-                      </Button>
+              {(() => {
+                const quoteDocuments = project.documents.filter(d => d.documentType === "cotizacion" || d.documentType === "adjudicacion");
+                const adjudicadaDoc = quoteDocuments.find(d => d.documentType === "adjudicacion");
+                const regularQuotes = quoteDocuments.filter(d => d.documentType === "cotizacion");
+
+                if (quoteDocuments.length === 0) {
+                  return (
+                    <div className="text-center py-6">
+                      <FileText className="h-10 w-10 mx-auto text-muted-foreground mb-2" />
+                      <p className="text-muted-foreground">No hay cotizaciones cargadas</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {project.quotesReceived ? `Se indicaron ${project.quotesReceived} cotizaciones recibidas` : "Suba las cotizaciones recibidas para este proyecto"}
+                      </p>
                     </div>
-                  ))}
-                </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-4">
+                    {adjudicadaDoc && (
+                      <div className="p-4 border-2 border-green-300 dark:border-green-800 rounded-lg bg-green-50/50 dark:bg-green-950/30" data-testid={`quote-adjudicada-${adjudicadaDoc.id}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <Award className="h-5 w-5 text-green-600" />
+                          <span className="font-semibold text-green-700 dark:text-green-400">Cotización Adjudicada</span>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium truncate">{adjudicadaDoc.name}</p>
+                            <p className="text-sm text-muted-foreground">{formatDate(adjudicadaDoc.createdAt)}</p>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <Button variant="ghost" size="icon" onClick={() => handleDownloadDocument(adjudicadaDoc)} title="Descargar" data-testid={`button-download-${adjudicadaDoc.id}`}>
+                              <Download className="h-4 w-4" />
+                            </Button>
+                            {isManager && (
+                              <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deleteDocumentMutation.mutate(adjudicadaDoc.id)} title="Eliminar" data-testid={`button-delete-doc-${adjudicadaDoc.id}`}>
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {regularQuotes.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium text-muted-foreground">
+                          Otras cotizaciones ({regularQuotes.length})
+                        </p>
+                        {regularQuotes.map((doc) => (
+                          <div key={doc.id} className="flex items-center gap-4 p-3 border rounded-lg" data-testid={`quote-${doc.id}`}>
+                            <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{doc.name}</p>
+                              <p className="text-sm text-muted-foreground">{formatDate(doc.createdAt)}</p>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {isManager && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setAdjudicadaMutation.mutate(doc.id)}
+                                  disabled={setAdjudicadaMutation.isPending}
+                                  data-testid={`button-set-adjudicada-${doc.id}`}
+                                >
+                                  <Award className="h-3 w-3 mr-1" />
+                                  Adjudicar
+                                </Button>
+                              )}
+                              <Button variant="ghost" size="icon" onClick={() => handleDownloadDocument(doc)} title="Descargar" data-testid={`button-download-${doc.id}`}>
+                                <Download className="h-4 w-4" />
+                              </Button>
+                              {isManager && (
+                                <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deleteDocumentMutation.mutate(doc.id)} title="Eliminar" data-testid={`button-delete-doc-${doc.id}`}>
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {project.quotesReceived && quoteDocuments.length < project.quotesReceived && (
+                      <p className="text-sm text-muted-foreground">
+                        Se indicaron {project.quotesReceived} cotizaciones recibidas, faltan {project.quotesReceived - quoteDocuments.length} por subir.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
+              <CardTitle>Otros Documentos</CardTitle>
+              {isManager && (
+                <ObjectUploader
+                  maxNumberOfFiles={1}
+                  maxFileSize={20 * 1024 * 1024}
+                  onGetUploadParameters={async (file) => {
+                    const res = await fetch("/api/uploads/request-url", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        name: file.name,
+                        size: file.size,
+                        contentType: file.type,
+                      }),
+                    });
+                    if (!res.ok) throw new Error("Failed to get upload URL");
+                    const { uploadURL, objectPath } = await res.json();
+                    (file.meta as Record<string, unknown>).objectPath = objectPath;
+                    (file.meta as Record<string, unknown>).fileName = file.name;
+                    return {
+                      method: "PUT" as const,
+                      url: uploadURL,
+                      headers: { "Content-Type": file.type || "application/octet-stream" },
+                    };
+                  }}
+                  onComplete={(result) => {
+                    const file = result.successful?.[0];
+                    if (file?.meta?.objectPath) {
+                      uploadDocumentMutation.mutate({
+                        name: (file.meta.fileName as string) || "Documento",
+                        documentType: "otro",
+                        fileUrl: file.meta.objectPath as string,
+                      });
+                    }
+                  }}
+                  buttonClassName=""
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Subir Documento
+                </ObjectUploader>
               )}
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const otherDocs = project.documents.filter(d => d.documentType !== "cotizacion" && d.documentType !== "adjudicacion");
+                if (otherDocs.length === 0) {
+                  return <p className="text-muted-foreground text-center py-6">No hay otros documentos cargados</p>;
+                }
+                return (
+                  <div className="space-y-2">
+                    {otherDocs.map((doc) => (
+                      <div key={doc.id} className="flex items-center gap-4 p-3 border rounded-lg" data-testid={`document-${doc.id}`}>
+                        <FileText className="h-5 w-5 text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{doc.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {documentTypeLabels[doc.documentType]} {"\u2022"} {formatDate(doc.createdAt)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button variant="ghost" size="icon" onClick={() => handleDownloadDocument(doc)} title="Descargar" data-testid={`button-download-${doc.id}`}>
+                            <Download className="h-4 w-4" />
+                          </Button>
+                          {isManager && (
+                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deleteDocumentMutation.mutate(doc.id)} title="Eliminar" data-testid={`button-delete-doc-${doc.id}`}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         </TabsContent>

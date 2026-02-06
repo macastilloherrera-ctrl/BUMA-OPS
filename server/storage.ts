@@ -295,6 +295,7 @@ export interface IStorage {
   // Project Documents
   getProjectDocuments(projectId: string): Promise<ProjectDocument[]>;
   createProjectDocument(doc: InsertProjectDocument): Promise<ProjectDocument>;
+  updateProjectDocument(id: string, data: Partial<InsertProjectDocument>): Promise<ProjectDocument>;
   deleteProjectDocument(id: string): Promise<boolean>;
 
   // Project Updates
@@ -1239,6 +1240,11 @@ export class DatabaseStorage implements IStorage {
   async createProjectDocument(doc: InsertProjectDocument): Promise<ProjectDocument> {
     const [newDoc] = await db.insert(projectDocuments).values(doc).returning();
     return newDoc;
+  }
+
+  async updateProjectDocument(id: string, data: Partial<InsertProjectDocument>): Promise<ProjectDocument> {
+    const [updated] = await db.update(projectDocuments).set(data).where(eq(projectDocuments.id, id)).returning();
+    return updated;
   }
 
   async deleteProjectDocument(id: string): Promise<boolean> {

@@ -4951,6 +4951,28 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/projects/:projectId/documents/:id/set-adjudicada", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !canManageProjects(profile.role)) {
+        return res.status(403).json({ error: "No tiene permisos" });
+      }
+      
+      const documents = await storage.getProjectDocuments(req.params.projectId);
+      for (const doc of documents) {
+        if (doc.documentType === "adjudicacion") {
+          await storage.updateProjectDocument(doc.id, { documentType: "cotizacion" });
+        }
+      }
+      
+      const updated = await storage.updateProjectDocument(req.params.id, { documentType: "adjudicacion" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error setting adjudicada:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   // Delete project document
   app.delete("/api/projects/:projectId/documents/:id", isAuthenticated, async (req, res) => {
     try {
