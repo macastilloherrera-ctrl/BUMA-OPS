@@ -1028,7 +1028,10 @@ export async function registerRoutes(
         return res.status(403).json({ error: "No tienes permiso para iniciar esta visita" });
       }
       
-      // Validate status transition
+      if (existingVisit.status === "en_curso") {
+        return res.json(existingVisit);
+      }
+      
       if (!["programada", "atrasada"].includes(existingVisit.status)) {
         return res.status(400).json({ error: "Solo se pueden iniciar visitas programadas o atrasadas" });
       }
