@@ -577,96 +577,6 @@ export default function NewProject() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
-              <CardTitle>Revisiones de Terreno</CardTitle>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => appendReview({ date: "", description: "" })}
-                data-testid="button-add-review"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Agregar Revisión
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Agregue las fechas de inspección de terreno del proyecto. Cada revisión generará automáticamente una visita programada y aparecerá en el calendario.
-              </p>
-              {reviewFields.length === 0 ? (
-                <div className="text-center py-6 border border-dashed rounded-lg">
-                  <CalendarCheck className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">No hay revisiones programadas</p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="mt-2"
-                    onClick={() => appendReview({ date: "", description: "" })}
-                    data-testid="button-add-review-empty"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Agregar primera revisión
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {reviewFields.map((field, index) => (
-                    <div
-                      key={field.id}
-                      className="flex items-start gap-3 p-3 border rounded-lg border-purple-200 bg-purple-50/50 dark:border-purple-900 dark:bg-purple-950/30"
-                      data-testid={`review-date-${index}`}
-                    >
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 text-sm font-medium shrink-0 mt-5">
-                        {index + 1}
-                      </div>
-                      <div className="flex-1 grid md:grid-cols-2 gap-3">
-                        <FormField
-                          control={form.control}
-                          name={`reviewDates.${index}.date`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Fecha de Revisión *</FormLabel>
-                              <FormControl>
-                                <Input type="date" {...field} data-testid={`input-review-date-${index}`} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name={`reviewDates.${index}.description`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Observación (opcional)</FormLabel>
-                              <FormControl>
-                                <Input placeholder="Ej: Revisar avance de estructura" {...field} data-testid={`input-review-desc-${index}`} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive shrink-0 mt-5"
-                        onClick={() => removeReview(index)}
-                        data-testid={`button-remove-review-${index}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
               <CardTitle>Hitos del Proyecto</CardTitle>
               <Button
                 type="button"
@@ -681,81 +591,194 @@ export default function NewProject() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {fields.map((field, index) => (
-                  <div 
-                    key={field.id} 
-                    className="flex gap-4 items-start p-4 border rounded-lg"
-                    data-testid={`milestone-${index}`}
-                  >
-                    <GripVertical className="h-5 w-5 text-muted-foreground mt-2 cursor-move shrink-0" />
-                    <div className="flex-1 space-y-3">
-                      <div className="grid md:grid-cols-3 gap-4">
-                        <FormField
-                          control={form.control}
-                          name={`milestones.${index}.name`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Nombre *</FormLabel>
-                              <FormControl>
-                                <Input {...field} data-testid={`input-milestone-name-${index}`} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name={`milestones.${index}.description`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Descripción</FormLabel>
-                              <FormControl>
-                                <Input {...field} data-testid={`input-milestone-desc-${index}`} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name={`milestones.${index}.dueDate`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Fecha Límite</FormLabel>
-                              <FormControl>
-                                <Input type="date" {...field} data-testid={`input-milestone-date-${index}`} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
+                {(() => {
+                  const inicioObrasIdx = fields.findIndex(f =>
+                    (f as any).name?.toLowerCase().includes("inicio de obras") || (f as any).name?.toLowerCase().includes("inicio obra")
+                  );
+                  const recepcionProvisoriaIdx = fields.findIndex(f =>
+                    (f as any).name?.toLowerCase().includes("recepción provisoria") || (f as any).name?.toLowerCase().includes("recepcion provisoria")
+                  );
+                  const insertAfterIdx = inicioObrasIdx >= 0 ? inicioObrasIdx : (recepcionProvisoriaIdx >= 0 ? recepcionProvisoriaIdx - 1 : fields.length - 1);
+
+                  const renderMilestoneField = (field: any, index: number) => (
+                    <div 
+                      key={field.id} 
+                      className="flex gap-4 items-start p-4 border rounded-lg"
+                      data-testid={`milestone-${index}`}
+                    >
+                      <GripVertical className="h-5 w-5 text-muted-foreground mt-2 cursor-move shrink-0" />
+                      <div className="flex-1 space-y-3">
+                        <div className="grid md:grid-cols-3 gap-4">
+                          <FormField
+                            control={form.control}
+                            name={`milestones.${index}.name`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Nombre *</FormLabel>
+                                <FormControl>
+                                  <Input {...field} data-testid={`input-milestone-name-${index}`} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`milestones.${index}.description`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Descripción</FormLabel>
+                                <FormControl>
+                                  <Input {...field} data-testid={`input-milestone-desc-${index}`} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`milestones.${index}.dueDate`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Fecha Límite</FormLabel>
+                                <FormControl>
+                                  <Input type="date" {...field} data-testid={`input-milestone-date-${index}`} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-1 shrink-0">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => clearMilestone(index)}
+                          title="Limpiar datos del hito"
+                          data-testid={`button-clear-milestone-${index}`}
+                        >
+                          <RotateCcw className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => remove(index)}
+                          className="text-destructive"
+                          title="Eliminar hito"
+                          data-testid={`button-remove-milestone-${index}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-1 shrink-0">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => clearMilestone(index)}
-                        title="Limpiar datos del hito"
-                        data-testid={`button-clear-milestone-${index}`}
-                      >
-                        <RotateCcw className="h-4 w-4 text-muted-foreground" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => remove(index)}
-                        className="text-destructive"
-                        title="Eliminar hito"
-                        data-testid={`button-remove-milestone-${index}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+
+                  const beforeReviews = fields.slice(0, insertAfterIdx + 1);
+                  const afterReviews = fields.slice(insertAfterIdx + 1);
+
+                  return (
+                    <>
+                      {beforeReviews.map((field, i) => renderMilestoneField(field, i))}
+
+                      <div className="space-y-3 ml-4 pl-4 border-l-2 border-purple-300 dark:border-purple-700">
+                        <div className="flex items-center justify-between gap-2 py-1 flex-wrap">
+                          <div className="flex items-center gap-2">
+                            <CalendarCheck className="h-4 w-4 text-purple-600" />
+                            <span className="text-sm font-medium text-purple-600 dark:text-purple-400">
+                              Revisiones de Terreno ({reviewFields.length})
+                            </span>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => appendReview({ date: "", description: "" })}
+                            data-testid="button-add-review"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Agregar Revisión
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Cada revisión genera automáticamente una visita programada y aparece en el calendario.
+                        </p>
+                        {reviewFields.length === 0 ? (
+                          <div className="text-center py-4 border border-dashed rounded-lg">
+                            <p className="text-sm text-muted-foreground">No hay revisiones programadas</p>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="mt-2"
+                              onClick={() => appendReview({ date: "", description: "" })}
+                              data-testid="button-add-review-empty"
+                            >
+                              <Plus className="h-4 w-4 mr-2" />
+                              Agregar primera revisión
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {reviewFields.map((field, index) => (
+                              <div
+                                key={field.id}
+                                className="flex items-start gap-3 p-3 border rounded-lg border-purple-200 bg-purple-50/50 dark:border-purple-900 dark:bg-purple-950/30"
+                                data-testid={`review-date-${index}`}
+                              >
+                                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 text-sm font-medium shrink-0 mt-5">
+                                  {index + 1}
+                                </div>
+                                <div className="flex-1 grid md:grid-cols-2 gap-3">
+                                  <FormField
+                                    control={form.control}
+                                    name={`reviewDates.${index}.date`}
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel>Fecha de Revisión *</FormLabel>
+                                        <FormControl>
+                                          <Input type="date" {...field} data-testid={`input-review-date-${index}`} />
+                                        </FormControl>
+                                        <FormMessage />
+                                      </FormItem>
+                                    )}
+                                  />
+                                  <FormField
+                                    control={form.control}
+                                    name={`reviewDates.${index}.description`}
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <FormLabel>Observación (opcional)</FormLabel>
+                                        <FormControl>
+                                          <Input placeholder="Ej: Revisar avance de estructura" {...field} data-testid={`input-review-desc-${index}`} />
+                                        </FormControl>
+                                        <FormMessage />
+                                      </FormItem>
+                                    )}
+                                  />
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="text-destructive shrink-0 mt-5"
+                                  onClick={() => removeReview(index)}
+                                  data-testid={`button-remove-review-${index}`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {afterReviews.map((field, i) => renderMilestoneField(field, insertAfterIdx + 1 + i))}
+                    </>
+                  );
+                })()}
               </div>
             </CardContent>
           </Card>
