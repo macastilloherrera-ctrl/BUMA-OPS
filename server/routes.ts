@@ -1193,7 +1193,7 @@ export async function registerRoutes(
       }
 
       const updateData: any = {
-        status: "no_realizada",
+        status: "cancelada",
         cancellationType,
         cancellationReason,
         cancelledAt: new Date(),
