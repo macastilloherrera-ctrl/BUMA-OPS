@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Download, Calendar, Building2, Users, Clock, TrendingUp, AlertTriangle, CheckCircle, Info } from "lucide-react";
+import { Download, Calendar, Building2, Users, Clock, TrendingUp, AlertTriangle, CheckCircle, Info, ExternalLink } from "lucide-react";
 import type { Building } from "@shared/schema";
 
 interface VisitItem {
@@ -74,6 +75,7 @@ interface VisitResponse {
 }
 
 export default function ReportVisits() {
+  const [, navigate] = useLocation();
   const [selectedBuilding, setSelectedBuilding] = useState<string>("all");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
@@ -472,20 +474,39 @@ export default function ReportVisits() {
                           <TableHead>Tipo</TableHead>
                           <TableHead>Estado</TableHead>
                           <TableHead>Fecha Programada</TableHead>
-                          <TableHead>Duración</TableHead>
-                          <TableHead>Notas</TableHead>
+                          <TableHead>Duracion</TableHead>
+                          <TableHead className="min-w-[250px]">Notas / Observaciones</TableHead>
+                          <TableHead className="w-10"></TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {report.data.map((item) => (
-                          <TableRow key={item.id}>
+                          <TableRow
+                            key={item.id}
+                            className="cursor-pointer hover-elevate"
+                            onClick={() => navigate(`/visitas/${item.id}`)}
+                            data-testid={`row-visit-${item.id}`}
+                          >
                             <TableCell className="font-medium">{item.edificio}</TableCell>
                             <TableCell>{item.ejecutivo}</TableCell>
                             <TableCell>{item.tipo}</TableCell>
                             <TableCell>{getStatusBadge(item.estado)}</TableCell>
                             <TableCell>{formatDate(item.fechaProgramada)}</TableCell>
                             <TableCell>{item.duracionMinutos ? formatDuration(item.duracionMinutos) : "-"}</TableCell>
-                            <TableCell className="max-w-[200px] truncate">{item.notas || "-"}</TableCell>
+                            <TableCell className="min-w-[250px]">
+                              {item.notas && (
+                                <p className="text-sm" data-testid={`text-notes-${item.id}`}>{item.notas}</p>
+                              )}
+                              {item.observaciones && (
+                                <p className="text-sm text-muted-foreground mt-1" data-testid={`text-obs-${item.id}`}>
+                                  <span className="font-medium">Obs:</span> {item.observaciones}
+                                </p>
+                              )}
+                              {!item.notas && !item.observaciones && "-"}
+                            </TableCell>
+                            <TableCell>
+                              <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                            </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
