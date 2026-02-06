@@ -24,7 +24,8 @@ export const buildingStatusEnum = pgEnum("building_status", [
 
 export const visitTypeEnum = pgEnum("visit_type", [
   "rutina",
-  "urgente"
+  "urgente",
+  "revision_proyecto"
 ]);
 
 export const visitStatusEnum = pgEnum("visit_status", [

@@ -141,6 +141,10 @@ export default function Visits() {
                   <Badge variant="destructive" className="text-xs">
                     Urgente
                   </Badge>
+                ) : visit.type === "revision_proyecto" ? (
+                  <Badge variant="outline" className="text-xs">
+                    Rev. Proyecto
+                  </Badge>
                 ) : (
                   <Badge variant="outline" className="text-xs">
                     Rutina

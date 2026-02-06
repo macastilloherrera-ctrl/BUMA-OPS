@@ -151,7 +151,7 @@ export default function VisitDetail() {
                 </CardDescription>
               </div>
               <Badge variant={visit.type === "urgente" ? "destructive" : "outline"}>
-                {visit.type === "urgente" ? "Urgente" : "Rutina"}
+                {visit.type === "urgente" ? "Urgente" : visit.type === "revision_proyecto" ? "Revisión Proyecto" : "Rutina"}
               </Badge>
             </div>
           </CardHeader>
@@ -262,7 +262,7 @@ export default function VisitDetail() {
                     {visit.lastVisit.completedAt && format(new Date(visit.lastVisit.completedAt), "dd MMM yyyy", { locale: es })}
                   </p>
                   <p className="text-muted-foreground">
-                    {visit.lastVisit.type === "urgente" ? "Urgente" : "Rutina"}
+                    {visit.lastVisit.type === "urgente" ? "Urgente" : visit.lastVisit.type === "revision_proyecto" ? "Revisión Proyecto" : "Rutina"}
                   </p>
                 </div>
                 <StatusBadge status={visit.lastVisit.status} type="visit" />

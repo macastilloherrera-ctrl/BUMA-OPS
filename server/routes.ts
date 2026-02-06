@@ -4859,7 +4859,7 @@ export async function registerRoutes(
               const visit = await storage.createVisit({
                 buildingId: projectData.buildingId,
                 executiveId: projectData.assignedExecutiveId,
-                type: "rutina",
+                type: "revision_proyecto",
                 status: "programada",
                 scheduledDate: reviewDate,
                 notes: `Revisión de Proyecto: ${projectData.name} - ${m.name}`,
@@ -4952,7 +4952,7 @@ export async function registerRoutes(
             const visit = await storage.createVisit({
               buildingId: project.buildingId,
               executiveId: (project as any).assignedExecutiveId,
-              type: "rutina",
+              type: "revision_proyecto",
               status: "programada",
               scheduledDate: reviewDate,
               notes: `Revisión de Proyecto: ${project.name} - ${req.body.name}`,

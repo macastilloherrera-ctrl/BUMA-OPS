@@ -285,7 +285,7 @@ export default function VisitInProgress() {
             <p className="text-sm text-muted-foreground">{visit.building?.name}</p>
           </div>
           <Badge variant={visit.type === "urgente" ? "destructive" : "outline"}>
-            {visit.type === "urgente" ? "Urgente" : "Rutina"}
+            {visit.type === "urgente" ? "Urgente" : visit.type === "revision_proyecto" ? "Revisión Proyecto" : "Rutina"}
           </Badge>
         </div>
         <div className="mt-3">
@@ -302,7 +302,7 @@ export default function VisitInProgress() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <CheckCircle2 className="h-4 w-4" />
-              Checklist {visit.checklistType === "emergencia" ? "Emergencia" : "Rutina"}
+              Checklist {visit.checklistType === "emergencia" ? "Emergencia" : visit.type === "revision_proyecto" ? "Revisión de Proyecto" : "Rutina"}
             </CardTitle>
           </CardHeader>
           <CardContent>
