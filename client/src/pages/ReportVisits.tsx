@@ -30,6 +30,8 @@ interface VisitSummary {
   realizadas: number;
   programadas: number;
   canceladas: number;
+  noRealizadas: number;
+  enCurso: number;
 }
 
 interface Analytics {
@@ -114,6 +116,12 @@ export default function ReportVisits() {
         return <Badge className="bg-green-500/10 text-green-600 border-green-200">{status}</Badge>;
       case "Programada":
         return <Badge className="bg-blue-500/10 text-blue-600 border-blue-200">{status}</Badge>;
+      case "En Curso":
+        return <Badge className="bg-amber-500/10 text-amber-600 border-amber-200">{status}</Badge>;
+      case "No Realizada":
+        return <Badge className="bg-orange-500/10 text-orange-600 border-orange-200">{status}</Badge>;
+      case "Atrasada":
+        return <Badge className="bg-red-500/10 text-red-600 border-red-200">{status}</Badge>;
       case "Cancelada":
         return <Badge className="bg-red-500/10 text-red-600 border-red-200">{status}</Badge>;
       default:
@@ -282,10 +290,10 @@ export default function ReportVisits() {
                   </Card>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-muted-foreground">Total Visitas</CardTitle>
+                      <CardTitle className="text-sm font-medium text-muted-foreground">Total</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="text-2xl font-bold">{report.summary.total}</div>
@@ -305,6 +313,22 @@ export default function ReportVisits() {
                     </CardHeader>
                     <CardContent>
                       <div className="text-2xl font-bold text-blue-600">{report.summary.programadas}</div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">En Curso</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-amber-600">{report.summary.enCurso}</div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium text-muted-foreground">No Realizadas</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-orange-600">{report.summary.noRealizadas}</div>
                     </CardContent>
                   </Card>
                   <Card>

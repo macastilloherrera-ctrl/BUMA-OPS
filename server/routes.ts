@@ -3266,8 +3266,8 @@ export async function registerRoutes(
         executiveId: v.executiveId,
         edificio: buildingMap.get(v.buildingId) || v.buildingId,
         ejecutivo: userMap.get(v.executiveId) || v.executiveId,
-        tipo: v.type === "rutina" ? "Rutina" : v.type === "urgente" ? "Urgente" : "Seguimiento",
-        estado: v.status === "realizada" ? "Realizada" : v.status === "programada" ? "Programada" : v.status === "cancelada" ? "Cancelada" : v.status,
+        tipo: v.type === "rutina" ? "Rutina" : v.type === "urgente" ? "Urgente" : v.type === "revision_proyecto" ? "Revisión Proyecto" : v.type,
+        estado: v.status === "realizada" ? "Realizada" : v.status === "programada" ? "Programada" : v.status === "cancelada" ? "Cancelada" : v.status === "no_realizada" ? "No Realizada" : v.status === "en_curso" ? "En Curso" : v.status === "atrasada" ? "Atrasada" : v.status,
         fechaProgramada: v.scheduledDate,
         fechaInicio: v.startedAt,
         fechaFin: v.completedAt,
@@ -3283,6 +3283,8 @@ export async function registerRoutes(
         realizadas: data.filter(v => v.estado === "Realizada").length,
         programadas: data.filter(v => v.estado === "Programada").length,
         canceladas: data.filter(v => v.estado === "Cancelada").length,
+        noRealizadas: data.filter(v => v.estado === "No Realizada").length,
+        enCurso: data.filter(v => v.estado === "En Curso").length,
       };
       
       const analytics = {
@@ -3304,7 +3306,7 @@ export async function registerRoutes(
         duration: {
           avgMinutes: avgDurationMinutes,
           byType: Object.entries(durationByType).map(([type, d]) => ({
-            type: type === "rutina" ? "Rutina" : type === "urgente" ? "Urgente" : "Seguimiento",
+            type: type === "rutina" ? "Rutina" : type === "urgente" ? "Urgente" : type === "revision_proyecto" ? "Revisión Proyecto" : type,
             avgMinutes: d.count > 0 ? Math.round(d.totalMinutes / d.count) : 0,
             count: d.count,
           })),
@@ -3924,8 +3926,8 @@ export async function registerRoutes(
         wsData.push([
           buildingMap.get(v.buildingId) || v.buildingId,
           userMap.get(v.executiveId) || v.executiveId,
-          v.type === "rutina" ? "Rutina" : v.type === "urgente" ? "Urgente" : "Seguimiento",
-          v.status === "realizada" ? "Realizada" : v.status === "programada" ? "Programada" : "Cancelada",
+          v.type === "rutina" ? "Rutina" : v.type === "urgente" ? "Urgente" : v.type === "revision_proyecto" ? "Revisión Proyecto" : v.type,
+          v.status === "realizada" ? "Realizada" : v.status === "programada" ? "Programada" : v.status === "cancelada" ? "Cancelada" : v.status === "no_realizada" ? "No Realizada" : v.status === "en_curso" ? "En Curso" : v.status === "atrasada" ? "Atrasada" : v.status,
           v.scheduledDate ? new Date(v.scheduledDate).toLocaleDateString("es-CL") : "",
           v.startedAt ? new Date(v.startedAt).toLocaleString("es-CL") : "",
           v.completedAt ? new Date(v.completedAt).toLocaleString("es-CL") : "",
