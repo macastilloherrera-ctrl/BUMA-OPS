@@ -482,304 +482,296 @@ export default function ProjectDetail() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="milestones" className="mt-4 space-y-4">
-          {(() => {
-            const regularMilestones = project.milestones.filter(m => !(m as any).isReview);
-            const reviewMilestones = project.milestones.filter(m => (m as any).isReview);
+        <TabsContent value="milestones" className="mt-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
+              <CardTitle>Hitos del Proyecto</CardTitle>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setNewReviewDate("");
+                  setAddReviewDateDialogOpen(true);
+                }}
+                data-testid="button-add-review-detail"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Agregar Revisión
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {project.milestones.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">No hay hitos definidos</p>
+              ) : (
+                (() => {
+                  const regularMilestones = project.milestones.filter(m => !(m as any).isReview);
+                  const reviewMilestones = project.milestones
+                    .filter(m => (m as any).isReview)
+                    .sort((a, b) => {
+                      const dateA = a.dueDate ? new Date(a.dueDate).getTime() : 0;
+                      const dateB = b.dueDate ? new Date(b.dueDate).getTime() : 0;
+                      return dateA - dateB;
+                    });
 
-            return (
-              <>
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
-                    <CardTitle>Hitos del Proyecto</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {regularMilestones.length === 0 ? (
-                      <p className="text-muted-foreground text-center py-8">No hay hitos definidos</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {regularMilestones.map((milestone, index) => (
-                          <div 
-                            key={milestone.id} 
-                            className="flex items-start gap-4 p-4 border rounded-lg"
-                            data-testid={`milestone-${milestone.id}`}
-                          >
-                            <div className="flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium shrink-0 bg-muted">
-                              {index + 1}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                <h4 className="font-medium">{milestone.name}</h4>
-                                <Badge 
-                                  variant={milestone.status === "completado" ? "default" : "outline"}
-                                  className={
-                                    milestone.status === "retrasado" ? "bg-red-100 text-red-800 border-red-300 dark:bg-red-950 dark:text-red-300 dark:border-red-800" :
-                                    milestone.status === "en_curso" ? "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800" :
-                                    ""
-                                  }
-                                >
-                                  {milestoneStatusLabels[milestone.status]}
-                                </Badge>
-                              </div>
-                              {milestone.description && (
-                                <p className="text-sm text-muted-foreground">{milestone.description}</p>
-                              )}
-                              <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
-                                {milestone.dueDate && (
-                                  <span className="flex items-center gap-1">
-                                    <Calendar className="h-3 w-3" />
-                                    Límite: {formatDate(milestone.dueDate)}
-                                  </span>
-                                )}
-                                {milestone.completedAt && (
-                                  <span className="flex items-center gap-1">
-                                    <CheckCircle2 className="h-3 w-3" />
-                                    Completado: {formatDate(milestone.completedAt)}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <Select
-                                value={milestone.status}
-                                onValueChange={(value) => 
-                                  updateMilestoneMutation.mutate({ 
-                                    milestoneId: milestone.id, 
-                                    data: { status: value as any } 
-                                  })
-                                }
-                              >
-                                <SelectTrigger className="w-36" data-testid={`select-milestone-status-${milestone.id}`}>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="pendiente">Pendiente</SelectItem>
-                                  <SelectItem value="en_curso">En Curso</SelectItem>
-                                  <SelectItem value="completado">Completado</SelectItem>
-                                  <SelectItem value="retrasado">Retrasado</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              {milestone.status !== "pendiente" && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => resetMilestoneMutation.mutate(milestone.id)}
-                                  title="Reiniciar hito"
-                                  data-testid={`button-reset-milestone-${milestone.id}`}
-                                >
-                                  <RotateCcw className="h-4 w-4 text-muted-foreground" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                  const inicioObrasIndex = regularMilestones.findIndex(m =>
+                    m.name.toLowerCase().includes("inicio de obras") || m.name.toLowerCase().includes("inicio obra")
+                  );
+                  const beforeReviews = inicioObrasIndex >= 0 ? regularMilestones.slice(0, inicioObrasIndex + 1) : regularMilestones;
+                  const afterReviews = inicioObrasIndex >= 0 ? regularMilestones.slice(inicioObrasIndex + 1) : [];
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-5 w-5 text-purple-600" />
-                      <CardTitle>Revisiones de Terreno</CardTitle>
-                      <Badge variant="outline" className="text-purple-600 border-purple-300 dark:text-purple-400 dark:border-purple-700">
-                        {reviewMilestones.length}
-                      </Badge>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setNewReviewDate("");
-                        setAddReviewDateDialogOpen(true);
-                      }}
-                      data-testid="button-add-review-detail"
+                  const renderRegularMilestone = (milestone: ProjectMilestone) => (
+                    <div 
+                      key={milestone.id} 
+                      className="flex items-start gap-4 p-4 border rounded-lg"
+                      data-testid={`milestone-${milestone.id}`}
                     >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Agregar Revisión
-                    </Button>
-                  </CardHeader>
-                  <CardContent>
-                    {reviewMilestones.length === 0 ? (
-                      <div className="text-center py-8">
-                        <MapPin className="h-10 w-10 mx-auto text-muted-foreground mb-2" />
-                        <p className="text-muted-foreground">No hay revisiones de terreno programadas</p>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Agregue fechas de revisión para que se generen visitas y aparezcan en el calendario
-                        </p>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <h4 className="font-medium">{milestone.name}</h4>
+                          <Badge 
+                            variant={milestone.status === "completado" ? "default" : "outline"}
+                            className={
+                              milestone.status === "retrasado" ? "bg-red-100 text-red-800 border-red-300 dark:bg-red-950 dark:text-red-300 dark:border-red-800" :
+                              milestone.status === "en_curso" ? "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800" :
+                              ""
+                            }
+                          >
+                            {milestoneStatusLabels[milestone.status]}
+                          </Badge>
+                        </div>
+                        {milestone.description && (
+                          <p className="text-sm text-muted-foreground">{milestone.description}</p>
+                        )}
+                        <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
+                          {milestone.dueDate && (
+                            <span className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              Límite: {formatDate(milestone.dueDate)}
+                            </span>
+                          )}
+                          {milestone.completedAt && (
+                            <span className="flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Completado: {formatDate(milestone.completedAt)}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {reviewMilestones
-                          .sort((a, b) => {
-                            const dateA = a.dueDate ? new Date(a.dueDate).getTime() : 0;
-                            const dateB = b.dueDate ? new Date(b.dueDate).getTime() : 0;
-                            return dateA - dateB;
-                          })
-                          .map((milestone, index) => {
-                            const isCompleted = milestone.status === "completado";
-                            const isDelayed = milestone.status === "retrasado";
-                            const isPending = milestone.status === "pendiente" || milestone.status === "en_curso";
-                            const dueDate = milestone.dueDate ? new Date(milestone.dueDate) : null;
-                            const isPastDue = dueDate && dueDate < new Date() && !isCompleted;
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Select
+                          value={milestone.status}
+                          onValueChange={(value) => 
+                            updateMilestoneMutation.mutate({ 
+                              milestoneId: milestone.id, 
+                              data: { status: value as any } 
+                            })
+                          }
+                        >
+                          <SelectTrigger className="w-36" data-testid={`select-milestone-status-${milestone.id}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pendiente">Pendiente</SelectItem>
+                            <SelectItem value="en_curso">En Curso</SelectItem>
+                            <SelectItem value="completado">Completado</SelectItem>
+                            <SelectItem value="retrasado">Retrasado</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {milestone.status !== "pendiente" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => resetMilestoneMutation.mutate(milestone.id)}
+                            title="Reiniciar hito"
+                            data-testid={`button-reset-milestone-${milestone.id}`}
+                          >
+                            <RotateCcw className="h-4 w-4 text-muted-foreground" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
 
-                            return (
-                              <div 
-                                key={milestone.id} 
-                                className={`p-4 border rounded-lg ${
-                                  isCompleted 
-                                    ? "border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/30" 
-                                    : isDelayed
-                                    ? "border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/30"
-                                    : isPastDue
-                                    ? "border-yellow-200 bg-yellow-50/50 dark:border-yellow-900 dark:bg-yellow-950/30"
-                                    : "border-purple-200 bg-purple-50/50 dark:border-purple-900 dark:bg-purple-950/30"
-                                }`}
-                                data-testid={`review-milestone-${milestone.id}`}
+                  const renderReviewMilestone = (milestone: ProjectMilestone, index: number) => {
+                    const isCompleted = milestone.status === "completado";
+                    const isDelayed = milestone.status === "retrasado";
+                    const isPending = milestone.status === "pendiente" || milestone.status === "en_curso";
+                    const dueDate = milestone.dueDate ? new Date(milestone.dueDate) : null;
+                    const isPastDue = dueDate && dueDate < new Date() && !isCompleted;
+
+                    return (
+                      <div 
+                        key={milestone.id} 
+                        className={`p-4 border rounded-lg ${
+                          isCompleted 
+                            ? "border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/30" 
+                            : isDelayed
+                            ? "border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/30"
+                            : isPastDue
+                            ? "border-yellow-200 bg-yellow-50/50 dark:border-yellow-900 dark:bg-yellow-950/30"
+                            : "border-purple-200 bg-purple-50/50 dark:border-purple-900 dark:bg-purple-950/30"
+                        }`}
+                        data-testid={`review-milestone-${milestone.id}`}
+                      >
+                        <div className="flex items-start gap-4">
+                          <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium shrink-0 ${
+                            isCompleted ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" :
+                            isDelayed ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" :
+                            "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300"
+                          }`}>
+                            {isCompleted ? (
+                              <CheckCircle2 className="h-4 w-4" />
+                            ) : isDelayed ? (
+                              <XCircle className="h-4 w-4" />
+                            ) : (
+                              <MapPin className="h-4 w-4" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                              <h4 className="font-medium">{milestone.name}</h4>
+                              {isCompleted && (
+                                <Badge className="bg-green-100 text-green-800 border-green-300 dark:bg-green-900 dark:text-green-300 dark:border-green-700 no-default-hover-elevate no-default-active-elevate">
+                                  Realizada
+                                </Badge>
+                              )}
+                              {isDelayed && (
+                                <Badge className="bg-red-100 text-red-800 border-red-300 dark:bg-red-900 dark:text-red-300 dark:border-red-700 no-default-hover-elevate no-default-active-elevate">
+                                  No Realizada
+                                </Badge>
+                              )}
+                              {isPending && isPastDue && (
+                                <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900 dark:text-yellow-300 dark:border-yellow-700 no-default-hover-elevate no-default-active-elevate">
+                                  Vencida
+                                </Badge>
+                              )}
+                              {isPending && !isPastDue && (
+                                <Badge variant="outline" className="text-purple-600 border-purple-300 dark:text-purple-400 dark:border-purple-700">
+                                  Programada
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-4 mt-1 text-sm text-muted-foreground">
+                              {milestone.dueDate && (
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="h-3 w-3" />
+                                  {formatDate(milestone.dueDate)}
+                                </span>
+                              )}
+                              {milestone.completedAt && (
+                                <span className="flex items-center gap-1">
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  Completada: {formatDate(milestone.completedAt)}
+                                </span>
+                              )}
+                              {(milestone as any).linkedVisitId && (
+                                <a 
+                                  href={`/visitas/${(milestone as any).linkedVisitId}`} 
+                                  className="text-blue-600 dark:text-blue-400 flex items-center gap-1"
+                                  data-testid={`link-visit-${milestone.id}`}
+                                >
+                                  <ExternalLink className="h-3 w-3" />
+                                  Ver visita
+                                </a>
+                              )}
+                            </div>
+                            {milestone.observations && (
+                              <p className="text-sm mt-2 p-2 rounded-md bg-muted/50">
+                                {milestone.observations}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0 flex-wrap">
+                            {isPending && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-green-600 border-green-300 dark:text-green-400 dark:border-green-700"
+                                  onClick={() => {
+                                    setSelectedReviewMilestone(milestone);
+                                    setReviewDialogType("complete");
+                                    setReviewObservations("");
+                                    setReviewDialogOpen(true);
+                                  }}
+                                  data-testid={`button-complete-review-${milestone.id}`}
+                                >
+                                  <CheckCircle2 className="h-4 w-4 mr-1" />
+                                  Realizada
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-red-600 border-red-300 dark:text-red-400 dark:border-red-700"
+                                  onClick={() => {
+                                    setSelectedReviewMilestone(milestone);
+                                    setReviewDialogType("not-done");
+                                    setReviewObservations("");
+                                    setReviewDialogOpen(true);
+                                  }}
+                                  data-testid={`button-not-done-review-${milestone.id}`}
+                                >
+                                  <XCircle className="h-4 w-4 mr-1" />
+                                  No Realizada
+                                </Button>
+                              </>
+                            )}
+                            {isCompleted && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setSelectedReviewMilestone(milestone);
+                                  setReviewDialogType("ticket");
+                                  setTicketForm({ description: "", priority: "amarillo", ticketType: "planificado" });
+                                  setReviewDialogOpen(true);
+                                }}
+                                data-testid={`button-create-ticket-review-${milestone.id}`}
                               >
-                                <div className="flex items-start gap-4">
-                                  <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium shrink-0 ${
-                                    isCompleted ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" :
-                                    isDelayed ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" :
-                                    "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300"
-                                  }`}>
-                                    {isCompleted ? (
-                                      <CheckCircle2 className="h-4 w-4" />
-                                    ) : isDelayed ? (
-                                      <XCircle className="h-4 w-4" />
-                                    ) : (
-                                      <span>{index + 1}</span>
-                                    )}
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                      <h4 className="font-medium">{milestone.name}</h4>
-                                      {isCompleted && (
-                                        <Badge className="bg-green-100 text-green-800 border-green-300 dark:bg-green-900 dark:text-green-300 dark:border-green-700 no-default-hover-elevate no-default-active-elevate">
-                                          Realizada
-                                        </Badge>
-                                      )}
-                                      {isDelayed && (
-                                        <Badge className="bg-red-100 text-red-800 border-red-300 dark:bg-red-900 dark:text-red-300 dark:border-red-700 no-default-hover-elevate no-default-active-elevate">
-                                          No Realizada
-                                        </Badge>
-                                      )}
-                                      {isPending && isPastDue && (
-                                        <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900 dark:text-yellow-300 dark:border-yellow-700 no-default-hover-elevate no-default-active-elevate">
-                                          Vencida
-                                        </Badge>
-                                      )}
-                                      {isPending && !isPastDue && (
-                                        <Badge variant="outline" className="text-purple-600 border-purple-300 dark:text-purple-400 dark:border-purple-700">
-                                          Programada
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    <div className="flex flex-wrap gap-4 mt-1 text-sm text-muted-foreground">
-                                      {milestone.dueDate && (
-                                        <span className="flex items-center gap-1">
-                                          <Calendar className="h-3 w-3" />
-                                          {formatDate(milestone.dueDate)}
-                                        </span>
-                                      )}
-                                      {milestone.completedAt && (
-                                        <span className="flex items-center gap-1">
-                                          <CheckCircle2 className="h-3 w-3" />
-                                          Completada: {formatDate(milestone.completedAt)}
-                                        </span>
-                                      )}
-                                      {(milestone as any).linkedVisitId && (
-                                        <a 
-                                          href={`/visitas/${(milestone as any).linkedVisitId}`} 
-                                          className="text-blue-600 dark:text-blue-400 flex items-center gap-1"
-                                          data-testid={`link-visit-${milestone.id}`}
-                                        >
-                                          <ExternalLink className="h-3 w-3" />
-                                          Ver visita
-                                        </a>
-                                      )}
-                                    </div>
-                                    {milestone.observations && (
-                                      <p className="text-sm mt-2 p-2 rounded-md bg-muted/50">
-                                        {milestone.observations}
-                                      </p>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-1 shrink-0 flex-wrap">
-                                    {isPending && (
-                                      <>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          className="text-green-600 border-green-300 dark:text-green-400 dark:border-green-700"
-                                          onClick={() => {
-                                            setSelectedReviewMilestone(milestone);
-                                            setReviewDialogType("complete");
-                                            setReviewObservations("");
-                                            setReviewDialogOpen(true);
-                                          }}
-                                          data-testid={`button-complete-review-${milestone.id}`}
-                                        >
-                                          <CheckCircle2 className="h-4 w-4 mr-1" />
-                                          Realizada
-                                        </Button>
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          className="text-red-600 border-red-300 dark:text-red-400 dark:border-red-700"
-                                          onClick={() => {
-                                            setSelectedReviewMilestone(milestone);
-                                            setReviewDialogType("not-done");
-                                            setReviewObservations("");
-                                            setReviewDialogOpen(true);
-                                          }}
-                                          data-testid={`button-not-done-review-${milestone.id}`}
-                                        >
-                                          <XCircle className="h-4 w-4 mr-1" />
-                                          No Realizada
-                                        </Button>
-                                      </>
-                                    )}
-                                    {isCompleted && (
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => {
-                                          setSelectedReviewMilestone(milestone);
-                                          setReviewDialogType("ticket");
-                                          setTicketForm({ description: "", priority: "amarillo", ticketType: "planificado" });
-                                          setReviewDialogOpen(true);
-                                        }}
-                                        data-testid={`button-create-ticket-review-${milestone.id}`}
-                                      >
-                                        <ClipboardList className="h-4 w-4 mr-1" />
-                                        Generar Ticket
-                                      </Button>
-                                    )}
-                                    {(isCompleted || isDelayed) && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => resetMilestoneMutation.mutate(milestone.id)}
-                                        title="Reiniciar revisión"
-                                        data-testid={`button-reset-review-${milestone.id}`}
-                                      >
-                                        <RotateCcw className="h-4 w-4 text-muted-foreground" />
-                                      </Button>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
+                                <ClipboardList className="h-4 w-4 mr-1" />
+                                Generar Ticket
+                              </Button>
+                            )}
+                            {(isCompleted || isDelayed) && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => resetMilestoneMutation.mutate(milestone.id)}
+                                title="Reiniciar revisión"
+                                data-testid={`button-reset-review-${milestone.id}`}
+                              >
+                                <RotateCcw className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </>
-            );
-          })()}
+                    );
+                  };
+
+                  return (
+                    <div className="space-y-3">
+                      {beforeReviews.map(renderRegularMilestone)}
+
+                      {reviewMilestones.length > 0 && (
+                        <div className="space-y-3 ml-4 pl-4 border-l-2 border-purple-300 dark:border-purple-700">
+                          <div className="flex items-center gap-2 py-1">
+                            <MapPin className="h-4 w-4 text-purple-600" />
+                            <span className="text-sm font-medium text-purple-600 dark:text-purple-400">
+                              Revisiones de Terreno ({reviewMilestones.length})
+                            </span>
+                          </div>
+                          {reviewMilestones.map((m, i) => renderReviewMilestone(m, i))}
+                        </div>
+                      )}
+
+                      {afterReviews.map(renderRegularMilestone)}
+                    </div>
+                  );
+                })()
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="updates" className="mt-4">
