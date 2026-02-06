@@ -851,10 +851,20 @@ export async function registerRoutes(
       const buildings = await storage.getBuildings();
       const buildingsMap = new Map(buildings.map((b) => [b.id, b]));
       
-      const visitsWithBuilding = visits.map((v) => ({
-        ...v,
-        building: buildingsMap.get(v.buildingId),
-      }));
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      const visitsWithBuilding = visits.map((v) => {
+        let computedStatus = v.status;
+        if (v.status === "programada" && v.scheduledDate && new Date(v.scheduledDate) < todayStart) {
+          computedStatus = "atrasada";
+        }
+        return {
+          ...v,
+          status: computedStatus,
+          building: buildingsMap.get(v.buildingId),
+        };
+      });
       
       res.json(visitsWithBuilding);
     } catch (error) {
@@ -918,8 +928,16 @@ export async function registerRoutes(
         relatedTickets = relatedTickets.map((t) => ({ ...t, cost: null }));
       }
       
+      let computedStatus = visit.status;
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      if (visit.status === "programada" && visit.scheduledDate && new Date(visit.scheduledDate) < todayStart) {
+        computedStatus = "atrasada";
+      }
+      
       res.json({
         ...visit,
+        status: computedStatus,
         building,
         checklistItems,
         criticalAssets,
@@ -4833,12 +4851,14 @@ export async function registerRoutes(
 
           if (m.isReview && m.dueDate && projectData.assignedExecutiveId) {
             try {
+              const reviewDate = new Date(m.dueDate);
+              reviewDate.setUTCHours(12, 0, 0, 0);
               const visit = await storage.createVisit({
                 buildingId: projectData.buildingId,
                 executiveId: projectData.assignedExecutiveId,
                 type: "rutina",
                 status: "programada",
-                scheduledDate: new Date(m.dueDate),
+                scheduledDate: reviewDate,
                 notes: `Revisión de Proyecto: ${projectData.name} - ${m.name}`,
               });
               await storage.updateProjectMilestone(milestone.id, { linkedVisitId: visit.id });
@@ -4924,12 +4944,14 @@ export async function registerRoutes(
         const project = await storage.getProject(req.params.projectId);
         if (project && (project as any).assignedExecutiveId) {
           try {
+            const reviewDate = new Date(req.body.dueDate);
+            reviewDate.setUTCHours(12, 0, 0, 0);
             const visit = await storage.createVisit({
               buildingId: project.buildingId,
               executiveId: (project as any).assignedExecutiveId,
               type: "rutina",
               status: "programada",
-              scheduledDate: new Date(req.body.dueDate),
+              scheduledDate: reviewDate,
               notes: `Revisión de Proyecto: ${project.name} - ${req.body.name}`,
             });
             await storage.updateProjectMilestone(milestone.id, { linkedVisitId: visit.id });

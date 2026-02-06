@@ -38,7 +38,8 @@ import {
   Eye,
   CircleDot,
   ClipboardList,
-  MapPin
+  MapPin,
+  Play
 } from "lucide-react";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import type { 
@@ -121,14 +122,6 @@ export default function ProjectDetail() {
   const { toast } = useToast();
   const { user } = useAuth();
   
-  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
-  const [updateForm, setUpdateForm] = useState({
-    updateType: "fiscalizacion",
-    title: "",
-    description: "",
-    requiresCommitteeApproval: false,
-  });
-
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
   const [reviewDialogType, setReviewDialogType] = useState<"complete" | "not-done" | "ticket">("complete");
   const [selectedReviewMilestone, setSelectedReviewMilestone] = useState<ProjectMilestone | null>(null);
@@ -140,6 +133,7 @@ export default function ProjectDetail() {
   });
   const [addReviewDateDialogOpen, setAddReviewDateDialogOpen] = useState(false);
   const [newReviewDate, setNewReviewDate] = useState("");
+  const [startingVisitId, setStartingVisitId] = useState<string | null>(null);
 
   const { data: project, isLoading } = useQuery<ProjectWithDetails>({
     queryKey: ["/api/projects", id],
@@ -165,25 +159,19 @@ export default function ProjectDetail() {
     },
   });
 
-  const createUpdateMutation = useMutation({
-    mutationFn: async (data: typeof updateForm) => {
-      return apiRequest("POST", `/api/projects/${id}/updates`, data);
+  const startVisitFromProjectMutation = useMutation({
+    mutationFn: async (visitId: string) => {
+      setStartingVisitId(visitId);
+      return apiRequest("PATCH", `/api/visits/${visitId}/start`, {});
     },
-    onSuccess: () => {
+    onSuccess: (_, visitId) => {
       queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
-      setUpdateDialogOpen(false);
-      setUpdateForm({ updateType: "fiscalizacion", title: "", description: "", requiresCommitteeApproval: false });
-      toast({ title: "Fiscalización registrada" });
+      setStartingVisitId(null);
+      navigate(`/visitas/${visitId}/en-curso`);
     },
-  });
-
-  const approveUpdateMutation = useMutation({
-    mutationFn: async (updateId: string) => {
-      return apiRequest("PATCH", `/api/projects/${id}/updates/${updateId}/approve`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
-      toast({ title: "Solicitud aprobada" });
+    onError: () => {
+      setStartingVisitId(null);
+      toast({ title: "Error al iniciar visita", variant: "destructive" });
     },
   });
 
@@ -474,9 +462,6 @@ export default function ProjectDetail() {
           <TabsTrigger value="milestones" data-testid="tab-milestones">
             Hitos y Revisiones ({project.milestones.length})
           </TabsTrigger>
-          <TabsTrigger value="updates" data-testid="tab-updates">
-            Fiscalizaciones ({project.updates.length})
-          </TabsTrigger>
           <TabsTrigger value="documents" data-testid="tab-documents">
             Cotizaciones y Documentos ({project.documents.length})
           </TabsTrigger>
@@ -664,7 +649,7 @@ export default function ProjectDetail() {
                                   Completada: {formatDate(milestone.completedAt)}
                                 </span>
                               )}
-                              {(milestone as any).linkedVisitId && (
+                              {(milestone as any).linkedVisitId && isCompleted && (
                                 <a 
                                   href={`/visitas/${(milestone as any).linkedVisitId}`} 
                                   className="text-blue-600 dark:text-blue-400 flex items-center gap-1"
@@ -682,6 +667,17 @@ export default function ProjectDetail() {
                             )}
                           </div>
                           <div className="flex items-center gap-1 shrink-0 flex-wrap">
+                            {isPending && (milestone as any).linkedVisitId && (
+                              <Button
+                                size="sm"
+                                onClick={() => startVisitFromProjectMutation.mutate((milestone as any).linkedVisitId)}
+                                disabled={startingVisitId === (milestone as any).linkedVisitId}
+                                data-testid={`button-start-review-visit-${milestone.id}`}
+                              >
+                                <Play className="h-4 w-4 mr-1" />
+                                {startingVisitId === (milestone as any).linkedVisitId ? "Iniciando..." : "Iniciar Visita"}
+                              </Button>
+                            )}
                             {isPending && (
                               <>
                                 <Button
@@ -769,69 +765,6 @@ export default function ProjectDetail() {
                     </div>
                   );
                 })()
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="updates" className="mt-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Fiscalizaciones y Actualizaciones</CardTitle>
-              <Button onClick={() => setUpdateDialogOpen(true)} data-testid="button-add-update">
-                <Plus className="h-4 w-4 mr-2" />
-                Nueva Fiscalización
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {project.updates.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">No hay fiscalizaciones registradas</p>
-              ) : (
-                <div className="space-y-4">
-                  {project.updates.map((update) => (
-                    <div 
-                      key={update.id} 
-                      className="p-4 border rounded-lg"
-                      data-testid={`update-${update.id}`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge variant="outline">{update.updateType}</Badge>
-                            <h4 className="font-medium">{update.title}</h4>
-                          </div>
-                          {update.description && (
-                            <p className="text-sm text-muted-foreground mt-1">{update.description}</p>
-                          )}
-                          <p className="text-xs text-muted-foreground mt-2">
-                            {formatDate(update.createdAt)}
-                          </p>
-                        </div>
-                        {update.requiresCommitteeApproval && (
-                          <div>
-                            {update.committeeApproved ? (
-                              <Badge className="bg-green-100 text-green-800">Aprobado</Badge>
-                            ) : (
-                              <>
-                                <Badge variant="outline" className="text-yellow-600">Pendiente Aprobación</Badge>
-                                {isManager && (
-                                  <Button 
-                                    size="sm" 
-                                    className="ml-2"
-                                    onClick={() => approveUpdateMutation.mutate(update.id)}
-                                    data-testid={`button-approve-${update.id}`}
-                                  >
-                                    Aprobar
-                                  </Button>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
               )}
             </CardContent>
           </Card>
@@ -1058,79 +991,6 @@ export default function ProjectDetail() {
           </Card>
         </TabsContent>
       </Tabs>
-
-      <Dialog open={updateDialogOpen} onOpenChange={setUpdateDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nueva Fiscalización</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">Tipo</label>
-              <Select 
-                value={updateForm.updateType} 
-                onValueChange={(v) => setUpdateForm({ ...updateForm, updateType: v })}
-              >
-                <SelectTrigger data-testid="select-update-type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="fiscalizacion">Fiscalización</SelectItem>
-                  <SelectItem value="cambio_solicitado">Cambio Solicitado</SelectItem>
-                  <SelectItem value="reunion">Reunión</SelectItem>
-                  <SelectItem value="nota">Nota</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-sm font-medium">Título</label>
-              <Input
-                value={updateForm.title}
-                onChange={(e) => setUpdateForm({ ...updateForm, title: e.target.value })}
-                placeholder="Título de la actualización"
-                data-testid="input-update-title"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Descripción</label>
-              <Textarea
-                value={updateForm.description}
-                onChange={(e) => setUpdateForm({ ...updateForm, description: e.target.value })}
-                placeholder="Detalles de la fiscalización..."
-                data-testid="input-update-description"
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="requiresApproval"
-                checked={updateForm.requiresCommitteeApproval}
-                onChange={(e) => setUpdateForm({ ...updateForm, requiresCommitteeApproval: e.target.checked })}
-              />
-              <label htmlFor="requiresApproval" className="text-sm">
-                Requiere aprobación del comité
-              </label>
-            </div>
-            <div className="flex gap-2 pt-4">
-              <Button 
-                variant="outline" 
-                onClick={() => setUpdateDialogOpen(false)}
-                className="flex-1"
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={() => createUpdateMutation.mutate(updateForm)}
-                disabled={!updateForm.title || createUpdateMutation.isPending}
-                className="flex-1"
-                data-testid="button-submit-update"
-              >
-                {createUpdateMutation.isPending ? "Guardando..." : "Guardar"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
         <DialogContent>
