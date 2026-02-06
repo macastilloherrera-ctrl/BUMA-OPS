@@ -38,6 +38,10 @@ const projectSchema = z.object({
     dueDate: z.string().optional(),
     isReview: z.boolean().optional(),
   })),
+  reviewDates: z.array(z.object({
+    date: z.string().min(1, "Fecha es requerida"),
+    description: z.string().optional(),
+  })),
 });
 
 type ProjectFormData = z.infer<typeof projectSchema>;
@@ -46,23 +50,9 @@ const defaultMilestones = [
   { name: "Aprobación del Comité", description: "Proyecto aprobado y presupuesto autorizado", dueDate: "", isReview: false },
   { name: "Contratación", description: "Selección y contrato con empresa contratista", dueDate: "", isReview: false },
   { name: "Inicio de Obras", description: "Comunicado a residentes y comienzo de trabajos", dueDate: "", isReview: false },
-  { name: "Revisión Periódica 1", description: "Inspección de avance durante ejecución", dueDate: "", isReview: true },
-  { name: "Revisión Periódica 2", description: "Inspección de avance durante ejecución", dueDate: "", isReview: true },
   { name: "Recepción Provisoria", description: "Obra terminada, período de prueba", dueDate: "", isReview: false },
   { name: "Recepción Definitiva", description: "Cierre del proyecto y documentación final", dueDate: "", isReview: false },
 ];
-
-function getNextReviewNumber(milestones: { name: string; isReview?: boolean }[]): number {
-  const reviewMilestones = milestones.filter(m => m.isReview);
-  let maxNum = 0;
-  reviewMilestones.forEach(m => {
-    const match = m.name.match(/Revisión Periódica (\d+)/);
-    if (match) {
-      maxNum = Math.max(maxNum, parseInt(match[1]));
-    }
-  });
-  return maxNum + 1;
-}
 
 interface UploadedQuote {
   name: string;
@@ -103,27 +93,19 @@ export default function NewProject() {
       quotesReceived: "",
       assignedExecutiveId: "",
       milestones: defaultMilestones,
+      reviewDates: [],
     },
   });
 
-  const { fields, append, remove, insert } = useFieldArray({
+  const { fields, append, remove } = useFieldArray({
     control: form.control,
     name: "milestones",
   });
 
-  const watchedMilestones = form.watch("milestones");
-
-  const addReviewMilestone = () => {
-    const nextNum = getNextReviewNumber(watchedMilestones);
-    const lastReviewIndex = watchedMilestones.reduce((lastIdx, m, i) => m.isReview ? i : lastIdx, -1);
-    const insertIndex = lastReviewIndex >= 0 ? lastReviewIndex + 1 : watchedMilestones.length;
-    insert(insertIndex, {
-      name: `Revisión Periódica ${nextNum}`,
-      description: "Inspección de avance durante ejecución",
-      dueDate: "",
-      isReview: true,
-    });
-  };
+  const { fields: reviewFields, append: appendReview, remove: removeReview } = useFieldArray({
+    control: form.control,
+    name: "reviewDates",
+  });
 
   const clearMilestone = (index: number) => {
     form.setValue(`milestones.${index}.name`, "");
@@ -133,6 +115,23 @@ export default function NewProject() {
 
   const createProjectMutation = useMutation({
     mutationFn: async (data: ProjectFormData) => {
+      const normalMilestones = data.milestones.filter(m => m.name.trim() !== "").map((m, i) => ({
+        ...m,
+        dueDate: m.dueDate || undefined,
+        orderIndex: i,
+        isReview: false,
+      }));
+
+      const reviewMilestones = data.reviewDates
+        .filter(r => r.date)
+        .map((r, i) => ({
+          name: `Revisión de Terreno ${i + 1}`,
+          description: r.description || "Inspección de avance en terreno",
+          dueDate: r.date,
+          orderIndex: normalMilestones.length + i,
+          isReview: true,
+        }));
+
       const payload = {
         ...data,
         startDate: new Date(data.startDate),
@@ -140,12 +139,8 @@ export default function NewProject() {
         approvedBudget: data.approvedBudget || undefined,
         quotesReceived: data.quotesReceived ? parseInt(data.quotesReceived) : undefined,
         assignedExecutiveId: data.assignedExecutiveId === "none" ? undefined : data.assignedExecutiveId,
-        milestones: data.milestones.filter(m => m.name.trim() !== "").map((m, i) => ({
-          ...m,
-          dueDate: m.dueDate || undefined,
-          orderIndex: i,
-          isReview: m.isReview || false,
-        })),
+        milestones: [...normalMilestones, ...reviewMilestones],
+        reviewDates: undefined,
       };
       const res = await apiRequest("POST", "/api/projects", payload);
       const project = await res.json();
@@ -582,120 +577,185 @@ export default function NewProject() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
+              <CardTitle>Revisiones de Terreno</CardTitle>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => appendReview({ date: "", description: "" })}
+                data-testid="button-add-review"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Agregar Revisión
+              </Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Agregue las fechas de inspección de terreno del proyecto. Cada revisión generará automáticamente una visita programada y aparecerá en el calendario.
+              </p>
+              {reviewFields.length === 0 ? (
+                <div className="text-center py-6 border border-dashed rounded-lg">
+                  <CalendarCheck className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                  <p className="text-sm text-muted-foreground">No hay revisiones programadas</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => appendReview({ date: "", description: "" })}
+                    data-testid="button-add-review-empty"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Agregar primera revisión
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {reviewFields.map((field, index) => (
+                    <div
+                      key={field.id}
+                      className="flex items-start gap-3 p-3 border rounded-lg border-purple-200 bg-purple-50/50 dark:border-purple-900 dark:bg-purple-950/30"
+                      data-testid={`review-date-${index}`}
+                    >
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 text-sm font-medium shrink-0 mt-5">
+                        {index + 1}
+                      </div>
+                      <div className="flex-1 grid md:grid-cols-2 gap-3">
+                        <FormField
+                          control={form.control}
+                          name={`reviewDates.${index}.date`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Fecha de Revisión *</FormLabel>
+                              <FormControl>
+                                <Input type="date" {...field} data-testid={`input-review-date-${index}`} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name={`reviewDates.${index}.description`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Observación (opcional)</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Ej: Revisar avance de estructura" {...field} data-testid={`input-review-desc-${index}`} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive shrink-0 mt-5"
+                        onClick={() => removeReview(index)}
+                        data-testid={`button-remove-review-${index}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
               <CardTitle>Hitos del Proyecto</CardTitle>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addReviewMilestone}
-                  data-testid="button-add-review"
-                >
-                  <CalendarCheck className="h-4 w-4 mr-2" />
-                  Agregar Revisión
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => append({ name: "", description: "", dueDate: "", isReview: false })}
-                  data-testid="button-add-milestone"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Agregar Hito
-                </Button>
-              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => append({ name: "", description: "", dueDate: "", isReview: false })}
+                data-testid="button-add-milestone"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Agregar Hito
+              </Button>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground mb-4">
-                Para proyectos de larga duración, agregue varias revisiones periódicas. Cada revisión con fecha generará automáticamente una visita de inspección.
-              </p>
               <div className="space-y-4">
-                {fields.map((field, index) => {
-                  const milestone = watchedMilestones[index];
-                  const isReview = milestone?.isReview;
-                  return (
-                    <div 
-                      key={field.id} 
-                      className={`flex gap-4 items-start p-4 border rounded-lg ${isReview ? "border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/30" : ""}`}
-                      data-testid={`milestone-${index}`}
-                    >
-                      <GripVertical className="h-5 w-5 text-muted-foreground mt-2 cursor-move shrink-0" />
-                      <div className="flex-1 space-y-3">
-                        {isReview && (
-                          <Badge variant="outline" className="text-blue-600 border-blue-300">
-                            <CalendarCheck className="h-3 w-3 mr-1" />
-                            Revisión Periódica
-                          </Badge>
-                        )}
-                        <div className="grid md:grid-cols-3 gap-4">
-                          <FormField
-                            control={form.control}
-                            name={`milestones.${index}.name`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Nombre *</FormLabel>
-                                <FormControl>
-                                  <Input {...field} data-testid={`input-milestone-name-${index}`} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={form.control}
-                            name={`milestones.${index}.description`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Descripción</FormLabel>
-                                <FormControl>
-                                  <Input {...field} data-testid={`input-milestone-desc-${index}`} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                          <FormField
-                            control={form.control}
-                            name={`milestones.${index}.dueDate`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Fecha Límite {isReview && <span className="text-blue-600">(genera visita)</span>}</FormLabel>
-                                <FormControl>
-                                  <Input type="date" {...field} data-testid={`input-milestone-date-${index}`} />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-1 shrink-0">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => clearMilestone(index)}
-                          title="Limpiar datos del hito"
-                          data-testid={`button-clear-milestone-${index}`}
-                        >
-                          <RotateCcw className="h-4 w-4 text-muted-foreground" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => remove(index)}
-                          className="text-destructive"
-                          title="Eliminar hito"
-                          data-testid={`button-remove-milestone-${index}`}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                {fields.map((field, index) => (
+                  <div 
+                    key={field.id} 
+                    className="flex gap-4 items-start p-4 border rounded-lg"
+                    data-testid={`milestone-${index}`}
+                  >
+                    <GripVertical className="h-5 w-5 text-muted-foreground mt-2 cursor-move shrink-0" />
+                    <div className="flex-1 space-y-3">
+                      <div className="grid md:grid-cols-3 gap-4">
+                        <FormField
+                          control={form.control}
+                          name={`milestones.${index}.name`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Nombre *</FormLabel>
+                              <FormControl>
+                                <Input {...field} data-testid={`input-milestone-name-${index}`} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name={`milestones.${index}.description`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Descripción</FormLabel>
+                              <FormControl>
+                                <Input {...field} data-testid={`input-milestone-desc-${index}`} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name={`milestones.${index}.dueDate`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Fecha Límite</FormLabel>
+                              <FormControl>
+                                <Input type="date" {...field} data-testid={`input-milestone-date-${index}`} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
                       </div>
                     </div>
-                  );
-                })}
+                    <div className="flex flex-col gap-1 shrink-0">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => clearMilestone(index)}
+                        title="Limpiar datos del hito"
+                        data-testid={`button-clear-milestone-${index}`}
+                      >
+                        <RotateCcw className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => remove(index)}
+                        className="text-destructive"
+                        title="Eliminar hito"
+                        data-testid={`button-remove-milestone-${index}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>

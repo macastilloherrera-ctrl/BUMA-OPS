@@ -4922,6 +4922,158 @@ export async function registerRoutes(
     }
   });
 
+  // === Review Visit Management ===
+
+  const reviewObservationsSchema = z.object({
+    observations: z.string().optional().default(""),
+  });
+
+  const createTicketFromReviewSchema = z.object({
+    description: z.string().min(1, "Descripción requerida"),
+    priority: z.enum(["verde", "amarillo", "rojo"]).default("amarillo"),
+    ticketType: z.enum(["planificado", "correctivo", "preventivo", "mejora", "urgencia", "mantencion"]).default("planificado"),
+  });
+
+  app.patch("/api/projects/:projectId/milestones/:id/complete-review", isAuthenticated, async (req, res) => {
+    try {
+      const parseResult = reviewObservationsSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: "Datos inválidos" });
+      }
+
+      const milestone = await storage.getProjectMilestone(req.params.id);
+      if (!milestone) {
+        return res.status(404).json({ error: "Hito no encontrado" });
+      }
+      if (milestone.projectId !== req.params.projectId) {
+        return res.status(400).json({ error: "El hito no pertenece a este proyecto" });
+      }
+      if (!(milestone as any).isReview) {
+        return res.status(400).json({ error: "Este hito no es una revisión" });
+      }
+
+      const { observations } = parseResult.data;
+      const updateData: any = {
+        status: "completado",
+        completedAt: new Date(),
+        completedBy: (req.user as any).id,
+        observations,
+      };
+      const updated = await storage.updateProjectMilestone(req.params.id, updateData);
+
+      const linkedVisitId = (milestone as any).linkedVisitId;
+      if (linkedVisitId) {
+        try {
+          const linkedVisit = await storage.getVisit(linkedVisitId);
+          if (linkedVisit) {
+            await storage.updateVisit(linkedVisitId, {
+              status: "realizada",
+              completedAt: new Date(),
+              completionObservations: observations || "Revisión de proyecto completada",
+            });
+          }
+        } catch (visitErr) {
+          console.error("Error updating linked visit:", visitErr);
+        }
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error completing review:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.patch("/api/projects/:projectId/milestones/:id/mark-not-done", isAuthenticated, async (req, res) => {
+    try {
+      const parseResult = reviewObservationsSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: "Datos inválidos" });
+      }
+
+      const milestone = await storage.getProjectMilestone(req.params.id);
+      if (!milestone) {
+        return res.status(404).json({ error: "Hito no encontrado" });
+      }
+      if (milestone.projectId !== req.params.projectId) {
+        return res.status(400).json({ error: "El hito no pertenece a este proyecto" });
+      }
+
+      const { observations } = parseResult.data;
+      const updated = await storage.updateProjectMilestone(req.params.id, {
+        status: "retrasado",
+        observations,
+      });
+
+      const linkedVisitId = (milestone as any).linkedVisitId;
+      if (linkedVisitId) {
+        try {
+          const linkedVisit = await storage.getVisit(linkedVisitId);
+          if (linkedVisit) {
+            await storage.updateVisit(linkedVisitId, {
+              status: "programada",
+              completedAt: null,
+              completionObservations: observations || "Revisión no realizada",
+            });
+          }
+        } catch (visitErr) {
+          console.error("Error updating linked visit:", visitErr);
+        }
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error marking review as not done:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/projects/:projectId/milestones/:id/create-ticket", isAuthenticated, async (req, res) => {
+    try {
+      const parseResult = createTicketFromReviewSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: "Datos inválidos", details: parseResult.error.flatten() });
+      }
+
+      const milestone = await storage.getProjectMilestone(req.params.id);
+      if (!milestone) {
+        return res.status(404).json({ error: "Hito no encontrado" });
+      }
+      if (milestone.projectId !== req.params.projectId) {
+        return res.status(400).json({ error: "El hito no pertenece a este proyecto" });
+      }
+
+      const project = await storage.getProject(req.params.projectId);
+      if (!project) {
+        return res.status(404).json({ error: "Proyecto no encontrado" });
+      }
+
+      const building = await storage.getBuilding(project.buildingId);
+      const assignedExecutiveId = (project as any).assignedExecutiveId || building?.assignedExecutiveId || (req.user as any).id;
+
+      const { description, priority, ticketType } = parseResult.data;
+      const linkedVisitId = (milestone as any).linkedVisitId;
+
+      const ticketData = {
+        buildingId: project.buildingId,
+        ticketType,
+        description: description || `Hallazgo en ${milestone.name} - ${project.name}`,
+        priority,
+        status: "abierto",
+        assignedExecutiveId,
+        visitId: linkedVisitId || null,
+        createdBy: (req.user as any).id,
+      };
+
+      const ticket = await storage.createTicket(ticketData as any);
+
+      res.status(201).json(ticket);
+    } catch (error) {
+      console.error("Error creating ticket from review:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   // === Project Documents ===
 
   // Get project documents
