@@ -854,6 +854,9 @@ export async function registerRoutes(
       const now = new Date();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       
+      const users = await storage.getUsers();
+      const userMap = new Map(users.map(u => [u.id, `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email]));
+      
       const visitsWithBuilding = visits.map((v) => {
         let computedStatus = v.status;
         if (v.status === "programada" && v.scheduledDate && new Date(v.scheduledDate) < todayStart) {
@@ -863,6 +866,7 @@ export async function registerRoutes(
           ...v,
           status: computedStatus,
           building: buildingsMap.get(v.buildingId),
+          executiveName: v.executiveId ? (userMap.get(v.executiveId) || v.executiveId) : null,
         };
       });
       

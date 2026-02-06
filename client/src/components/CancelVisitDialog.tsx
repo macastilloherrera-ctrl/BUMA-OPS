@@ -16,7 +16,7 @@ interface CancelVisitDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-type Step = "initial" | "reschedule_confirm" | "delete_reason";
+type Step = "initial" | "reschedule_reason" | "delete_reason";
 
 export function CancelVisitDialog({ visit, open, onOpenChange }: CancelVisitDialogProps) {
   const [, navigate] = useLocation();
@@ -44,15 +44,22 @@ export function CancelVisitDialog({ visit, open, onOpenChange }: CancelVisitDial
   });
 
   const handleReschedule = async () => {
+    if (!cancellationReason.trim()) {
+      toast({
+        title: "Error",
+        description: "Debes escribir un motivo para reagendar la visita",
+        variant: "destructive",
+      });
+      return;
+    }
     await cancelMutation.mutateAsync({ 
       cancellationType: "reagendada",
-      cancellationReason: "Visita reagendada"
+      cancellationReason: cancellationReason.trim(),
     });
     toast({
       title: "Visita marcada para reagendar",
       description: "Ahora puedes programar una nueva visita",
     });
-    // Pass original visit data to preserve history when rescheduling
     const params = new URLSearchParams({
       buildingId: visit.buildingId,
       type: visit.type,
@@ -82,7 +89,7 @@ export function CancelVisitDialog({ visit, open, onOpenChange }: CancelVisitDial
     });
     toast({
       title: "Visita eliminada",
-      description: "La visita ha sido marcada como no efectuada",
+      description: "La visita ha sido cancelada definitivamente",
     });
   };
 
@@ -105,55 +112,67 @@ export function CancelVisitDialog({ visit, open, onOpenChange }: CancelVisitDial
                 Cancelar Visita
               </DialogTitle>
               <DialogDescription>
-                Vas a cancelar la visita a <strong>{buildingName}</strong>. ¿Deseas reagendar esta visita?
+                Vas a cancelar la visita a <strong>{buildingName}</strong>. Selecciona una opcion:
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col gap-3 py-4">
               <Button
-                onClick={() => setStep("reschedule_confirm")}
+                onClick={() => { setStep("reschedule_reason"); setCancellationReason(""); }}
                 className="justify-start gap-2"
                 variant="outline"
                 data-testid="button-reschedule-option"
               >
                 <Calendar className="h-4 w-4" />
-                Si, quiero reagendar
+                Reagendar para otra fecha
               </Button>
               <Button
-                onClick={() => setStep("delete_reason")}
+                onClick={() => { setStep("delete_reason"); setCancellationReason(""); }}
                 className="justify-start gap-2"
                 variant="outline"
                 data-testid="button-delete-option"
               >
                 <Trash2 className="h-4 w-4" />
-                No, eliminar definitivamente
+                Eliminar definitivamente
               </Button>
             </div>
             <DialogFooter>
               <Button variant="ghost" onClick={handleClose} data-testid="button-cancel-dialog">
-                Cancelar
+                Volver
               </Button>
             </DialogFooter>
           </>
         )}
 
-        {step === "reschedule_confirm" && (
+        {step === "reschedule_reason" && (
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Calendar className="h-5 w-5 text-blue-500" />
-                Confirmar Reagendamiento
+                Reagendar Visita
               </DialogTitle>
               <DialogDescription>
-                La visita actual sera marcada como "No Efectuada - Reagendada" y seras llevado a la pantalla para programar una nueva visita.
+                Escribe el motivo por el cual se reagenda esta visita. Luego seras llevado a programar la nueva fecha.
               </DialogDescription>
             </DialogHeader>
+            <div className="py-4">
+              <Label htmlFor="reschedule-reason">Motivo del reagendamiento</Label>
+              <Textarea
+                id="reschedule-reason"
+                placeholder="Ej: Lluvia intensa, ejecutivo con licencia, edificio cerrado..."
+                value={cancellationReason}
+                onChange={(e) => setCancellationReason(e.target.value)}
+                className="mt-2"
+                rows={3}
+                data-testid="input-reschedule-reason"
+              />
+            </div>
             <DialogFooter className="flex gap-2 sm:gap-0">
               <Button variant="ghost" onClick={() => setStep("initial")} data-testid="button-back">
                 Volver
               </Button>
               <Button 
                 onClick={handleReschedule} 
-                disabled={cancelMutation.isPending}
+                disabled={cancelMutation.isPending || !cancellationReason.trim()}
                 data-testid="button-confirm-reschedule"
               >
                 {cancelMutation.isPending ? "Procesando..." : "Confirmar y Reagendar"}
@@ -167,21 +186,21 @@ export function CancelVisitDialog({ visit, open, onOpenChange }: CancelVisitDial
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Trash2 className="h-5 w-5 text-red-500" />
-                Motivo de Eliminación
+                Eliminar Visita
               </DialogTitle>
               <DialogDescription>
-                Escribe el motivo por el cual esta visita no se realizará. Esta información quedará registrada.
+                Escribe el motivo por el cual esta visita no se realizara. Esta informacion quedara registrada.
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
-              <Label htmlFor="cancellation-reason">Motivo</Label>
+              <Label htmlFor="cancellation-reason">Motivo de la eliminacion</Label>
               <Textarea
                 id="cancellation-reason"
-                placeholder="Escribe el motivo de la eliminación..."
+                placeholder="Escribe el motivo de la eliminacion..."
                 value={cancellationReason}
                 onChange={(e) => setCancellationReason(e.target.value)}
                 className="mt-2"
-                rows={4}
+                rows={3}
                 data-testid="input-cancellation-reason"
               />
             </div>

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CancelVisitDialog } from "@/components/CancelVisitDialog";
-import { Plus, Calendar, MapPin, Clock, CheckCircle2, XCircle, AlertTriangle, MoreVertical, Trash2 } from "lucide-react";
+import { Plus, Calendar, MapPin, Clock, CheckCircle2, XCircle, AlertTriangle, MoreVertical, Trash2, User, FileText } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Visit, Building } from "@shared/schema";
 import { format, isToday, isTomorrow, isBefore, startOfDay, parseISO, compareAsc } from "date-fns";
@@ -16,6 +16,7 @@ import { es } from "date-fns/locale";
 
 interface VisitWithBuilding extends Visit {
   building?: Building;
+  executiveName?: string | null;
 }
 
 export default function Visits() {
@@ -68,17 +69,12 @@ export default function Visits() {
   }) || [];
 
   // No Efectuadas: Pasó el día de la visita y NO se inició, O ya está marcada como no_realizada
-  // INCLUYE visitas canceladas (reagendada/eliminada) - se muestran con sus badges correspondientes
   const notCompletedVisits = visits?.filter((v) => {
-    if (v.status === "en_curso" || v.status === "realizada" || v.status === "cancelada") return false;
-    // Si ya está marcada como no_realizada (incluye canceladas), cuenta
+    if (v.status === "en_curso" || v.status === "realizada") return false;
+    if (v.status === "cancelada") return true;
     if (v.status === "no_realizada") return true;
-    // Si tiene cancellationType, cuenta como no efectuada
-    if (v.cancellationType === "reagendada" || v.cancellationType === "eliminada") return true;
-    // Sin fecha no cuenta aquí
     if (!v.scheduledDate) return false;
     const visitDate = new Date(v.scheduledDate);
-    // El día de la visita ya pasó (es un día anterior a hoy)
     return visitDate < todayStart;
   }).sort((a, b) => compareAsc(new Date(b.scheduledDate!), new Date(a.scheduledDate!))) || [];
 
@@ -123,36 +119,39 @@ export default function Visits() {
                   {visit.building?.name || "Edificio"}
                 </h3>
                 <StatusBadge status={visit.status} type="visit" />
+                {visit.type === "urgente" ? (
+                  <Badge variant="destructive" className="text-xs">Urgente</Badge>
+                ) : visit.type === "revision_proyecto" ? (
+                  <Badge variant="outline" className="text-xs">Rev. Proyecto</Badge>
+                ) : (
+                  <Badge variant="outline" className="text-xs">Rutina</Badge>
+                )}
               </div>
-              <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
-                <MapPin className="h-3.5 w-3.5" />
-                <span className="truncate">
-                  {visit.building?.address || "Dirección"}
-                </span>
+              <div className="flex items-center gap-1 text-sm text-muted-foreground mb-1">
+                <MapPin className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{visit.building?.address || "Direccion"}</span>
               </div>
               <div className="flex items-center gap-4 text-sm flex-wrap">
                 <div className="flex items-center gap-1 text-muted-foreground">
-                  <Clock className="h-3.5 w-3.5" />
+                  <Clock className="h-3.5 w-3.5 shrink-0" />
                   <span>
-                    {visit.scheduledDate && format(new Date(visit.scheduledDate), "HH:mm", { locale: es })}
+                    {visit.scheduledDate && format(new Date(visit.scheduledDate), "dd MMM, HH:mm", { locale: es })}
                   </span>
                 </div>
-                {visit.type === "urgente" ? (
-                  <Badge variant="destructive" className="text-xs">
-                    Urgente
-                  </Badge>
-                ) : visit.type === "revision_proyecto" ? (
-                  <Badge variant="outline" className="text-xs">
-                    Rev. Proyecto
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-xs">
-                    Rutina
-                  </Badge>
+                {visit.executiveName && (
+                  <div className="flex items-center gap-1 text-muted-foreground">
+                    <User className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{visit.executiveName}</span>
+                  </div>
                 )}
               </div>
+              {visit.notes && (
+                <p className="text-xs text-muted-foreground mt-1.5 line-clamp-1" data-testid={`text-visit-notes-${visit.id}`}>
+                  {visit.notes}
+                </p>
+              )}
             </div>
-            {showCancelButton && visit.status !== "realizada" && visit.status !== "no_realizada" && (
+            {showCancelButton && visit.status !== "realizada" && visit.status !== "no_realizada" && visit.status !== "cancelada" && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild onClick={(e) => e.preventDefault()}>
                   <Button variant="ghost" size="icon" data-testid={`button-visit-menu-${visit.id}`}>
@@ -359,46 +358,58 @@ export default function Visits() {
                   <Link key={visit.id} href={`/visitas/${visit.id}`}>
                     <Card className="hover-elevate cursor-pointer border-destructive/50" data-testid={`card-visit-not-completed-${visit.id}`}>
                       <CardContent className="p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <h3 className="font-medium truncate">
-                                {visit.building?.name || "Edificio"}
-                              </h3>
-                              <Badge variant="destructive" className="text-xs">
-                                No Efectuada
-                              </Badge>
-                              {visit.cancellationType === "reagendada" && (
-                                <Badge variant="outline" className="text-xs border-blue-500 text-blue-600">
-                                  Reagendada
-                                </Badge>
-                              )}
-                              {visit.cancellationType === "eliminada" && (
-                                <Badge variant="outline" className="text-xs border-red-500 text-red-600">
-                                  Eliminada
-                                </Badge>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
-                              <MapPin className="h-3.5 w-3.5" />
-                              <span className="truncate">
-                                {visit.building?.address || "Dirección"}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-4 text-sm flex-wrap">
-                              <div className="flex items-center gap-1 text-destructive">
-                                <Clock className="h-3.5 w-3.5" />
-                                <span>
-                                  {visit.scheduledDate && format(new Date(visit.scheduledDate), "dd MMM, HH:mm", { locale: es })}
-                                </span>
-                              </div>
-                            </div>
-                            {visit.cancellationReason && (
-                              <p className="text-sm text-muted-foreground mt-2 italic">
-                                Motivo: {visit.cancellationReason}
-                              </p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <h3 className="font-medium truncate">
+                              {visit.building?.name || "Edificio"}
+                            </h3>
+                            {visit.status === "cancelada" ? (
+                              <Badge variant="destructive" className="text-xs">Cancelada</Badge>
+                            ) : (
+                              <Badge variant="destructive" className="text-xs">No Efectuada</Badge>
+                            )}
+                            {visit.cancellationType === "reagendada" && (
+                              <Badge variant="outline" className="text-xs border-blue-500 text-blue-600">Reagendada</Badge>
+                            )}
+                            {visit.cancellationType === "eliminada" && (
+                              <Badge variant="outline" className="text-xs border-red-500 text-red-600">Eliminada</Badge>
+                            )}
+                            {visit.type === "urgente" ? (
+                              <Badge variant="destructive" className="text-xs">Urgente</Badge>
+                            ) : visit.type === "revision_proyecto" ? (
+                              <Badge variant="outline" className="text-xs">Rev. Proyecto</Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs">Rutina</Badge>
                             )}
                           </div>
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground mb-1">
+                            <MapPin className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{visit.building?.address || "Direccion"}</span>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm flex-wrap">
+                            <div className="flex items-center gap-1 text-destructive">
+                              <Clock className="h-3.5 w-3.5 shrink-0" />
+                              <span>
+                                {visit.scheduledDate && format(new Date(visit.scheduledDate), "dd MMM, HH:mm", { locale: es })}
+                              </span>
+                            </div>
+                            {visit.executiveName && (
+                              <div className="flex items-center gap-1 text-muted-foreground">
+                                <User className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">{visit.executiveName}</span>
+                              </div>
+                            )}
+                          </div>
+                          {visit.cancellationReason && (
+                            <p className="text-xs text-muted-foreground mt-1.5 italic" data-testid={`text-cancel-reason-${visit.id}`}>
+                              Motivo: {visit.cancellationReason}
+                            </p>
+                          )}
+                          {visit.completionObservations && !visit.cancellationReason && (
+                            <p className="text-xs text-muted-foreground mt-1.5 italic" data-testid={`text-observations-${visit.id}`}>
+                              {visit.completionObservations}
+                            </p>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
@@ -426,31 +437,43 @@ export default function Visits() {
                   <Link key={visit.id} href={`/visitas/${visit.id}`}>
                     <Card className="hover-elevate cursor-pointer border-green-500/50" data-testid={`card-visit-completed-${visit.id}`}>
                       <CardContent className="p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <h3 className="font-medium truncate">
-                                {visit.building?.name || "Edificio"}
-                              </h3>
-                              <Badge className="text-xs bg-green-600">
-                                Efectuada
-                              </Badge>
-                            </div>
-                            <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
-                              <MapPin className="h-3.5 w-3.5" />
-                              <span className="truncate">
-                                {visit.building?.address || "Dirección"}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <h3 className="font-medium truncate">
+                              {visit.building?.name || "Edificio"}
+                            </h3>
+                            <Badge className="text-xs bg-green-600">Efectuada</Badge>
+                            {visit.type === "urgente" ? (
+                              <Badge variant="destructive" className="text-xs">Urgente</Badge>
+                            ) : visit.type === "revision_proyecto" ? (
+                              <Badge variant="outline" className="text-xs">Rev. Proyecto</Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs">Rutina</Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground mb-1">
+                            <MapPin className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{visit.building?.address || "Direccion"}</span>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm flex-wrap">
+                            <div className="flex items-center gap-1 text-green-600">
+                              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                              <span>
+                                {visit.completedAt && format(new Date(visit.completedAt), "dd MMM, HH:mm", { locale: es })}
                               </span>
                             </div>
-                            <div className="flex items-center gap-4 text-sm flex-wrap">
-                              <div className="flex items-center gap-1 text-green-600">
-                                <CheckCircle2 className="h-3.5 w-3.5" />
-                                <span>
-                                  {visit.completedAt && format(new Date(visit.completedAt), "dd MMM, HH:mm", { locale: es })}
-                                </span>
+                            {visit.executiveName && (
+                              <div className="flex items-center gap-1 text-muted-foreground">
+                                <User className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">{visit.executiveName}</span>
                               </div>
-                            </div>
+                            )}
                           </div>
+                          {visit.completionObservations && (
+                            <p className="text-xs text-muted-foreground mt-1.5 line-clamp-1" data-testid={`text-observations-${visit.id}`}>
+                              {visit.completionObservations}
+                            </p>
+                          )}
                         </div>
                       </CardContent>
                     </Card>
