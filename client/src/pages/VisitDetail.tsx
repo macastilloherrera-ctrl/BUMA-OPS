@@ -189,6 +189,34 @@ export default function VisitDetail() {
           </CardContent>
         </Card>
 
+        {visit.status === "no_realizada" && visit.completionObservations && (
+          <Card className="border-red-200 dark:border-red-900">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2 text-red-600 dark:text-red-400">
+                <AlertTriangle className="h-4 w-4" />
+                Motivo No Realizada
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm">{visit.completionObservations}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {visit.status === "realizada" && visit.completionObservations && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                Observaciones de Cierre
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm">{visit.completionObservations}</p>
+            </CardContent>
+          </Card>
+        )}
+
         {(visit.relatedTickets?.length ?? 0) > 0 && (
           <Card>
             <CardHeader className="pb-3">
