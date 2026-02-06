@@ -1146,6 +1146,8 @@ export const projectMilestones = pgTable("project_milestones", {
   completedAt: timestamp("completed_at"),
   completedBy: varchar("completed_by"),
   observations: text("observations"),
+  linkedVisitId: varchar("linked_visit_id"),
+  isReview: boolean("is_review").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

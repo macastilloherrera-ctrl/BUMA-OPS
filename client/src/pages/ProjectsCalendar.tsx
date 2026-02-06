@@ -14,30 +14,26 @@ import {
   Calendar,
   Flag,
   PlayCircle,
-  StopCircle
+  StopCircle,
+  CalendarCheck
 } from "lucide-react";
 import type { Project, Building, ProjectMilestone } from "@shared/schema";
 
-type ProjectWithBuilding = Project & { building?: Building };
+type ProjectWithBuilding = Project & { 
+  building?: Building;
+  milestones?: ProjectMilestone[];
+};
 
 interface CalendarEvent {
   id: string;
   date: Date;
-  type: "start" | "end" | "milestone";
+  type: "start" | "end" | "milestone" | "review";
   title: string;
   projectId: string;
   projectName: string;
   color: "blue" | "red" | "green" | "yellow" | "purple";
   milestoneId?: string;
 }
-
-const statusLabels: Record<string, string> = {
-  planificado: "Planificado",
-  en_ejecucion: "En Ejecución",
-  pausado: "Pausado",
-  completado: "Completado",
-  cancelado: "Cancelado",
-};
 
 function formatDate(date: Date): string {
   return date.toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" });
@@ -73,7 +69,7 @@ export default function ProjectsCalendar() {
   const currentMonth = currentDate.getMonth();
 
   const { data: projects, isLoading } = useQuery<ProjectWithBuilding[]>({
-    queryKey: ["/api/projects"],
+    queryKey: ["/api/projects?includeMilestones=true"],
   });
 
   const { data: buildings } = useQuery<Building[]>({
@@ -113,6 +109,24 @@ export default function ProjectsCalendar() {
           color: "red",
         });
       }
+
+      if (project.milestones) {
+        project.milestones.forEach((milestone) => {
+          if (milestone.dueDate) {
+            const isReview = (milestone as any).isReview;
+            events.push({
+              id: `milestone-${milestone.id}`,
+              date: new Date(milestone.dueDate),
+              type: isReview ? "review" : "milestone",
+              title: `${milestone.name} - ${project.name}`,
+              projectId: project.id,
+              projectName: project.name,
+              color: isReview ? "purple" : "green",
+              milestoneId: milestone.id,
+            });
+          }
+        });
+      }
     });
     
     return events;
@@ -150,12 +164,52 @@ export default function ProjectsCalendar() {
 
   const selectedDateEvents = selectedDate ? getEventsForDate(selectedDate) : [];
 
+  const getEventDotColor = (type: string) => {
+    switch (type) {
+      case "start": return "bg-blue-500";
+      case "end": return "bg-red-500";
+      case "review": return "bg-purple-500";
+      case "milestone": return "bg-green-500";
+      default: return "bg-gray-500";
+    }
+  };
+
+  const getEventIconBg = (type: string) => {
+    switch (type) {
+      case "start": return "bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400";
+      case "end": return "bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-400";
+      case "review": return "bg-purple-100 text-purple-600 dark:bg-purple-900 dark:text-purple-400";
+      case "milestone": return "bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400";
+      default: return "bg-muted text-muted-foreground";
+    }
+  };
+
+  const getEventIcon = (type: string) => {
+    switch (type) {
+      case "start": return <PlayCircle className="h-4 w-4" />;
+      case "end": return <StopCircle className="h-4 w-4" />;
+      case "review": return <CalendarCheck className="h-4 w-4" />;
+      case "milestone": return <Flag className="h-4 w-4" />;
+      default: return <Calendar className="h-4 w-4" />;
+    }
+  };
+
+  const getEventLabel = (type: string) => {
+    switch (type) {
+      case "start": return "Inicio";
+      case "end": return "Término";
+      case "review": return "Revisión";
+      case "milestone": return "Hito";
+      default: return "Evento";
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-page-title">Calendario de Proyectos</h1>
-          <p className="text-muted-foreground">Fechas importantes de proyectos</p>
+          <p className="text-muted-foreground">Fechas importantes de proyectos e hitos</p>
         </div>
         <div className="flex items-center gap-2">
           <Select value={buildingFilter} onValueChange={setBuildingFilter}>
@@ -188,7 +242,7 @@ export default function ProjectsCalendar() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-2">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
               <CardTitle className="text-lg">
                 {monthNames[currentMonth]} {currentYear}
               </CardTitle>
@@ -238,18 +292,14 @@ export default function ProjectsCalendar() {
                       </span>
                       {events.length > 0 && (
                         <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5">
-                          {events.slice(0, 3).map((event, i) => (
+                          {events.slice(0, 4).map((event, i) => (
                             <div
                               key={i}
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                event.type === "start" ? "bg-blue-500" :
-                                event.type === "end" ? "bg-red-500" :
-                                "bg-green-500"
-                              }`}
+                              className={`w-1.5 h-1.5 rounded-full ${getEventDotColor(event.type)}`}
                             />
                           ))}
-                          {events.length > 3 && (
-                            <span className="text-[8px] text-muted-foreground">+{events.length - 3}</span>
+                          {events.length > 4 && (
+                            <span className="text-[8px] text-muted-foreground">+{events.length - 4}</span>
                           )}
                         </div>
                       )}
@@ -258,14 +308,22 @@ export default function ProjectsCalendar() {
                 })}
               </div>
               
-              <div className="flex items-center gap-4 mt-4 pt-4 border-t text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-4 mt-4 pt-4 border-t text-sm text-muted-foreground">
                 <div className="flex items-center gap-1.5">
                   <div className="w-3 h-3 rounded-full bg-blue-500" />
-                  <span>Inicio de proyecto</span>
+                  <span>Inicio</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="w-3 h-3 rounded-full bg-red-500" />
-                  <span>Término de proyecto</span>
+                  <span>Término</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded-full bg-green-500" />
+                  <span>Hito</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded-full bg-purple-500" />
+                  <span>Revisión</span>
                 </div>
               </div>
             </CardContent>
@@ -294,23 +352,15 @@ export default function ProjectsCalendar() {
                       <Card className="hover-elevate cursor-pointer">
                         <CardContent className="p-3">
                           <div className="flex items-start gap-3">
-                            <div className={`p-2 rounded-lg shrink-0 ${
-                              event.type === "start" ? "bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-400" :
-                              event.type === "end" ? "bg-red-100 text-red-600 dark:bg-red-900 dark:text-red-400" :
-                              "bg-green-100 text-green-600 dark:bg-green-900 dark:text-green-400"
-                            }`}>
-                              {event.type === "start" ? <PlayCircle className="h-4 w-4" /> :
-                               event.type === "end" ? <StopCircle className="h-4 w-4" /> :
-                               <Flag className="h-4 w-4" />}
+                            <div className={`p-2 rounded-lg shrink-0 ${getEventIconBg(event.type)}`}>
+                              {getEventIcon(event.type)}
                             </div>
                             <div className="min-w-0">
                               <p className="font-medium text-sm line-clamp-1">
                                 {event.title}
                               </p>
                               <Badge variant="outline" className="mt-1 text-xs">
-                                {event.type === "start" ? "Inicio" :
-                                 event.type === "end" ? "Término" :
-                                 "Hito"}
+                                {getEventLabel(event.type)}
                               </Badge>
                             </div>
                           </div>

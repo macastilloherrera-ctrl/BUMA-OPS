@@ -29,7 +29,10 @@ import {
   Upload,
   Camera,
   Pencil,
-  Trash2
+  Trash2,
+  CalendarCheck,
+  RotateCcw,
+  ExternalLink
 } from "lucide-react";
 import type { 
   Project, 
@@ -165,7 +168,53 @@ export default function ProjectDetail() {
     },
   });
 
+  const addReviewMilestoneMutation = useMutation({
+    mutationFn: async (data: { name: string; description: string; dueDate?: string; isReview: boolean }) => {
+      const milestoneCount = project?.milestones?.length || 0;
+      return apiRequest("POST", `/api/projects/${id}/milestones`, {
+        ...data,
+        projectId: id,
+        orderIndex: milestoneCount,
+        dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
+      toast({ title: "Revisión periódica agregada" });
+    },
+    onError: () => {
+      toast({ title: "Error al agregar revisión", variant: "destructive" });
+    },
+  });
+
+  const resetMilestoneMutation = useMutation({
+    mutationFn: async (milestoneId: string) => {
+      return apiRequest("PATCH", `/api/projects/${id}/milestones/${milestoneId}`, {
+        status: "pendiente",
+        completedAt: null,
+        completedBy: null,
+        observations: null,
+        linkedVisitId: null,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
+      toast({ title: "Hito reiniciado" });
+    },
+  });
+
   const isManager = (user as any)?.role && ["super_admin", "gerente_general", "gerente_operaciones", "gerente_comercial"].includes((user as any).role);
+
+  const getNextReviewNumber = () => {
+    if (!project) return 1;
+    const reviewMilestones = project.milestones.filter(m => (m as any).isReview);
+    let maxNum = 0;
+    reviewMilestones.forEach(m => {
+      const match = m.name.match(/Revisión Periódica (\d+)/);
+      if (match) maxNum = Math.max(maxNum, parseInt(match[1]));
+    });
+    return maxNum + 1;
+  };
 
   if (isLoading) {
     return (
@@ -310,70 +359,117 @@ export default function ProjectDetail() {
 
         <TabsContent value="milestones" className="mt-4">
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
               <CardTitle>Hitos del Proyecto</CardTitle>
+              {isManager && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const nextNum = getNextReviewNumber();
+                    addReviewMilestoneMutation.mutate({
+                      name: `Revisión Periódica ${nextNum}`,
+                      description: "Inspección de avance durante ejecución",
+                      isReview: true,
+                    });
+                  }}
+                  disabled={addReviewMilestoneMutation.isPending}
+                  data-testid="button-add-review-detail"
+                >
+                  <CalendarCheck className="h-4 w-4 mr-2" />
+                  Agregar Revisión
+                </Button>
+              )}
             </CardHeader>
             <CardContent>
               {project.milestones.length === 0 ? (
                 <p className="text-muted-foreground text-center py-8">No hay hitos definidos</p>
               ) : (
                 <div className="space-y-4">
-                  {project.milestones.map((milestone, index) => (
-                    <div 
-                      key={milestone.id} 
-                      className="flex items-start gap-4 p-4 border rounded-lg"
-                      data-testid={`milestone-${milestone.id}`}
-                    >
-                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted text-sm font-medium">
-                        {index + 1}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h4 className="font-medium">{milestone.name}</h4>
-                          <Badge 
-                            variant={milestone.status === "completado" ? "default" : "outline"}
-                            className={
-                              milestone.status === "retrasado" ? "bg-red-100 text-red-800 border-red-300" :
-                              milestone.status === "en_curso" ? "bg-blue-100 text-blue-800 border-blue-300" :
-                              ""
+                  {project.milestones.map((milestone, index) => {
+                    const milestoneIsReview = (milestone as any).isReview;
+                    return (
+                      <div 
+                        key={milestone.id} 
+                        className={`flex items-start gap-4 p-4 border rounded-lg ${milestoneIsReview ? "border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/30" : ""}`}
+                        data-testid={`milestone-${milestone.id}`}
+                      >
+                        <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium shrink-0 ${milestoneIsReview ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" : "bg-muted"}`}>
+                          {index + 1}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <h4 className="font-medium">{milestone.name}</h4>
+                            {milestoneIsReview && (
+                              <Badge variant="outline" className="text-blue-600 border-blue-300">
+                                <CalendarCheck className="h-3 w-3 mr-1" />
+                                Revisión
+                              </Badge>
+                            )}
+                            <Badge 
+                              variant={milestone.status === "completado" ? "default" : "outline"}
+                              className={
+                                milestone.status === "retrasado" ? "bg-red-100 text-red-800 border-red-300" :
+                                milestone.status === "en_curso" ? "bg-blue-100 text-blue-800 border-blue-300" :
+                                ""
+                              }
+                            >
+                              {milestoneStatusLabels[milestone.status]}
+                            </Badge>
+                          </div>
+                          {milestone.description && (
+                            <p className="text-sm text-muted-foreground">{milestone.description}</p>
+                          )}
+                          <div className="flex flex-wrap gap-4 mt-2 text-sm text-muted-foreground">
+                            {milestone.dueDate && (
+                              <span>Límite: {formatDate(milestone.dueDate)}</span>
+                            )}
+                            {milestone.completedAt && (
+                              <span>Completado: {formatDate(milestone.completedAt)}</span>
+                            )}
+                            {(milestone as any).linkedVisitId && (
+                              <a href={`/visitas/${(milestone as any).linkedVisitId}`} className="text-blue-600 flex items-center gap-1">
+                                <ExternalLink className="h-3 w-3" />
+                                Ver visita asociada
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Select
+                            value={milestone.status}
+                            onValueChange={(value) => 
+                              updateMilestoneMutation.mutate({ 
+                                milestoneId: milestone.id, 
+                                data: { status: value as any } 
+                              })
                             }
                           >
-                            {milestoneStatusLabels[milestone.status]}
-                          </Badge>
-                        </div>
-                        {milestone.description && (
-                          <p className="text-sm text-muted-foreground">{milestone.description}</p>
-                        )}
-                        <div className="flex gap-4 mt-2 text-sm text-muted-foreground">
-                          {milestone.dueDate && (
-                            <span>Límite: {formatDate(milestone.dueDate)}</span>
-                          )}
-                          {milestone.completedAt && (
-                            <span>Completado: {formatDate(milestone.completedAt)}</span>
+                            <SelectTrigger className="w-36" data-testid={`select-milestone-status-${milestone.id}`}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pendiente">Pendiente</SelectItem>
+                              <SelectItem value="en_curso">En Curso</SelectItem>
+                              <SelectItem value="completado">Completado</SelectItem>
+                              <SelectItem value="retrasado">Retrasado</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {milestone.status !== "pendiente" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => resetMilestoneMutation.mutate(milestone.id)}
+                              title="Reiniciar hito (limpiar datos para volver a ingresar)"
+                              data-testid={`button-reset-milestone-${milestone.id}`}
+                            >
+                              <RotateCcw className="h-4 w-4 text-muted-foreground" />
+                            </Button>
                           )}
                         </div>
                       </div>
-                      <Select
-                        value={milestone.status}
-                        onValueChange={(value) => 
-                          updateMilestoneMutation.mutate({ 
-                            milestoneId: milestone.id, 
-                            data: { status: value as any } 
-                          })
-                        }
-                      >
-                        <SelectTrigger className="w-36" data-testid={`select-milestone-status-${milestone.id}`}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pendiente">Pendiente</SelectItem>
-                          <SelectItem value="en_curso">En Curso</SelectItem>
-                          <SelectItem value="completado">Completado</SelectItem>
-                          <SelectItem value="retrasado">Retrasado</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

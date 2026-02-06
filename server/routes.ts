@@ -4669,13 +4669,20 @@ export async function registerRoutes(
       
       const projects = await storage.getProjects(filters);
       
-      // Enrich with building info
       const buildings = await storage.getBuildings();
       const buildingMap = new Map(buildings.map(b => [b.id, b]));
       
-      const enrichedProjects = projects.map(project => ({
-        ...project,
-        building: buildingMap.get(project.buildingId),
+      const includeMilestones = req.query.includeMilestones === "true";
+      
+      const enrichedProjects = await Promise.all(projects.map(async (project) => {
+        const base: any = {
+          ...project,
+          building: buildingMap.get(project.buildingId),
+        };
+        if (includeMilestones) {
+          base.milestones = await storage.getProjectMilestones(project.id);
+        }
+        return base;
       }));
       
       res.json(enrichedProjects);
@@ -4731,17 +4738,33 @@ export async function registerRoutes(
       
       const project = await storage.createProject(projectData);
       
-      // Create default milestones if provided
       if (req.body.milestones && Array.isArray(req.body.milestones)) {
         for (let i = 0; i < req.body.milestones.length; i++) {
           const m = req.body.milestones[i];
-          await storage.createProjectMilestone({
+          const milestone = await storage.createProjectMilestone({
             projectId: project.id,
             name: m.name,
             description: m.description,
             orderIndex: i,
             dueDate: m.dueDate ? new Date(m.dueDate) : undefined,
+            isReview: m.isReview || false,
           });
+
+          if (m.isReview && m.dueDate && projectData.assignedExecutiveId) {
+            try {
+              const visit = await storage.createVisit({
+                buildingId: projectData.buildingId,
+                executiveId: projectData.assignedExecutiveId,
+                type: "rutina",
+                status: "programada",
+                scheduledDate: new Date(m.dueDate),
+                notes: `Revisión de Proyecto: ${projectData.name} - ${m.name}`,
+              });
+              await storage.updateProjectMilestone(milestone.id, { linkedVisitId: visit.id });
+            } catch (visitError) {
+              console.error("Error creating linked visit for milestone:", visitError);
+            }
+          }
         }
       }
       
@@ -4812,7 +4835,28 @@ export async function registerRoutes(
       const milestone = await storage.createProjectMilestone({
         ...req.body,
         projectId: req.params.projectId,
+        dueDate: req.body.dueDate ? new Date(req.body.dueDate) : undefined,
+        isReview: req.body.isReview || false,
       });
+
+      if (req.body.isReview && req.body.dueDate) {
+        const project = await storage.getProject(req.params.projectId);
+        if (project && (project as any).assignedExecutiveId) {
+          try {
+            const visit = await storage.createVisit({
+              buildingId: project.buildingId,
+              executiveId: (project as any).assignedExecutiveId,
+              type: "rutina",
+              status: "programada",
+              scheduledDate: new Date(req.body.dueDate),
+              notes: `Revisión de Proyecto: ${project.name} - ${req.body.name}`,
+            });
+            await storage.updateProjectMilestone(milestone.id, { linkedVisitId: visit.id });
+          } catch (visitError) {
+            console.error("Error creating linked visit:", visitError);
+          }
+        }
+      }
       
       res.status(201).json(milestone);
     } catch (error) {
