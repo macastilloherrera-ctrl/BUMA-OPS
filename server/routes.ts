@@ -5117,8 +5117,7 @@ export async function registerRoutes(
           const linkedVisit = await storage.getVisit(linkedVisitId);
           if (linkedVisit) {
             await storage.updateVisit(linkedVisitId, {
-              status: "programada",
-              completedAt: null,
+              status: "no_realizada",
               completionObservations: observations || "Revisión no realizada",
             });
           }
