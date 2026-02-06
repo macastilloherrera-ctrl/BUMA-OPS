@@ -127,7 +127,7 @@ export default function Visits() {
               <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
                 <MapPin className="h-3.5 w-3.5" />
                 <span className="truncate">
-                  {visit.building?.address || "Direccion"}
+                  {visit.building?.address || "Dirección"}
                 </span>
               </div>
               <div className="flex items-center gap-4 text-sm flex-wrap">
@@ -294,7 +294,7 @@ export default function Visits() {
                             <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
                               <MapPin className="h-3.5 w-3.5" />
                               <span className="truncate">
-                                {visit.building?.address || "Direccion"}
+                                {visit.building?.address || "Dirección"}
                               </span>
                             </div>
                             <div className="flex items-center gap-4 text-sm flex-wrap">
@@ -378,7 +378,7 @@ export default function Visits() {
                             <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
                               <MapPin className="h-3.5 w-3.5" />
                               <span className="truncate">
-                                {visit.building?.address || "Direccion"}
+                                {visit.building?.address || "Dirección"}
                               </span>
                             </div>
                             <div className="flex items-center gap-4 text-sm flex-wrap">
@@ -435,7 +435,7 @@ export default function Visits() {
                             <div className="flex items-center gap-1 text-sm text-muted-foreground mb-2">
                               <MapPin className="h-3.5 w-3.5" />
                               <span className="truncate">
-                                {visit.building?.address || "Direccion"}
+                                {visit.building?.address || "Dirección"}
                               </span>
                             </div>
                             <div className="flex items-center gap-4 text-sm flex-wrap">

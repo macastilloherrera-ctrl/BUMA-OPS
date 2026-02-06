@@ -81,7 +81,7 @@ export default function Profile({ userRole = "ejecutivo_operaciones" }: ProfileP
 
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">Informacion de Cuenta</CardTitle>
+            <CardTitle className="text-base">Información de Cuenta</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-3 p-3 rounded-md bg-muted/30">
@@ -115,7 +115,7 @@ export default function Profile({ userRole = "ejecutivo_operaciones" }: ProfileP
           <CardContent>
             <div className="flex items-center justify-between p-3 rounded-md bg-muted/30">
               <div>
-                <p className="font-medium">Tema de la Aplicacion</p>
+                <p className="font-medium">Tema de la Aplicación</p>
                 <p className="text-sm text-muted-foreground">Cambia entre modo claro y oscuro</p>
               </div>
               <ThemeToggle />

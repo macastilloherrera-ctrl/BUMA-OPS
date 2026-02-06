@@ -31,8 +31,8 @@ import { Link } from "wouter";
 
 const createTicketSchema = z.object({
   buildingId: z.string().min(1, "Selecciona un edificio"),
-  description: z.string().min(10, "La descripcion debe tener al menos 10 caracteres"),
-  category: z.string().min(1, "Selecciona una categoria"),
+  description: z.string().min(10, "La descripción debe tener al menos 10 caracteres"),
+  category: z.string().min(1, "Selecciona una categoría"),
   priority: z.enum(["rojo", "amarillo", "verde"]),
   responsibleType: z.enum(["ejecutivo", "proveedor", "conserjeria", "comite"]),
   responsibleName: z.string().optional(),
@@ -46,8 +46,8 @@ const categories = [
   "Mantenimiento",
   "Seguridad",
   "Limpieza",
-  "Reparacion",
-  "Inspeccion",
+  "Reparación",
+  "Inspección",
   "Otro",
 ];
 
@@ -158,7 +158,7 @@ export default function CreateTicket() {
                   name="description"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Descripcion / Explicacion *</FormLabel>
+                      <FormLabel>Descripción / Explicación *</FormLabel>
                       <FormControl>
                         <Textarea
                           placeholder="Describe el problema o tarea..."
@@ -177,11 +177,11 @@ export default function CreateTicket() {
                   name="category"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Categoria *</FormLabel>
+                      <FormLabel>Categoría *</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger data-testid="select-category">
-                            <SelectValue placeholder="Selecciona una categoria" />
+                            <SelectValue placeholder="Selecciona una categoría" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -210,9 +210,9 @@ export default function CreateTicket() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="rojo">Critico (Rojo)</SelectItem>
+                          <SelectItem value="rojo">Crítico (Rojo)</SelectItem>
                           <SelectItem value="amarillo">Por Vencer (Amarillo)</SelectItem>
-                          <SelectItem value="verde">Al Dia (Verde)</SelectItem>
+                          <SelectItem value="verde">Al Día (Verde)</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -235,8 +235,8 @@ export default function CreateTicket() {
                         <SelectContent>
                           <SelectItem value="ejecutivo">Ejecutivo</SelectItem>
                           <SelectItem value="proveedor">Proveedor</SelectItem>
-                          <SelectItem value="conserjeria">Conserjeria</SelectItem>
-                          <SelectItem value="comite">Comite</SelectItem>
+                          <SelectItem value="conserjeria">Conserjería</SelectItem>
+                          <SelectItem value="comite">Comité</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />

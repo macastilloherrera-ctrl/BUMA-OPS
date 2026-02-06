@@ -218,7 +218,7 @@ const generalManagerNavItems = [
     ]
   },
   {
-    group: "Administracion",
+    group: "Administración",
     items: [
       { path: "/admin/usuarios", label: "Usuarios", icon: Shield },
     ]

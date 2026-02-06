@@ -286,7 +286,7 @@ export default function CalendarView() {
               </div>
               <div className="flex items-center gap-2" data-testid="legend-type-mantencion">
                 <Wrench className="h-4 w-4" />
-                <span>Mantencion</span>
+                <span>Mantención</span>
               </div>
             </div>
           </div>

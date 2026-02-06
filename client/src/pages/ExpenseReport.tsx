@@ -220,8 +220,8 @@ export default function ExpenseReport() {
                         <TableRow>
                           <TableHead className="w-[60px]">N°</TableHead>
                           <TableHead>Edificio</TableHead>
-                          <TableHead>Categoria</TableHead>
-                          <TableHead className="max-w-[300px]">Descripcion</TableHead>
+                          <TableHead>Categoría</TableHead>
+                          <TableHead className="max-w-[300px]">Descripción</TableHead>
                           <TableHead className="text-right">Monto</TableHead>
                           <TableHead>Documento</TableHead>
                           <TableHead>Fecha</TableHead>

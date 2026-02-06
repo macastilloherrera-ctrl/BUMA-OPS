@@ -22,13 +22,13 @@ export default function DocumentationDownload() {
 
   const getFileDescription = (name: string) => {
     if (name.includes("Usuario")) {
-      return "Guia completa para usuarios del sistema con instrucciones por rol";
+      return "Guía completa para usuarios del sistema con instrucciones por rol";
     }
     if (name.includes("Administracion")) {
-      return "Manual para administradores del sistema y gestion de usuarios";
+      return "Manual para administradores del sistema y gestión de usuarios";
     }
     if (name.includes("Tecnica")) {
-      return "Documentacion tecnica con arquitectura, APIs y modelo de datos";
+      return "Documentación técnica con arquitectura, APIs y modelo de datos";
     }
     return "Documento del sistema";
   };
@@ -57,8 +57,8 @@ export default function DocumentationDownload() {
       <div className="flex items-center gap-3">
         <FileText className="h-8 w-8 text-primary" />
         <div>
-          <h1 className="text-2xl font-bold">Documentacion del Sistema</h1>
-          <p className="text-muted-foreground">Descarga los manuales y guias de BUMA OPS</p>
+          <h1 className="text-2xl font-bold">Documentación del Sistema</h1>
+          <p className="text-muted-foreground">Descarga los manuales y guías de BUMA OPS</p>
         </div>
       </div>
 

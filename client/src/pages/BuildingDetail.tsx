@@ -70,7 +70,7 @@ const staffFormSchema = z.object({
   role: z.string().min(1, "Cargo requerido"),
   birthDate: z.string().optional(),
   phone: z.string().optional(),
-  email: z.string().email("Email invalido").optional().or(z.literal("")),
+  email: z.string().email("Email inválido").optional().or(z.literal("")),
 });
 
 type StaffFormData = z.infer<typeof staffFormSchema>;
@@ -368,7 +368,7 @@ export default function BuildingDetail() {
         <div className="p-4 md:p-6">
           <Tabs defaultValue="info" className="w-full">
             <TabsList className="mb-4">
-              <TabsTrigger value="info" data-testid="tab-info">Informacion</TabsTrigger>
+              <TabsTrigger value="info" data-testid="tab-info">Información</TabsTrigger>
               <TabsTrigger value="staff" data-testid="tab-staff">Personal ({staff?.length || 0})</TabsTrigger>
               {isManager && (
                 <TabsTrigger value="folders" data-testid="tab-folders">Documentos</TabsTrigger>
@@ -431,7 +431,7 @@ export default function BuildingDetail() {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Eliminar Reglamento</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Esta accion eliminara el reglamento de copropiedad. El edificio quedara marcado como "Activo - Sin Reglamento".
+                                Esta acción eliminará el reglamento de copropiedad. El edificio quedará marcado como "Activo - Sin Reglamento".
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
@@ -516,7 +516,7 @@ export default function BuildingDetail() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Caracteristicas</CardTitle>
+                  <CardTitle className="text-base">Características</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -557,7 +557,7 @@ export default function BuildingDetail() {
               {features && features.length > 0 && (
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base">Caracteristicas Adicionales</CardTitle>
+                    <CardTitle className="text-base">Características Adicionales</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -622,7 +622,7 @@ export default function BuildingDetail() {
                               name="phone"
                               render={({ field }) => (
                                 <FormItem>
-                                  <FormLabel>Telefono</FormLabel>
+                                  <FormLabel>Teléfono</FormLabel>
                                   <FormControl>
                                     <Input placeholder="+56912345678" {...field} data-testid="input-staff-phone" />
                                   </FormControl>
@@ -870,7 +870,7 @@ export default function BuildingDetail() {
                                   <AlertDialogHeader>
                                     <AlertDialogTitle>Eliminar carpeta</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                      Esta accion eliminara la carpeta y todos sus archivos. Esta accion no se puede deshacer.
+                                      Esta acción eliminará la carpeta y todos sus archivos. Esta acción no se puede deshacer.
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
@@ -1000,7 +1000,7 @@ export default function BuildingDetail() {
                                         <AlertDialogHeader>
                                           <AlertDialogTitle>Eliminar archivo</AlertDialogTitle>
                                           <AlertDialogDescription>
-                                            Esta accion no se puede deshacer.
+                                            Esta acción no se puede deshacer.
                                           </AlertDialogDescription>
                                         </AlertDialogHeader>
                                         <AlertDialogFooter>

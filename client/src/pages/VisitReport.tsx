@@ -171,7 +171,7 @@ export default function VisitReport() {
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm">
-                  <span className="text-muted-foreground">Duracion:</span>{" "}
+                  <span className="text-muted-foreground">Duración:</span>{" "}
                   <span className="font-medium">
                     {calculateDuration(visit.startedAt, visit.completedAt)}
                   </span>
@@ -260,7 +260,7 @@ export default function VisitReport() {
                   >
                     <div className="space-y-1">
                       <p className="font-medium line-clamp-2">{ticket.description}</p>
-                      <p className="text-sm text-muted-foreground">{ticket.otherCategoryDescription || "Sin categoria"}</p>
+                      <p className="text-sm text-muted-foreground">{ticket.otherCategoryDescription || "Sin categoría"}</p>
                     </div>
                     <Badge className={priorityColors[ticket.priority as keyof typeof priorityColors]}>
                       {ticket.priority}

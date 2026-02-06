@@ -67,11 +67,11 @@ const assetTypes = [
   "Ascensor",
   "Bomba de agua",
   "Bomba de incendio",
-  "Porton electrico",
+  "Portón eléctrico",
   "CCTV",
-  "Citofono",
-  "Tablero electrico",
-  "Grupo electrogeno",
+  "Citófono",
+  "Tablero eléctrico",
+  "Grupo electrógeno",
   "Sistema de incendio",
   "Otro",
 ];
@@ -97,11 +97,11 @@ function getMaintenanceStatus(nextMaintenanceDate: string | Date | null | undefi
   if (diffDays < 0) {
     return { status: "vencida", label: "Vencida", variant: "destructive" as const, days: Math.abs(diffDays) };
   } else if (diffDays <= 7) {
-    return { status: "proxima", label: "Proxima", variant: "secondary" as const, days: diffDays };
+    return { status: "proxima", label: "Próxima", variant: "secondary" as const, days: diffDays };
   } else if (diffDays <= 30) {
-    return { status: "cercana", label: "En 30 dias", variant: "outline" as const, days: diffDays };
+    return { status: "cercana", label: "En 30 días", variant: "outline" as const, days: diffDays };
   }
-  return { status: "ok", label: "Al dia", variant: "default" as const, days: diffDays };
+  return { status: "ok", label: "Al día", variant: "default" as const, days: diffDays };
 }
 
 function formatDate(date: string | Date | null | undefined) {
@@ -167,7 +167,7 @@ export default function CriticalAssets() {
         title: editingAsset ? "Equipo actualizado" : "Equipo sugerido",
         description: editingAsset
           ? "Los cambios han sido guardados"
-          : "El equipo ha sido enviado para aprobacion",
+          : "El equipo ha sido enviado para aprobación",
       });
       setIsDialogOpen(false);
       setEditingAsset(null);
@@ -235,8 +235,8 @@ export default function CriticalAssets() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/critical-assets"] });
       toast({
-        title: "Mantencion registrada",
-        description: "La mantencion ha sido registrada y la proxima fecha actualizada",
+        title: "Mantención registrada",
+        description: "La mantención ha sido registrada y la próxima fecha actualizada",
       });
       setMaintenanceDialogOpen(false);
       setSelectedAssetForMaintenance(null);
@@ -245,7 +245,7 @@ export default function CriticalAssets() {
     onError: () => {
       toast({
         title: "Error",
-        description: "No se pudo registrar la mantencion",
+        description: "No se pudo registrar la mantención",
         variant: "destructive",
       });
     },
@@ -335,7 +335,7 @@ export default function CriticalAssets() {
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>
-                  {editingAsset ? "Editar Equipo" : "Sugerir Equipo Critico"}
+                  {editingAsset ? "Editar Equipo" : "Sugerir Equipo Crítico"}
                 </DialogTitle>
               </DialogHeader>
               <Form {...form}>
@@ -410,7 +410,7 @@ export default function CriticalAssets() {
                     name="description"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Descripcion (opcional)</FormLabel>
+                        <FormLabel>Descripción (opcional)</FormLabel>
                         <FormControl>
                           <Textarea
                             placeholder="Detalles adicionales..."
@@ -425,7 +425,7 @@ export default function CriticalAssets() {
                   />
                   
                   <div className="border-t pt-4 mt-4">
-                    <h4 className="font-medium text-sm mb-3">Informacion de Mantencion</h4>
+                    <h4 className="font-medium text-sm mb-3">Información de Mantención</h4>
                     
                     <div className="grid grid-cols-2 gap-3">
                       <FormField
@@ -477,7 +477,7 @@ export default function CriticalAssets() {
                         name="lastMaintenanceDate"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Ultima Mantencion</FormLabel>
+                            <FormLabel>Última Mantención</FormLabel>
                             <FormControl>
                               <Input
                                 type="date"
@@ -494,7 +494,7 @@ export default function CriticalAssets() {
                         name="nextMaintenanceDate"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Proxima Mantencion</FormLabel>
+                            <FormLabel>Próxima Mantención</FormLabel>
                             <FormControl>
                               <Input
                                 type="date"
@@ -579,12 +579,12 @@ export default function CriticalAssets() {
           >
             <SelectTrigger className="w-[180px]" data-testid="filter-maintenance">
               <Wrench className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Estado mantencion" />
+              <SelectValue placeholder="Estado mantención" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas las mantenciones</SelectItem>
               <SelectItem value="vencida">Vencidas</SelectItem>
-              <SelectItem value="proxima">Proximas (7 dias)</SelectItem>
+              <SelectItem value="proxima">Próximas (7 días)</SelectItem>
               <SelectItem value="sin_fecha">Sin fecha programada</SelectItem>
             </SelectContent>
           </Select>
@@ -657,10 +657,10 @@ export default function CriticalAssets() {
                               <span data-testid={`text-frequency-${asset.id}`}>Frecuencia: {maintenanceFrequencies.find(f => f.value === asset.maintenanceFrequency)?.label || asset.maintenanceFrequency}</span>
                             )}
                             {asset.lastMaintenanceDate && (
-                              <span data-testid={`text-last-maintenance-${asset.id}`}>Ultima: {formatDate(asset.lastMaintenanceDate)}</span>
+                              <span data-testid={`text-last-maintenance-${asset.id}`}>Última: {formatDate(asset.lastMaintenanceDate)}</span>
                             )}
                             {asset.nextMaintenanceDate && (
-                              <span data-testid={`text-next-maintenance-${asset.id}`}>Proxima: {formatDate(asset.nextMaintenanceDate)}</span>
+                              <span data-testid={`text-next-maintenance-${asset.id}`}>Próxima: {formatDate(asset.nextMaintenanceDate)}</span>
                             )}
                           </div>
                         )}
@@ -710,7 +710,7 @@ export default function CriticalAssets() {
                                 setMaintenanceDialogOpen(true);
                               }}
                               data-testid={`button-register-maintenance-${asset.id}`}
-                              title="Registrar mantencion"
+                              title="Registrar mantención"
                             >
                               <ClipboardCheck className="h-4 w-4 text-green-600" />
                             </Button>
@@ -742,7 +742,7 @@ export default function CriticalAssets() {
       <Dialog open={maintenanceDialogOpen} onOpenChange={setMaintenanceDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Registrar Mantencion</DialogTitle>
+            <DialogTitle>Registrar Mantención</DialogTitle>
           </DialogHeader>
           {selectedAssetForMaintenance && (
             <div className="mb-4 p-3 bg-muted rounded-md">
@@ -762,7 +762,7 @@ export default function CriticalAssets() {
                 name="performedAt"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Fecha de mantencion</FormLabel>
+                    <FormLabel>Fecha de mantención</FormLabel>
                     <FormControl>
                       <Input type="date" {...field} data-testid="input-maintenance-date" />
                     </FormControl>
@@ -803,7 +803,7 @@ export default function CriticalAssets() {
                   <FormItem>
                     <FormLabel>Observaciones</FormLabel>
                     <FormControl>
-                      <Textarea placeholder="Detalles de la mantencion realizada..." {...field} data-testid="input-maintenance-observations" />
+                      <Textarea placeholder="Detalles de la mantención realizada..." {...field} data-testid="input-maintenance-observations" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

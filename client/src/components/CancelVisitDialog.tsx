@@ -167,17 +167,17 @@ export function CancelVisitDialog({ visit, open, onOpenChange }: CancelVisitDial
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Trash2 className="h-5 w-5 text-red-500" />
-                Motivo de Eliminacion
+                Motivo de Eliminación
               </DialogTitle>
               <DialogDescription>
-                Escribe el motivo por el cual esta visita no se realizara. Esta informacion quedara registrada.
+                Escribe el motivo por el cual esta visita no se realizará. Esta información quedará registrada.
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
               <Label htmlFor="cancellation-reason">Motivo</Label>
               <Textarea
                 id="cancellation-reason"
-                placeholder="Escribe el motivo de la eliminacion..."
+                placeholder="Escribe el motivo de la eliminación..."
                 value={cancellationReason}
                 onChange={(e) => setCancellationReason(e.target.value)}
                 className="mt-2"

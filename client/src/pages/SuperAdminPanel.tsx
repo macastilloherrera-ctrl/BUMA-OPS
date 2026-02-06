@@ -110,7 +110,7 @@ export default function SuperAdminPanel() {
     mutationFn: (data: typeof configForm) => apiRequest("PATCH", "/api/super-admin/config", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/config"] });
-      toast({ title: "Configuracion actualizada" });
+      toast({ title: "Configuración actualizada" });
     },
     onError: (error: any) => {
       toast({ title: "Error al actualizar", description: error.message, variant: "destructive" });
@@ -238,7 +238,7 @@ export default function SuperAdminPanel() {
               Panel Super Admin
             </h1>
             <p className="text-sm text-muted-foreground">
-              Configuracion del sistema y gestion avanzada
+              Configuración del sistema y gestión avanzada
             </p>
           </div>
         </div>
@@ -250,7 +250,7 @@ export default function SuperAdminPanel() {
             <TabsList className="mb-6">
               <TabsTrigger value="config" className="gap-2" data-testid="tab-config">
                 <Settings className="h-4 w-4" />
-                Configuracion
+                Configuración
               </TabsTrigger>
               <TabsTrigger value="users" className="gap-2" data-testid="tab-users">
                 <Users className="h-4 w-4" />
@@ -374,7 +374,7 @@ export default function SuperAdminPanel() {
                       data-testid="button-save-config"
                     >
                       <Save className="h-4 w-4 mr-2" />
-                      {updateConfigMutation.isPending ? "Guardando..." : "Guardar Configuracion"}
+                      {updateConfigMutation.isPending ? "Guardando..." : "Guardar Configuración"}
                     </Button>
                   </div>
                 </CardContent>
@@ -408,7 +408,7 @@ export default function SuperAdminPanel() {
 
             <TabsContent value="users" className="space-y-4">
               <div className="flex justify-between items-center">
-                <h2 className="text-lg font-semibold">Gestion de Usuarios</h2>
+                <h2 className="text-lg font-semibold">Gestión de Usuarios</h2>
                 <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-user">
                   <UserPlus className="h-4 w-4 mr-2" />
                   Nuevo Usuario
@@ -555,7 +555,7 @@ export default function SuperAdminPanel() {
                         <Book className="h-12 w-12 text-blue-500 mx-auto mb-4" />
                         <h3 className="font-semibold mb-2">Manual de Usuario</h3>
                         <p className="text-sm text-muted-foreground mb-4">
-                          Guia completa para usuarios del sistema con instrucciones por rol
+                          Guía completa para usuarios del sistema con instrucciones por rol
                         </p>
                         <Button variant="outline" size="sm" className="gap-2" data-testid="button-download-manual">
                           <Download className="h-4 w-4" />
@@ -567,9 +567,9 @@ export default function SuperAdminPanel() {
                     <Card className="hover-elevate cursor-pointer" onClick={() => window.open("/api/docs/download/Guia_Administracion_BUMA_OPS.docx", "_blank")}>
                       <CardContent className="pt-6 text-center">
                         <Shield className="h-12 w-12 text-green-500 mx-auto mb-4" />
-                        <h3 className="font-semibold mb-2">Guia de Administracion</h3>
+                        <h3 className="font-semibold mb-2">Guía de Administración</h3>
                         <p className="text-sm text-muted-foreground mb-4">
-                          Manual para administradores del sistema y gestion de usuarios
+                          Manual para administradores del sistema y gestión de usuarios
                         </p>
                         <Button variant="outline" size="sm" className="gap-2" data-testid="button-download-admin">
                           <Download className="h-4 w-4" />
@@ -581,7 +581,7 @@ export default function SuperAdminPanel() {
                     <Card className="hover-elevate cursor-pointer" onClick={() => window.open("/api/docs/download/Documentacion_Tecnica_BUMA_OPS.docx", "_blank")}>
                       <CardContent className="pt-6 text-center">
                         <Code className="h-12 w-12 text-purple-500 mx-auto mb-4" />
-                        <h3 className="font-semibold mb-2">Documentacion Tecnica</h3>
+                        <h3 className="font-semibold mb-2">Documentación Técnica</h3>
                         <p className="text-sm text-muted-foreground mb-4">
                           Arquitectura, APIs y modelo de datos para desarrolladores
                         </p>
@@ -668,7 +668,7 @@ export default function SuperAdminPanel() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>Telefono</Label>
+              <Label>Teléfono</Label>
               <Input
                 value={userForm.phone}
                 onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}

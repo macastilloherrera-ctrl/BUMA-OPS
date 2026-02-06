@@ -118,7 +118,7 @@ export default function DevLogin() {
                     <CardContent className="pt-0">
                       <p className="text-sm text-muted-foreground">
                         {user.role === "gerente_general" && "Acceso total: dashboards, tickets, visitas, edificios, equipos, costos"}
-                        {user.role === "gerente_operaciones" && "Gestion de tickets y visitas, acceso a costos"}
+                        {user.role === "gerente_operaciones" && "Gestión de tickets y visitas, acceso a costos"}
                         {user.role === "gerente_finanzas" && "Solo lectura en dashboards"}
                         {user.role === "ejecutivo_operaciones" && "Trabajo de campo: visitas y tickets asignados"}
                       </p>

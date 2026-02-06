@@ -807,7 +807,7 @@ export default function DashboardVisits() {
               </div>
 
               <div>
-                <h3 className="text-sm font-medium mb-3">Historico de visitas</h3>
+                <h3 className="text-sm font-medium mb-3">Histórico de visitas</h3>
                 {(() => {
                   const history = getBuildingVisitHistory(selectedBuilding.id);
 
@@ -869,7 +869,7 @@ export default function DashboardVisits() {
                             <p className="font-medium text-sm truncate">{building.name}</p>
                             <p className="text-xs text-muted-foreground truncate">
                               {lastVisit 
-                                ? `Ultima: ${format(new Date(lastVisit.completedAt!), "dd MMM yyyy", { locale: es })}`
+                                ? `Última: ${format(new Date(lastVisit.completedAt!), "dd MMM yyyy", { locale: es })}`
                                 : "Nunca visitado"
                               }
                             </p>
@@ -909,7 +909,7 @@ export default function DashboardVisits() {
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-sm truncate">{building.name}</p>
                             <p className="text-xs text-muted-foreground truncate">
-                              {lastVisit && `Ultima: ${format(new Date(lastVisit.completedAt!), "dd MMM yyyy", { locale: es })} - ${getExecutiveName(lastVisit.executiveId)}`}
+                              {lastVisit && `Última: ${format(new Date(lastVisit.completedAt!), "dd MMM yyyy", { locale: es })} - ${getExecutiveName(lastVisit.executiveId)}`}
                             </p>
                           </div>
                           <ChevronRight className="h-4 w-4 text-muted-foreground" />
@@ -978,7 +978,7 @@ export default function DashboardVisits() {
                           <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
                             <MapPin className="h-3 w-3" />
                             <span className="truncate">
-                              {visit.building?.address || "Direccion"}
+                              {visit.building?.address || "Dirección"}
                             </span>
                           </div>
                           <div className="flex items-center gap-4 text-xs flex-wrap">

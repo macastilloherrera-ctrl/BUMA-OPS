@@ -456,14 +456,14 @@ export default function VisitInProgress() {
                   <div className="space-y-3 p-3 border rounded-md">
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <Label className="text-xs">Categoria</Label>
+                        <Label className="text-xs">Categoría</Label>
                         <Select value={ticketCategory} onValueChange={setTicketCategory}>
                           <SelectTrigger data-testid="select-ticket-category">
                             <SelectValue placeholder="Seleccionar" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="mantencion">Mantencion</SelectItem>
-                            <SelectItem value="reparacion">Reparacion</SelectItem>
+                            <SelectItem value="mantencion">Mantención</SelectItem>
+                            <SelectItem value="reparacion">Reparación</SelectItem>
                             <SelectItem value="seguridad">Seguridad</SelectItem>
                             <SelectItem value="limpieza">Limpieza</SelectItem>
                             <SelectItem value="otro">Otro</SelectItem>
@@ -479,7 +479,7 @@ export default function VisitInProgress() {
                           <SelectContent>
                             <SelectItem value="verde">Verde - Normal</SelectItem>
                             <SelectItem value="amarillo">Amarillo - Urgente</SelectItem>
-                            <SelectItem value="rojo">Rojo - Critico</SelectItem>
+                            <SelectItem value="rojo">Rojo - Crítico</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -494,8 +494,8 @@ export default function VisitInProgress() {
                           <SelectContent>
                             <SelectItem value="ejecutivo">Ejecutivo</SelectItem>
                             <SelectItem value="proveedor">Proveedor</SelectItem>
-                            <SelectItem value="conserjeria">Conserjeria</SelectItem>
-                            <SelectItem value="comite">Comite</SelectItem>
+                            <SelectItem value="conserjeria">Conserjería</SelectItem>
+                            <SelectItem value="comite">Comité</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -697,7 +697,7 @@ export default function VisitInProgress() {
                     "outline"
                   }>
                     {visitIncident.status === "pendiente" ? "Pendiente" :
-                     visitIncident.status === "en_reparacion" ? "En reparacion" :
+                     visitIncident.status === "en_reparacion" ? "En reparación" :
                      visitIncident.status === "reparada" ? "Reparada" : "Reprogramada"}
                   </Badge>
                   <Button variant="outline" size="sm" asChild className="mt-2" data-testid="button-edit-incident">

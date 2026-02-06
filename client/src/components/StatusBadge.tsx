@@ -87,9 +87,9 @@ interface PriorityBadgeProps {
 
 export function PriorityBadge({ priority }: PriorityBadgeProps) {
   const config: Record<TicketPriority, { label: string; className: string }> = {
-    rojo: { label: "Critico", className: "bg-red-500 text-white dark:bg-red-600" },
+    rojo: { label: "Crítico", className: "bg-red-500 text-white dark:bg-red-600" },
     amarillo: { label: "Por Vencer", className: "bg-amber-500 text-white dark:bg-amber-600" },
-    verde: { label: "Al Dia", className: "bg-green-500 text-white dark:bg-green-600" },
+    verde: { label: "Al Día", className: "bg-green-500 text-white dark:bg-green-600" },
   };
 
   const { label, className } = config[priority];

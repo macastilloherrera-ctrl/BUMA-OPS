@@ -49,7 +49,7 @@ const staffSchema = z.object({
   role: z.string().min(1, "Cargo requerido"),
   birthDate: z.string().optional(),
   phone: z.string().optional(),
-  email: z.string().email("Email invalido").optional().or(z.literal("")),
+  email: z.string().email("Email inválido").optional().or(z.literal("")),
 });
 
 const featureSchema = z.object({
@@ -59,11 +59,11 @@ const featureSchema = z.object({
 
 const buildingSchema = z.object({
   name: z.string().min(1, "El nombre es requerido"),
-  address: z.string().min(1, "La direccion es requerida"),
+  address: z.string().min(1, "La dirección es requerida"),
   region: z.string().optional(),
   commune: z.string().optional(),
   contactPhone: z.string().optional(),
-  communityEmail: z.string().email("Email invalido").optional().or(z.literal("")),
+  communityEmail: z.string().email("Email inválido").optional().or(z.literal("")),
   status: z.enum(["activo", "inactivo", "en_revision"]),
   departmentCount: z.coerce.number().min(0).default(0),
   elevatorCount: z.coerce.number().min(0).default(0),
@@ -441,10 +441,10 @@ export default function Buildings() {
                       name="address"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Direccion *</FormLabel>
+                          <FormLabel>Dirección *</FormLabel>
                           <FormControl>
                             <Input
-                              placeholder="Direccion completa"
+                              placeholder="Dirección completa"
                               {...field}
                               data-testid="input-building-address"
                             />
@@ -497,7 +497,7 @@ export default function Buildings() {
                         name="contactPhone"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Telefono de Contacto</FormLabel>
+                            <FormLabel>Teléfono de Contacto</FormLabel>
                             <FormControl>
                               <Input
                                 placeholder="+56 9 1234 5678"
@@ -713,7 +713,7 @@ export default function Buildings() {
                                     name={`staff.${index}.phone`}
                                     render={({ field }) => (
                                       <FormItem>
-                                        <FormLabel className="text-xs">Telefono</FormLabel>
+                                        <FormLabel className="text-xs">Teléfono</FormLabel>
                                         <FormControl>
                                           <Input
                                             placeholder="+56912345678"
@@ -777,7 +777,7 @@ export default function Buildings() {
                                   name={`features.${index}.name`}
                                   render={({ field }) => (
                                     <FormItem className="flex-1">
-                                      <FormLabel className="text-xs">Caracteristica</FormLabel>
+                                      <FormLabel className="text-xs">Característica</FormLabel>
                                       <FormControl>
                                         <Input
                                           placeholder="Ej: Piscina"

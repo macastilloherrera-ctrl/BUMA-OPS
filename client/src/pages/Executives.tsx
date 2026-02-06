@@ -92,8 +92,8 @@ const executiveFormSchema = z.object({
   address: z.string().optional(),
   commune: z.string().optional(),
   city: z.string().optional(),
-  bumaEmail: z.string().email("Email invalido").optional().or(z.literal("")),
-  personalEmail: z.string().email("Email invalido").optional().or(z.literal("")),
+  bumaEmail: z.string().email("Email inválido").optional().or(z.literal("")),
+  personalEmail: z.string().email("Email inválido").optional().or(z.literal("")),
   phone: z.string().optional(),
   emergencyContactName: z.string().optional(),
   emergencyContactPhone: z.string().optional(),
@@ -423,7 +423,7 @@ export default function Executives() {
 
             <Card className="md:col-span-2">
               <CardHeader className="flex flex-row items-center justify-between gap-4">
-                <CardTitle className="text-lg">Informacion Personal</CardTitle>
+                <CardTitle className="text-lg">Información Personal</CardTitle>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -477,7 +477,7 @@ export default function Executives() {
                     </div>
                     <div className="flex items-center gap-2 text-sm">
                       <Phone className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">Telefono:</span>
+                      <span className="text-muted-foreground">Teléfono:</span>
                       <span data-testid="text-phone">{selectedExecutive.phone || "No registrado"}</span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
@@ -489,7 +489,7 @@ export default function Executives() {
                   <div className="space-y-3">
                     <div className="flex items-center gap-2 text-sm">
                       <MapPin className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-muted-foreground">Direccion:</span>
+                      <span className="text-muted-foreground">Dirección:</span>
                       <span data-testid="text-address">{selectedExecutive.address || "No registrada"}</span>
                     </div>
                     <div className="flex items-center gap-2 text-sm">
@@ -708,7 +708,7 @@ export default function Executives() {
               <Users className="h-6 w-6" />
               Ejecutivos
             </h1>
-            <p className="text-muted-foreground">Gestion del personal de operaciones</p>
+            <p className="text-muted-foreground">Gestión del personal de operaciones</p>
           </div>
           <Button onClick={() => setIsFormDialogOpen(true)} data-testid="button-add-executive">
             <Plus className="h-4 w-4 mr-2" />
@@ -913,7 +913,7 @@ export default function Executives() {
                   name="phone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Telefono</FormLabel>
+                      <FormLabel>Teléfono</FormLabel>
                       <FormControl>
                         <Input {...field} placeholder="+56 9 1234 5678" data-testid="input-phone" />
                       </FormControl>
@@ -959,7 +959,7 @@ export default function Executives() {
                   name="address"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Direccion</FormLabel>
+                      <FormLabel>Dirección</FormLabel>
                       <FormControl>
                         <Input {...field} data-testid="input-address" />
                       </FormControl>
@@ -1019,7 +1019,7 @@ export default function Executives() {
                     name="emergencyContactPhone"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Telefono Contacto</FormLabel>
+                        <FormLabel>Teléfono Contacto</FormLabel>
                         <FormControl>
                           <Input {...field} data-testid="input-emergencyContactPhone" />
                         </FormControl>

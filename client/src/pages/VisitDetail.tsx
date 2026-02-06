@@ -216,7 +216,7 @@ export default function VisitDetail() {
                           : "border-green-500 text-green-500"
                       }
                     >
-                      {ticket.priority === "rojo" ? "Critico" : ticket.priority === "amarillo" ? "Por Vencer" : "Al Dia"}
+                      {ticket.priority === "rojo" ? "Crítico" : ticket.priority === "amarillo" ? "Por Vencer" : "Al Día"}
                     </Badge>
                   </div>
                 ))}

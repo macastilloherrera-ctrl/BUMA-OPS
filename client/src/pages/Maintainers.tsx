@@ -64,7 +64,7 @@ const maintainerSchema = z.object({
   contactName: z.string().optional(),
   phone: z.string().optional(),
   phone2: z.string().optional(),
-  email: z.string().email("Email invalido").optional().or(z.literal("")),
+  email: z.string().email("Email inválido").optional().or(z.literal("")),
   address: z.string().optional(),
   responseTimeHours: z.coerce.number().min(0).optional(),
   notes: z.string().optional(),
@@ -127,10 +127,10 @@ export default function Maintainers() {
       queryClient.invalidateQueries({ queryKey: ["/api/maintainers/categories"] });
       setIsCategoryDialogOpen(false);
       categoryForm.reset();
-      toast({ title: "Categoria creada" });
+      toast({ title: "Categoría creada" });
     },
     onError: () => {
-      toast({ title: "Error al crear categoria", variant: "destructive" });
+      toast({ title: "Error al crear categoría", variant: "destructive" });
     },
   });
 
@@ -140,10 +140,10 @@ export default function Maintainers() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/maintainers/categories"] });
-      toast({ title: "Categoria eliminada" });
+      toast({ title: "Categoría eliminada" });
     },
     onError: () => {
-      toast({ title: "Error al eliminar categoria", variant: "destructive" });
+      toast({ title: "Error al eliminar categoría", variant: "destructive" });
     },
   });
 
@@ -267,7 +267,7 @@ export default function Maintainers() {
                 name="categoryIds"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Categorias de Servicio *</FormLabel>
+                    <FormLabel>Categorías de Servicio *</FormLabel>
                     <div className="border rounded-md p-3 bg-muted/30">
                       <div className="grid grid-cols-2 gap-2">
                         {categories?.map((category) => (
@@ -316,7 +316,7 @@ export default function Maintainers() {
                   name="phone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Telefono</FormLabel>
+                      <FormLabel>Teléfono</FormLabel>
                       <FormControl>
                         <Input placeholder="+56 9 1234 5678" {...field} data-testid="input-phone" />
                       </FormControl>
@@ -480,7 +480,7 @@ export default function Maintainers() {
             </TabsTrigger>
             <TabsTrigger value="categories" data-testid="tab-categories">
               <Tag className="h-4 w-4 mr-2" />
-              Categorias
+              Categorías
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -546,12 +546,12 @@ export default function Maintainers() {
                 <DialogTrigger asChild>
                   <Button size="sm" data-testid="button-add-category">
                     <Plus className="h-4 w-4 mr-1" />
-                    Nueva Categoria
+                    Nueva Categoría
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Nueva Categoria</DialogTitle>
+                    <DialogTitle>Nueva Categoría</DialogTitle>
                   </DialogHeader>
                   <Form {...categoryForm}>
                     <form onSubmit={categoryForm.handleSubmit((data) => createCategoryMutation.mutate(data))} className="space-y-4">
@@ -562,7 +562,7 @@ export default function Maintainers() {
                           <FormItem>
                             <FormLabel>Nombre *</FormLabel>
                             <FormControl>
-                              <Input placeholder="Nombre de la categoria" {...field} data-testid="input-category-name" />
+                              <Input placeholder="Nombre de la categoría" {...field} data-testid="input-category-name" />
                             </FormControl>
                             <FormMessage />
                           </FormItem>

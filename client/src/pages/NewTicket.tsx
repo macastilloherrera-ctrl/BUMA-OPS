@@ -54,7 +54,7 @@ const ticketSchema = z.object({
   ticketType: z.enum(["urgencia", "planificado", "mantencion"]),
   categoryId: z.string().optional(),
   otherCategoryDescription: z.string().optional(),
-  description: z.string().min(10, "La descripcion debe tener al menos 10 caracteres"),
+  description: z.string().min(10, "La descripción debe tener al menos 10 caracteres"),
   priority: z.enum(["rojo", "amarillo", "verde"]),
   requiresMaintainerVisit: z.boolean().default(false),
   requiresExecutiveVisit: z.boolean().default(false),
@@ -71,7 +71,7 @@ const ticketTypes = [
   {
     value: "urgencia",
     label: "Urgencia",
-    description: "Problema que requiere atencion inmediata",
+    description: "Problema que requiere atención inmediata",
     icon: AlertTriangle,
     color: "text-red-500",
     bgColor: "bg-red-50 dark:bg-red-950/30",
@@ -88,8 +88,8 @@ const ticketTypes = [
   },
   {
     value: "mantencion",
-    label: "Mantencion",
-    description: "Accion rapida de mantenimiento menor",
+    label: "Mantención",
+    description: "Acción rápida de mantenimiento menor",
     icon: Wrench,
     color: "text-green-500",
     bgColor: "bg-green-50 dark:bg-green-950/30",
@@ -98,8 +98,8 @@ const ticketTypes = [
 ];
 
 const priorities = [
-  { value: "rojo", label: "Alta", description: "Atencion inmediata", color: "bg-red-500" },
-  { value: "amarillo", label: "Media", description: "Proximo a vencer", color: "bg-amber-500" },
+  { value: "rojo", label: "Alta", description: "Atención inmediata", color: "bg-red-500" },
+  { value: "amarillo", label: "Media", description: "Próximo a vencer", color: "bg-amber-500" },
   { value: "verde", label: "Normal", description: "Sin urgencia", color: "bg-green-500" },
 ];
 
@@ -338,12 +338,12 @@ export default function NewTicket() {
                   <FormItem>
                     <FormLabel className="flex items-center gap-2">
                       <Tag className="h-4 w-4" />
-                      Categoria de Servicio
+                      Categoría de Servicio
                     </FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger data-testid="select-category">
-                          <SelectValue placeholder="Selecciona una categoria (opcional)" />
+                          <SelectValue placeholder="Selecciona una categoría (opcional)" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -379,7 +379,7 @@ export default function NewTicket() {
                   name="otherCategoryDescription"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Especifica la categoria</FormLabel>
+                      <FormLabel>Especifica la categoría</FormLabel>
                       <FormControl>
                         <Input
                           placeholder="Describe el tipo de servicio..."
@@ -398,7 +398,7 @@ export default function NewTicket() {
                 name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Descripcion del Problema *</FormLabel>
+                    <FormLabel>Descripción del Problema *</FormLabel>
                     <FormControl>
                       <Textarea
                         placeholder="Describe el problema o trabajo requerido..."
@@ -506,7 +506,7 @@ export default function NewTicket() {
               )}
 
               <div className="space-y-3 p-4 bg-muted/30 rounded-md">
-                <p className="text-sm font-medium">Tipo de Atencion</p>
+                <p className="text-sm font-medium">Tipo de Atención</p>
                 <FormField
                   control={form.control}
                   name="requiresMaintainerVisit"

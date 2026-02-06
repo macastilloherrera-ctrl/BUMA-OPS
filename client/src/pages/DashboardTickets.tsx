@@ -107,7 +107,7 @@ export default function DashboardTickets() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
       toast({
-        title: "Accion completada",
+        title: "Acción completada",
         description: "El ticket ha sido actualizado exitosamente",
       });
     },
@@ -132,7 +132,7 @@ export default function DashboardTickets() {
       setEscalateReason("");
       toast({
         title: "Ticket Escalado",
-        description: "El ticket fue escalado con prioridad CRITICA (roja).",
+        description: "El ticket fue escalado con prioridad CRÍTICA (roja).",
       });
     },
     onError: () => {
@@ -276,7 +276,7 @@ export default function DashboardTickets() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Al Dia</p>
+                <p className="text-sm text-muted-foreground">Al Día</p>
                 <p className="text-4xl font-bold text-green-500" data-testid="stat-ok">
                   {stats.ok}
                 </p>
@@ -342,7 +342,7 @@ export default function DashboardTickets() {
                   <SelectItem value="vencido">Vencidos</SelectItem>
                   <SelectItem value="por_vencer">Por Vencer</SelectItem>
                   <SelectItem value="pendiente">Pendientes</SelectItem>
-                  <SelectItem value="al_dia">Al Dia</SelectItem>
+                  <SelectItem value="al_dia">Al Día</SelectItem>
                   <SelectItem value="resuelto">Resueltos</SelectItem>
                 </SelectContent>
               </Select>
@@ -367,8 +367,8 @@ export default function DashboardTickets() {
                   <TableRow>
                     <TableHead>Prioridad</TableHead>
                     <TableHead>Edificio</TableHead>
-                    <TableHead>Dias Atraso</TableHead>
-                    <TableHead className="max-w-xs">Descripcion</TableHead>
+                    <TableHead>Días Atraso</TableHead>
+                    <TableHead className="max-w-xs">Descripción</TableHead>
                     <TableHead>Ejecutivo Asignado</TableHead>
                     <TableHead>Fecha Compromiso</TableHead>
                     <TableHead>Estado</TableHead>

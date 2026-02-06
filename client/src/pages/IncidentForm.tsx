@@ -32,11 +32,11 @@ import type { Visit, Building, CriticalAsset, Incident } from "@shared/schema";
 import { useAuth } from "@/hooks/use-auth";
 
 const FAILURE_TYPES = [
-  "Falla electrica",
-  "Falla mecanica",
-  "Falla hidraulica",
+  "Falla eléctrica",
+  "Falla mecánica",
+  "Falla hidráulica",
   "Falla de seguridad",
-  "Falla de comunicacion",
+  "Falla de comunicación",
   "Vandalismo",
   "Desgaste natural",
   "Accidente",
@@ -45,7 +45,7 @@ const FAILURE_TYPES = [
 
 const INCIDENT_STATUSES = [
   { value: "pendiente", label: "Pendiente" },
-  { value: "en_reparacion", label: "En reparacion" },
+  { value: "en_reparacion", label: "En reparación" },
   { value: "reparada", label: "Reparada" },
   { value: "reprogramada", label: "Reprogramada" },
 ];
@@ -55,7 +55,7 @@ const createIncidentFormSchema = (isUrgentVisit: boolean) => z.object({
   failureType: z.string().min(1, "Selecciona el tipo de falla"),
   occurredAt: z.string().min(1, "Ingresa la fecha y hora"),
   criticalAssetId: isUrgentVisit 
-    ? z.string().min(1, "Selecciona el equipo critico afectado (obligatorio para visitas urgentes)")
+    ? z.string().min(1, "Selecciona el equipo crítico afectado (obligatorio para visitas urgentes)")
     : z.string().optional(),
   otherAssetDescription: z.string().optional(),
   providerCalled: z.string().optional(),
@@ -249,7 +249,7 @@ export default function IncidentForm() {
                   name="reason"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Motivo / Descripcion *</FormLabel>
+                      <FormLabel>Motivo / Descripción *</FormLabel>
                       <FormControl>
                         <Textarea
                           placeholder="Describe el incidente o falla..."
@@ -341,10 +341,10 @@ export default function IncidentForm() {
                     name="otherAssetDescription"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Descripcion del Equipo Afectado *</FormLabel>
+                        <FormLabel>Descripción del Equipo Afectado *</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder="Ej: Porton electrico entrada principal"
+                            placeholder="Ej: Portón eléctrico entrada principal"
                             {...field}
                             data-testid="input-other-asset-description"
                           />
@@ -370,7 +370,7 @@ export default function IncidentForm() {
                       <FormLabel>Proveedor Contactado</FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="Nombre del proveedor o tecnico..."
+                          placeholder="Nombre del proveedor o técnico..."
                           {...field}
                           data-testid="input-provider-called"
                         />
@@ -388,7 +388,7 @@ export default function IncidentForm() {
                       <FormLabel>Acciones a la Comunidad</FormLabel>
                       <FormControl>
                         <Textarea
-                          placeholder="Comunicacion enviada, medidas tomadas..."
+                          placeholder="Comunicación enviada, medidas tomadas..."
                           className="min-h-20"
                           {...field}
                           data-testid="input-community-actions"
@@ -429,7 +429,7 @@ export default function IncidentForm() {
                   name="repairDate"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Fecha/Hora Reparacion (si aplica)</FormLabel>
+                      <FormLabel>Fecha/Hora Reparación (si aplica)</FormLabel>
                       <FormControl>
                         <Input
                           type="datetime-local"

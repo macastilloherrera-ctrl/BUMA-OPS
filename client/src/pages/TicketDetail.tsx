@@ -198,7 +198,7 @@ type ReassignForm = z.infer<typeof reassignSchema>;
 const ticketTypeLabels: Record<string, { label: string; icon: typeof AlertTriangle; color: string }> = {
   urgencia: { label: "Urgencia", icon: AlertTriangle, color: "text-red-500" },
   planificado: { label: "Planificado", icon: CalendarClock, color: "text-blue-500" },
-  mantencion: { label: "Mantencion", icon: Wrench, color: "text-green-500" },
+  mantencion: { label: "Mantención", icon: Wrench, color: "text-green-500" },
 };
 
 export default function TicketDetail() {
@@ -472,10 +472,10 @@ Equipo BUMA Property Management
       quoteForm.reset();
       setQuoteAttachmentKey(null);
       setQuoteAttachmentName(null);
-      toast({ title: "Cotizacion agregada" });
+      toast({ title: "Cotización agregada" });
     },
     onError: () => {
-      toast({ title: "Error al agregar cotizacion", variant: "destructive" });
+      toast({ title: "Error al agregar cotización", variant: "destructive" });
     },
   });
 
@@ -486,10 +486,10 @@ Equipo BUMA Property Management
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "quotes"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tickets", id] });
-      toast({ title: "Cotizacion aprobada" });
+      toast({ title: "Cotización aprobada" });
     },
     onError: () => {
-      toast({ title: "Error al aprobar cotizacion", variant: "destructive" });
+      toast({ title: "Error al aprobar cotización", variant: "destructive" });
     },
   });
 
@@ -785,11 +785,11 @@ Equipo BUMA Property Management
             
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">Informacion del Ticket</CardTitle>
+                <CardTitle className="text-base">Información del Ticket</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Descripcion</p>
+                  <p className="text-sm text-muted-foreground">Descripción</p>
                   <p className="text-sm">{ticket.description}</p>
                 </div>
 
@@ -806,7 +806,7 @@ Equipo BUMA Property Management
                     <div className="space-y-1">
                       <p className="text-sm text-muted-foreground flex items-center gap-1">
                         <Tag className="h-3 w-3" />
-                        Categoria
+                        Categoría
                       </p>
                       <p className="text-sm font-medium">{getCategoryName(ticket.categoryId)}</p>
                     </div>
@@ -1814,7 +1814,7 @@ Equipo BUMA Property Management
                 </DialogTrigger>
                 <DialogContent className="max-w-lg">
                   <DialogHeader>
-                    <DialogTitle>Nueva Cotizacion</DialogTitle>
+                    <DialogTitle>Nueva Cotización</DialogTitle>
                   </DialogHeader>
                   <Form {...quoteForm}>
                     <form
@@ -1877,7 +1877,7 @@ Equipo BUMA Property Management
                         name="durationDays"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Duracion (dias)</FormLabel>
+                            <FormLabel>Duración (días)</FormLabel>
                             <FormControl>
                               <Input
                                 type="number"
@@ -1895,7 +1895,7 @@ Equipo BUMA Property Management
                         name="description"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Descripcion</FormLabel>
+                            <FormLabel>Descripción</FormLabel>
                             <FormControl>
                               <Textarea {...field} data-testid="textarea-quote-description" />
                             </FormControl>
@@ -1905,7 +1905,7 @@ Equipo BUMA Property Management
                       />
 
                       <div className="space-y-2">
-                        <Label>Documento de Cotizacion (opcional)</Label>
+                        <Label>Documento de Cotización (opcional)</Label>
                         {quoteAttachmentKey ? (
                           <div className="flex items-center gap-2 p-2 bg-muted rounded-md">
                             <FileIcon className="h-4 w-4 text-muted-foreground" />
@@ -2304,8 +2304,8 @@ Equipo BUMA Property Management
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="comunidad">Comunidad</SelectItem>
-                        <SelectItem value="conserjeria">Conserjeria</SelectItem>
-                        <SelectItem value="comite">Comite</SelectItem>
+                        <SelectItem value="conserjeria">Conserjería</SelectItem>
+                        <SelectItem value="comite">Comité</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -2323,9 +2323,9 @@ Equipo BUMA Property Management
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Descripcion del Problema</Label>
+                    <Label>Descripción del Problema</Label>
                     <Textarea
-                      placeholder="Describa el problema o situacion..."
+                      placeholder="Describa el problema o situación..."
                       value={avisoProblemDescription}
                       onChange={(e) => setAvisoProblemDescription(e.target.value)}
                       rows={3}

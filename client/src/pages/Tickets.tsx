@@ -191,7 +191,7 @@ export default function Tickets() {
               ) : filterTickets(tab).length === 0 ? (
                 <div className="text-center py-12">
                   <Ticket className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-muted-foreground">No hay tickets en esta categoria</p>
+                  <p className="text-muted-foreground">No hay tickets en esta categoría</p>
                 </div>
               ) : (
                 <div className="space-y-3">
