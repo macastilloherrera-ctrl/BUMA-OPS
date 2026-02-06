@@ -1118,6 +1118,20 @@ export async function registerRoutes(
         notes,
         completionObservations,
       });
+
+      try {
+        const linkedMilestone = await storage.getProjectMilestoneByLinkedVisitId(req.params.id);
+        if (linkedMilestone && (linkedMilestone as any).isReview) {
+          await storage.updateProjectMilestone(linkedMilestone.id, {
+            status: "completado",
+            completedAt: new Date(),
+            observations: completionObservations || notes || undefined,
+          });
+        }
+      } catch (err) {
+        console.error("Error syncing project milestone on visit complete:", err);
+      }
+
       res.json(visit);
     } catch (error) {
       console.error("Error completing visit:", error);
@@ -2786,6 +2800,73 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error) {
       console.error("Error marking all as read:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/notifications/check-overdue-visits", isAuthenticated, async (req, res) => {
+    try {
+      const allProjects = await storage.getProjects();
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      let created = 0;
+
+      for (const project of allProjects) {
+        const milestones = await storage.getProjectMilestones(project.id);
+        const reviewMilestones = milestones.filter(m => (m as any).isReview && m.status === "pendiente");
+
+        for (const milestone of reviewMilestones) {
+          if (!milestone.dueDate) continue;
+          const dueDate = new Date(milestone.dueDate);
+          if (dueDate >= todayStart) continue;
+
+          const executiveId = (project as any).assignedExecutiveId;
+          if (!executiveId) continue;
+
+          const existingNotifications = await storage.getNotifications(executiveId);
+          const alreadyNotified = existingNotifications.some(n =>
+            n.type === "visita_vencida" && n.title.includes(milestone.name) && n.message.includes(project.name)
+          );
+          if (alreadyNotified) continue;
+
+          await storage.createNotification({
+            userId: executiveId,
+            type: "visita_vencida",
+            title: `${milestone.name} vencida`,
+            message: `La revisión "${milestone.name}" del proyecto "${project.name}" estaba programada para el ${dueDate.toLocaleDateString("es-CL")} y no fue ejecutada.`,
+          });
+          created++;
+
+          const managers = await storage.getUsers();
+          for (const manager of managers) {
+            const profile = await storage.getUserProfile(manager.id);
+            if (profile && ["gerente_general", "gerente_operaciones"].includes(profile.role)) {
+              const alreadyNotifiedMgr = existingNotifications.some(n =>
+                n.type === "visita_vencida" && n.title.includes(milestone.name)
+              );
+              if (!alreadyNotifiedMgr) {
+                const mgrNotifications = await storage.getNotifications(manager.id);
+                const mgrAlreadyNotified = mgrNotifications.some(n =>
+                  n.type === "visita_vencida" && n.title.includes(milestone.name) && n.message.includes(project.name)
+                );
+                if (!mgrAlreadyNotified) {
+                  await storage.createNotification({
+                    userId: manager.id,
+                    type: "visita_vencida",
+                    title: `${milestone.name} vencida`,
+                    message: `La revisión "${milestone.name}" del proyecto "${project.name}" no fue ejecutada. Programada: ${dueDate.toLocaleDateString("es-CL")}.`,
+                  });
+                  created++;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      res.json({ success: true, notificationsCreated: created });
+    } catch (error) {
+      console.error("Error checking overdue visits:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });

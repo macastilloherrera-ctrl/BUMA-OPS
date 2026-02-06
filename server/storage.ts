@@ -288,6 +288,7 @@ export interface IStorage {
   // Project Milestones
   getProjectMilestones(projectId: string): Promise<ProjectMilestone[]>;
   getProjectMilestone(id: string): Promise<ProjectMilestone | undefined>;
+  getProjectMilestoneByLinkedVisitId(visitId: string): Promise<ProjectMilestone | undefined>;
   createProjectMilestone(milestone: InsertProjectMilestone): Promise<ProjectMilestone>;
   updateProjectMilestone(id: string, data: Partial<InsertProjectMilestone>): Promise<ProjectMilestone | undefined>;
   deleteProjectMilestone(id: string): Promise<boolean>;
@@ -1209,6 +1210,11 @@ export class DatabaseStorage implements IStorage {
 
   async getProjectMilestone(id: string): Promise<ProjectMilestone | undefined> {
     const [milestone] = await db.select().from(projectMilestones).where(eq(projectMilestones.id, id));
+    return milestone || undefined;
+  }
+
+  async getProjectMilestoneByLinkedVisitId(visitId: string): Promise<ProjectMilestone | undefined> {
+    const [milestone] = await db.select().from(projectMilestones).where(eq(projectMilestones.linkedVisitId, visitId));
     return milestone || undefined;
   }
 

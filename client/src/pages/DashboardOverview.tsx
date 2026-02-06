@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,9 +14,24 @@ import {
   Clock,
   ArrowRight
 } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Building, Ticket as TicketType, Visit } from "@shared/schema";
 
 export default function DashboardOverview() {
+  const overdueCheckDone = useRef(false);
+
+  useEffect(() => {
+    if (!overdueCheckDone.current) {
+      overdueCheckDone.current = true;
+      apiRequest("POST", "/api/notifications/check-overdue-visits")
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
+        })
+        .catch(() => {});
+    }
+  }, []);
+
   const { data: tickets, isLoading: ticketsLoading } = useQuery<TicketType[]>({
     queryKey: ["/api/tickets"],
   });
