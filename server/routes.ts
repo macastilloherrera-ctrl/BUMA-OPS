@@ -327,15 +327,29 @@ export async function registerRoutes(
       const profile = await storage.getUserProfile(req.user!.id);
       const isManagerUser = profile && ["gerente_general", "gerente_operaciones"].includes(profile.role);
       
-      // For non-managers, only show their assigned buildings or strip assignedExecutiveId
-      if (!isManagerUser) {
-        res.json(buildings.map((b) => ({
-          ...b,
-          assignedExecutiveId: b.assignedExecutiveId === req.user!.id ? b.assignedExecutiveId : null,
-        })));
-      } else {
-        res.json(buildings);
-      }
+      const getUserDisplayName = async (userId: string | null): Promise<string | null> => {
+        if (!userId) return null;
+        const user = await storage.getUser(userId);
+        if (user) {
+          const name = `${user.firstName || ""} ${user.lastName || ""}`.trim();
+          return name || user.email || userId;
+        }
+        return userId;
+      };
+      
+      const buildingsWithNames = await Promise.all(buildings.map(async (b) => {
+        const executiveName = await getUserDisplayName(b.assignedExecutiveId);
+        if (!isManagerUser) {
+          return {
+            ...b,
+            assignedExecutiveId: b.assignedExecutiveId === req.user!.id ? b.assignedExecutiveId : null,
+            executiveName: b.assignedExecutiveId === req.user!.id ? executiveName : null,
+          };
+        }
+        return { ...b, executiveName };
+      }));
+      
+      res.json(buildingsWithNames);
     } catch (error) {
       console.error("Error getting buildings:", error);
       res.status(500).json({ error: "Error interno del servidor" });

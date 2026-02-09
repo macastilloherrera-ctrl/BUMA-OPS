@@ -234,7 +234,7 @@ export default function Maintainers() {
     return maintainers?.filter((m) => m.categoryIds.includes(categoryId)).length || 0;
   };
 
-  const MaintainerFormDialog = () => (
+  const maintainerFormDialog = (
     <Dialog open={isMaintainerDialogOpen} onOpenChange={(open) => {
       if (!open) handleMaintainerDialogClose();
       else setIsMaintainerDialogOpen(true);
@@ -242,7 +242,7 @@ export default function Maintainers() {
       <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>
-            {editingMaintainer ? "Editar Mantenedor" : "Nueva Empresa Mantenedora"}
+            {editingMaintainer ? "Editar Proveedor" : "Nuevo Proveedor"}
           </DialogTitle>
         </DialogHeader>
         <ScrollArea className="flex-1 pr-4">
@@ -720,7 +720,7 @@ export default function Maintainers() {
         )}
       </div>
 
-      <MaintainerFormDialog />
+      {maintainerFormDialog}
     </div>
   );
 }
