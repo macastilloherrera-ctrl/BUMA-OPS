@@ -1550,16 +1550,18 @@ export async function registerRoutes(
       const sanitizedBody = sanitizeCostFields(req.body, isManager);
       
       // Determine assigned executive
-      // If manager creates ticket and no assignee specified, assign to building's executive
-      // If executive creates ticket, they are the assignee
+      // If explicitly provided (including from frontend selector), use it
+      // If executive creates ticket, auto-assign to themselves
+      // If manager creates ticket without specifying, use building's executive (may be null)
       let assignedExecutiveId = req.body.assignedExecutiveId;
+      if (assignedExecutiveId === "__none__" || assignedExecutiveId === "") {
+        assignedExecutiveId = null;
+      }
       if (!assignedExecutiveId) {
         if (isManager) {
-          // Manager creating ticket - assign to building's executive
           const building = await storage.getBuilding(req.body.buildingId);
-          assignedExecutiveId = building?.assignedExecutiveId || req.user!.id;
+          assignedExecutiveId = building?.assignedExecutiveId || null;
         } else {
-          // Executive creating ticket - they are the assignee
           assignedExecutiveId = req.user!.id;
         }
       }

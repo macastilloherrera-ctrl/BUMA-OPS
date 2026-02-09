@@ -60,6 +60,7 @@ const ticketSchema = z.object({
   requiresExecutiveVisit: z.boolean().default(false),
   requiresInvoice: z.boolean().default(false),
   maintainerId: z.string().optional(),
+  assignedExecutiveId: z.string().optional(),
   startDate: z.string().min(1, "La fecha de inicio es obligatoria"),
   scheduledDate: z.string().optional(),
   endDate: z.string().min(1, "La fecha de vencimiento es obligatoria"),
@@ -130,6 +131,13 @@ export default function NewTicket() {
     queryKey: ["/api/maintainers"],
   });
 
+  const isManager = userProfile && ["gerente_general", "gerente_operaciones", "gerente_comercial", "super_admin"].includes(userProfile.role);
+
+  const { data: executives } = useQuery<UserProfile[]>({
+    queryKey: ["/api/admin/users"],
+    enabled: !!isManager,
+  });
+
   const form = useForm<TicketForm>({
     resolver: zodResolver(ticketSchema),
     defaultValues: {
@@ -143,6 +151,7 @@ export default function NewTicket() {
       requiresExecutiveVisit: false,
       requiresInvoice: false,
       maintainerId: "",
+      assignedExecutiveId: "",
       startDate: new Date().toISOString().split("T")[0],
       scheduledDate: "",
       endDate: "",
@@ -151,7 +160,11 @@ export default function NewTicket() {
 
   const selectedType = form.watch("ticketType");
   const selectedCategoryId = form.watch("categoryId");
+  const selectedBuildingId = form.watch("buildingId");
   const requiresMaintainerVisit = form.watch("requiresMaintainerVisit");
+
+  const selectedBuilding = buildings?.find(b => b.id === selectedBuildingId);
+  const activeExecutives = executives?.filter((e: any) => e.isActive !== false) || [];
 
   const getMaintainersForCategory = (categoryId: string) => {
     if (!categoryId || !maintainers) return [];
@@ -183,6 +196,9 @@ export default function NewTicket() {
       }
       if (data.maintainerId) {
         payload.maintainerId = data.maintainerId;
+      }
+      if (data.assignedExecutiveId && data.assignedExecutiveId.trim() !== "" && data.assignedExecutiveId !== "__none__") {
+        payload.assignedExecutiveId = data.assignedExecutiveId;
       }
       if (data.scheduledDate) payload.scheduledDate = new Date(data.scheduledDate).toISOString();
       if (data.endDate) payload.endDate = new Date(data.endDate).toISOString();
@@ -311,7 +327,18 @@ export default function NewTicket() {
                     {buildingsLoading ? (
                       <Skeleton className="h-10 w-full" />
                     ) : (
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select
+                        onValueChange={(val) => {
+                          field.onChange(val);
+                          const bld = buildings?.find(b => b.id === val);
+                          if (bld?.assignedExecutiveId) {
+                            form.setValue("assignedExecutiveId", bld.assignedExecutiveId);
+                          } else {
+                            form.setValue("assignedExecutiveId", "");
+                          }
+                        }}
+                        value={field.value}
+                      >
                         <FormControl>
                           <SelectTrigger data-testid="select-building">
                             <SelectValue placeholder="Selecciona un edificio" />
@@ -330,6 +357,44 @@ export default function NewTicket() {
                   </FormItem>
                 )}
               />
+
+              {isManager && selectedBuildingId && (
+                <FormField
+                  control={form.control}
+                  name="assignedExecutiveId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Ejecutivo Asignado</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || ""}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-assigned-executive">
+                            <SelectValue placeholder="Sin asignar" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="__none__">Sin asignar</SelectItem>
+                          {activeExecutives.map((exec: any) => (
+                            <SelectItem key={exec.userId} value={exec.userId} data-testid={`option-executive-${exec.userId}`}>
+                              {exec.firstName || ""} {exec.lastName || ""} ({exec.role === "ejecutivo_operaciones" ? "Ejecutivo" : exec.role === "gerente_general" ? "Gerente General" : exec.role === "gerente_operaciones" ? "Gerente Ops" : exec.role === "gerente_comercial" ? "Gerente Comercial" : exec.role})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {selectedBuilding?.assignedExecutiveId && (
+                        <p className="text-xs text-muted-foreground">
+                          Ejecutivo del edificio asignado automáticamente. Puedes cambiarlo si es necesario.
+                        </p>
+                      )}
+                      {!selectedBuilding?.assignedExecutiveId && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                          Este edificio no tiene ejecutivo asignado. Selecciona uno manualmente.
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <FormField
                 control={form.control}
