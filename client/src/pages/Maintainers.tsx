@@ -469,7 +469,7 @@ export default function Maintainers() {
     <div className="flex flex-col h-full">
       <div className="sticky top-0 bg-background border-b border-border z-10 px-4 py-3 md:px-6">
         <div className="flex items-center justify-between gap-4 flex-wrap">
-          <h1 className="text-xl md:text-2xl font-semibold">Mantenedores</h1>
+          <h1 className="text-xl md:text-2xl font-semibold">Proveedores</h1>
         </div>
 
         <Tabs value={activeTab} onValueChange={(val) => { setActiveTab(val); setSelectedCategory(null); }} className="mt-3">

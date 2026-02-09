@@ -64,6 +64,7 @@ const buildingSchema = z.object({
   commune: z.string().optional(),
   contactPhone: z.string().optional(),
   communityEmail: z.string().email("Email inválido").optional().or(z.literal("")),
+  assignedExecutiveId: z.string().optional(),
   status: z.enum(["activo", "inactivo", "en_revision"]),
   departmentCount: z.coerce.number().min(0).default(0),
   elevatorCount: z.coerce.number().min(0).default(0),
@@ -192,8 +193,10 @@ export default function Buildings() {
     mutationFn: async (data: BuildingForm) => {
       const { staff, features, ...buildingData } = data;
       
+      const { assignedExecutiveId, ...restBuildingData } = buildingData;
       const buildingPayload = {
-        ...buildingData,
+        ...restBuildingData,
+        assignedExecutiveId: assignedExecutiveId && assignedExecutiveId !== "__none__" ? assignedExecutiveId : null,
         regulationDocumentUrl: regulationDocumentPath,
         insurancePolicyUrl: insurancePolicyPath,
         insuranceExpiryDate: insuranceExpiryDate ? new Date(insuranceExpiryDate) : null,
@@ -284,6 +287,7 @@ export default function Buildings() {
       commune: building.commune || "",
       contactPhone: building.contactPhone || "",
       communityEmail: building.communityEmail || "",
+      assignedExecutiveId: building.assignedExecutiveId || "",
       status: building.status,
       departmentCount: building.departmentCount || 0,
       elevatorCount: building.elevatorCount || 0,
@@ -528,6 +532,35 @@ export default function Buildings() {
                         )}
                       />
                     </div>
+
+                    <FormField
+                      control={form.control}
+                      name="assignedExecutiveId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="flex items-center gap-2">
+                            <User className="h-4 w-4" />
+                            Ejecutivo Asignado
+                          </FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value || ""}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-building-executive">
+                                <SelectValue placeholder="Sin ejecutivo asignado" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="__none__">Sin ejecutivo asignado</SelectItem>
+                              {executives?.map((exec: any) => (
+                                <SelectItem key={exec.userId} value={exec.userId} data-testid={`option-executive-${exec.userId}`}>
+                                  {exec.displayName || exec.userId}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
                     <Accordion type="multiple" className="w-full" defaultValue={["counts"]}>
                       <AccordionItem value="counts">

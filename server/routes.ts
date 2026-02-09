@@ -204,21 +204,23 @@ export async function registerRoutes(
   // Get all executives (managers only)
   app.get("/api/users/executives", isAuthenticated, isManager, async (req, res) => {
     try {
-      const executives = await storage.getExecutives();
+      const allProfiles = await storage.getUserProfiles();
+      const activeProfiles = allProfiles.filter(p => p.isActive);
       
-      // Map to include displayName from dev users or userId fallback
-      const { DEV_USERS } = await import("./devAuth");
-      const executivesWithNames = executives.map((exec) => {
-        const devUser = DEV_USERS.find((u) => u.id === exec.userId);
+      const usersWithNames = await Promise.all(activeProfiles.map(async (profile) => {
+        const user = await storage.getUser(profile.userId);
+        const displayName = user 
+          ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || profile.userId
+          : profile.userId;
         return {
-          userId: exec.userId,
-          displayName: devUser 
-            ? `${devUser.firstName} ${devUser.lastName}` 
-            : exec.userId.split("@")[0] || exec.userId,
+          userId: profile.userId,
+          displayName,
+          role: profile.role,
+          isActive: profile.isActive,
         };
-      });
+      }));
       
-      res.json(executivesWithNames);
+      res.json(usersWithNames);
     } catch (error) {
       console.error("Error getting executives:", error);
       res.status(500).json({ error: "Error interno del servidor" });

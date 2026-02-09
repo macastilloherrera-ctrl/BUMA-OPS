@@ -73,7 +73,7 @@ const managerNavItems = [
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2 },
       { path: "/equipos", label: "Equipos Críticos", icon: Wrench },
-      { path: "/mantenedores", label: "Mantenedores", icon: HardHat },
+      { path: "/mantenedores", label: "Proveedores", icon: HardHat },
       { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
     ]
   },
@@ -120,7 +120,7 @@ const managerWithReportsNavItems = [
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2 },
       { path: "/equipos", label: "Equipos Críticos", icon: Wrench },
-      { path: "/mantenedores", label: "Mantenedores", icon: HardHat },
+      { path: "/mantenedores", label: "Proveedores", icon: HardHat },
       { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
     ]
   },
@@ -201,7 +201,7 @@ const generalManagerNavItems = [
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2 },
       { path: "/equipos", label: "Equipos Críticos", icon: Wrench },
-      { path: "/mantenedores", label: "Mantenedores", icon: HardHat },
+      { path: "/mantenedores", label: "Proveedores", icon: HardHat },
       { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
     ]
   },

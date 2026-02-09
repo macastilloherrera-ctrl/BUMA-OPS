@@ -133,8 +133,8 @@ export default function NewTicket() {
 
   const isManager = userProfile && ["gerente_general", "gerente_operaciones", "gerente_comercial", "super_admin"].includes(userProfile.role);
 
-  const { data: executives } = useQuery<UserProfile[]>({
-    queryKey: ["/api/admin/users"],
+  const { data: allUsers } = useQuery<{userId: string; displayName: string; role: string; isActive: boolean}[]>({
+    queryKey: ["/api/users/executives"],
     enabled: !!isManager,
   });
 
@@ -164,7 +164,6 @@ export default function NewTicket() {
   const requiresMaintainerVisit = form.watch("requiresMaintainerVisit");
 
   const selectedBuilding = buildings?.find(b => b.id === selectedBuildingId);
-  const activeExecutives = executives?.filter((e: any) => e.isActive !== false) || [];
 
   const getMaintainersForCategory = (categoryId: string) => {
     if (!categoryId || !maintainers) return [];
@@ -373,9 +372,9 @@ export default function NewTicket() {
                         </FormControl>
                         <SelectContent>
                           <SelectItem value="__none__">Sin asignar</SelectItem>
-                          {activeExecutives.map((exec: any) => (
+                          {(allUsers || []).map((exec) => (
                             <SelectItem key={exec.userId} value={exec.userId} data-testid={`option-executive-${exec.userId}`}>
-                              {exec.firstName || ""} {exec.lastName || ""} ({exec.role === "ejecutivo_operaciones" ? "Ejecutivo" : exec.role === "gerente_general" ? "Gerente General" : exec.role === "gerente_operaciones" ? "Gerente Ops" : exec.role === "gerente_comercial" ? "Gerente Comercial" : exec.role})
+                              {exec.displayName} ({exec.role === "ejecutivo_operaciones" ? "Ejecutivo" : exec.role === "gerente_general" ? "Gerente General" : exec.role === "gerente_operaciones" ? "Gerente Ops" : exec.role === "gerente_comercial" ? "Gerente Comercial" : exec.role})
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -590,32 +589,43 @@ export default function NewTicket() {
                     </FormItem>
                   )}
                 />
-                {requiresMaintainerVisit && availableMaintainersForDropdown.length > 0 && (
-                  <FormField
-                    control={form.control}
-                    name="maintainerId"
-                    render={({ field }) => (
-                      <FormItem className="ml-6">
-                        <FormLabel>Seleccionar Proveedor</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-maintainer">
-                              <SelectValue placeholder="Seleccionar proveedor..." />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {availableMaintainersForDropdown.map((m) => (
-                              <SelectItem key={m.id} value={m.id} data-testid={`option-maintainer-${m.id}`}>
-                                {m.companyName}
-                                {m.isPreferred && " (Preferido)"}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                {requiresMaintainerVisit && (
+                  availableMaintainersForDropdown.length > 0 ? (
+                    <FormField
+                      control={form.control}
+                      name="maintainerId"
+                      render={({ field }) => (
+                        <FormItem className="ml-6">
+                          <FormLabel>Seleccionar Proveedor</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-maintainer">
+                                <SelectValue placeholder="Seleccionar proveedor..." />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {availableMaintainersForDropdown.map((m) => (
+                                <SelectItem key={m.id} value={m.id} data-testid={`option-maintainer-${m.id}`}>
+                                  {m.companyName}
+                                  {m.isPreferred && " (Preferido)"}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ) : (
+                    <div className="ml-6 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-md">
+                      <p className="text-sm text-amber-800 dark:text-amber-200">
+                        No hay proveedores registrados en el sistema.
+                      </p>
+                      <a href="/mantenedores" className="text-sm text-primary underline mt-1 inline-block" data-testid="link-create-provider">
+                        Ir a crear proveedores
+                      </a>
+                    </div>
+                  )
                 )}
                 <FormField
                   control={form.control}
