@@ -1504,10 +1504,27 @@ export async function registerRoutes(
         createdByName = creator ? `${creator.firstName || ""} ${creator.lastName || ""}`.trim() || creator.email : null;
       }
       
+      // Get assigned executive name
+      let assignedExecutiveName = null;
+      if (ticket.assignedExecutiveId) {
+        const execUser = await storage.getUser(ticket.assignedExecutiveId);
+        assignedExecutiveName = execUser ? `${execUser.firstName || ""} ${execUser.lastName || ""}`.trim() || execUser.email : null;
+      }
+      
+      // Get maintainer name
+      let maintainerName = null;
+      if (ticket.maintainerId) {
+        const allMaintainers = await storage.getMaintainers();
+        const maint = allMaintainers.find((m: any) => m.id === ticket.maintainerId);
+        maintainerName = maint?.companyName || null;
+      }
+      
       res.json({
         ...ticket,
         building,
         createdByName,
+        assignedExecutiveName,
+        maintainerName,
         cost: isManager ? ticket.cost : null,
       });
     } catch (error) {
@@ -2421,8 +2438,19 @@ export async function registerRoutes(
         return res.status(403).json({ error: "No tienes acceso a este ticket" });
       }
       
+      const sanitizedBody = { ...req.body };
+      if (sanitizedBody.maintainerId === "" || sanitizedBody.maintainerId === undefined) {
+        delete sanitizedBody.maintainerId;
+      }
+      if (sanitizedBody.description === "" || sanitizedBody.description === undefined) {
+        delete sanitizedBody.description;
+      }
+      if (sanitizedBody.durationDays === "" || sanitizedBody.durationDays === undefined || sanitizedBody.durationDays === null) {
+        delete sanitizedBody.durationDays;
+      }
+      
       const data = insertTicketQuoteSchema.parse({
-        ...req.body,
+        ...sanitizedBody,
         ticketId: req.params.ticketId,
         createdBy: req.user!.id,
       });

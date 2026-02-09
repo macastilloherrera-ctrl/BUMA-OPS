@@ -99,10 +99,13 @@ interface TicketWithDetails {
   description: string;
   priority: "rojo" | "amarillo" | "verde";
   status: "pendiente" | "en_curso" | "trabajo_completado" | "vencido" | "resuelto" | "reprogramado";
+  assignedExecutiveId?: string | null;
+  assignedExecutiveName?: string | null;
   requiresMaintainerVisit?: boolean;
   requiresExecutiveVisit?: boolean;
   requiresInvoice?: boolean;
   scheduledDate?: string | null;
+  startDate?: string | null;
   endDate?: string | null;
   approvedQuoteId?: string | null;
   approvedBy?: string | null;
@@ -120,6 +123,7 @@ interface TicketWithDetails {
   createdAt?: string | null;
   createdBy?: string | null;
   createdByName?: string | null;
+  maintainerName?: string | null;
   building?: Building;
   cost?: string | null;
 }
@@ -136,7 +140,7 @@ const quoteSchema = z.object({
   companyName: z.string().min(1, "El nombre de la empresa es requerido"),
   description: z.string().optional(),
   amountNet: z.coerce.number().min(1, "El monto es requerido"),
-  durationDays: z.coerce.number().min(1).optional(),
+  durationDays: z.coerce.number().min(0).optional(),
 });
 
 type QuoteForm = z.infer<typeof quoteSchema>;
@@ -461,10 +465,21 @@ Equipo BUMA Property Management
 
   const createQuoteMutation = useMutation({
     mutationFn: async (data: QuoteForm) => {
-      return apiRequest("POST", `/api/tickets/${id}/quotes`, {
-        ...data,
+      const payload: Record<string, unknown> = {
+        companyName: data.companyName,
+        amountNet: data.amountNet,
         attachmentKey: quoteAttachmentKey,
-      });
+      };
+      if (data.maintainerId && data.maintainerId.trim() !== "") {
+        payload.maintainerId = data.maintainerId;
+      }
+      if (data.description && data.description.trim() !== "") {
+        payload.description = data.description;
+      }
+      if (data.durationDays && data.durationDays > 0) {
+        payload.durationDays = data.durationDays;
+      }
+      return apiRequest("POST", `/api/tickets/${id}/quotes`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tickets", id, "quotes"] });
@@ -812,14 +827,24 @@ Equipo BUMA Property Management
                     </div>
                   )}
 
-                  {ticket.scheduledDate && (
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground flex items-center gap-1">
+                      <UserCheck className="h-3 w-3" />
+                      Ejecutivo Asignado
+                    </p>
+                    <p className="text-sm font-medium" data-testid="text-assigned-executive">
+                      {ticket.assignedExecutiveName || getUserName(ticket.assignedExecutiveId) || "Sin asignar"}
+                    </p>
+                  </div>
+
+                  {ticket.requiresMaintainerVisit && (
                     <div className="space-y-1">
                       <p className="text-sm text-muted-foreground flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        Fecha Programada
+                        <Wrench className="h-3 w-3" />
+                        Proveedor Asignado
                       </p>
-                      <p className="text-sm font-medium">
-                        {format(new Date(ticket.scheduledDate), "dd MMM yyyy", { locale: es })}
+                      <p className="text-sm font-medium" data-testid="text-assigned-maintainer">
+                        {ticket.maintainerName || (ticket.maintainerId ? maintainers?.find(m => m.id === ticket.maintainerId)?.companyName || "No identificado" : "Sin asignar")}
                       </p>
                     </div>
                   )}
@@ -830,6 +855,13 @@ Equipo BUMA Property Management
                       <p className="text-sm font-medium">
                         {format(new Date(ticket.createdAt), "dd MMM yyyy", { locale: es })}
                       </p>
+                    </div>
+                  )}
+
+                  {ticket.createdByName && (
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">Creado por</p>
+                      <p className="text-sm font-medium">{ticket.createdByName}</p>
                     </div>
                   )}
 
@@ -849,10 +881,15 @@ Equipo BUMA Property Management
                     </div>
                   )}
 
-                  {ticket.createdByName && (
+                  {ticket.scheduledDate && (
                     <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Creado por</p>
-                      <p className="text-sm font-medium">{ticket.createdByName}</p>
+                      <p className="text-sm text-muted-foreground flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        Fecha Programada
+                      </p>
+                      <p className="text-sm font-medium">
+                        {format(new Date(ticket.scheduledDate), "dd MMM yyyy", { locale: es })}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -866,7 +903,14 @@ Equipo BUMA Property Management
                   )}
                   {ticket.requiresExecutiveVisit && (
                     <Badge variant="outline" className="text-xs">
-                      Requiere supervision
+                      <UserCheck className="h-3 w-3 mr-1" />
+                      Requiere supervisión ejecutivo
+                    </Badge>
+                  )}
+                  {ticket.requiresInvoice && (
+                    <Badge variant="outline" className="text-xs">
+                      <FileText className="h-3 w-3 mr-1" />
+                      Requiere factura
                     </Badge>
                   )}
                 </div>
@@ -1859,7 +1903,7 @@ Equipo BUMA Property Management
                         name="amountNet"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Monto Neto (CLP) *</FormLabel>
+                            <FormLabel>Monto Total (CLP) *</FormLabel>
                             <FormControl>
                               <Input
                                 type="number"
@@ -1877,7 +1921,7 @@ Equipo BUMA Property Management
                         name="durationDays"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Duración (días)</FormLabel>
+                            <FormLabel>Duración estimada (días)</FormLabel>
                             <FormControl>
                               <Input
                                 type="number"
