@@ -1,0 +1,137 @@
+Necesito consolidar y cerrar correctamente el módulo financiero-operativo de BUMA OPS,
+incluyendo INGRESOS, EGRESOS y un nuevo perfil CONSERJERÍA / OPERACIÓN DEL EDIFICIO.
+
+========================================
+A) PERFIL NUEVO: CONSERJERÍA / OPERACIÓN
+========================================
+
+Crear un nuevo rol: BUILDING_OPERATIONS / CONSERJERÍA.
+
+Características:
+- Usuario asociado a UNO (o pocos) edificios.
+- No es usuario nominal crítico (rotación por turnos).
+- Representa al “puesto de conserjería”, no a una persona específica.
+
+PERMISOS CONSERJERÍA (MUY ACOTADOS):
+✔ Ver tickets asignados al edificio donde el responsable sea CONSERJERÍA.
+✔ Subir evidencias a tickets (fotos, comentarios).
+✔ Subir documentos (facturas/boletas) asociados a egresos esperados o tickets.
+✔ Marcar acciones simples: “trabajo ejecutado”, “empresa asistió”.
+
+RESTRICCIONES CONSERJERÍA:
+✖ No ve montos.
+✖ No descarga Excel.
+✖ No cierra tickets.
+✖ No valida financieramente.
+✖ No ve reportes.
+✖ No ve otros edificios.
+
+========================================
+B) TICKETS – DERIVACIÓN A CONSERJERÍA
+========================================
+
+Validar y asegurar que:
+- En la creación/asignación de tickets exista explícitamente la opción:
+  Responsable = CONSERJERÍA.
+- Si responsable = CONSERJERÍA:
+  - El ticket queda visible para usuarios con rol CONSERJERÍA del edificio.
+  - Ejecutivos y gerencias mantienen visibilidad total.
+- CONSERJERÍA NO puede cerrar tickets.
+- Solo GERENCIAS pueden cerrar tickets (backend 403 si no).
+
+Agregar pruebas de autorización para este flujo.
+
+========================================
+C) INGRESOS – EXPORTACIÓN COMPATIBLE EDIPRO
+========================================
+
+Implementar exportación “Ingresos Edipro” por edificio + mes/año.
+
+Columnas EXACTAS del Excel:
+1) Número               -> vacío / correlativo interno
+2) Monto                -> ingreso.amount
+3) Unidad               -> ingreso.department
+4) Descripción          -> valor fijo: "abono"
+5) Anulado              -> valor fijo: "NO"
+6) Fecha ingreso        -> ingreso.paymentDate
+7) Fondo                -> valor fijo: "Gasto común"
+8) Forma de pago        -> valor fijo: "Transferencia"
+9) Banco                -> ingreso.bank
+10) Número comprobante  -> ingreso.bankOperationId
+
+Reglas:
+- Exportar SOLO ingresos con status = IDENTIFIED.
+- Pagos múltiples → generar una fila por unidad.
+- Cheques NO se exportan.
+- Ejecutivos y Conserjería NO pueden descargar.
+- Nombre archivo: ingresos_<edificio>_<mes>_<año>.xlsx
+
+========================================
+D) EGRESOS – EXPORTACIÓN COMPATIBLE EDIPRO
+========================================
+
+Exportación “Egresos Edipro” por edificio + mes/año.
+
+Columnas EXACTAS:
+1) Número
+2) Fondo               -> "Gasto común"
+3) Subfondo            -> categoria OPS
+4) Descripción         -> egreso.description
+5) Monto               -> egreso.amount
+6) Documento           -> egreso.documentNumber
+7) Fecha egreso        -> egreso.paymentDate
+8) Fecha banco         -> vacío
+9) Anulado             -> "NO"
+10) Proveedor          -> egreso.vendorName (match EXACTO Edipro)
+11) Número respaldo    -> vacío
+12) Forma de pago      -> Transferencia / PAC / Pago electrónico
+13) Fecha cheque       -> vacío
+
+Reglas:
+- NO exportar egresos con inclusionStatus = POSTPONED.
+- Exportar SOLO egresos PAGADOS.
+- Ejecutivos y Conserjería NO pueden descargar.
+- Nombre archivo: egresos_<edificio>_<mes>_<año>.xlsx
+
+========================================
+E) EGRESOS RECURRENTES (CONSUMOS)
+========================================
+
+Mantener modelo unificado de egresos:
+- sourceType = TICKET (existente)
+- sourceType = RECURRENT (nuevo)
+
+Crear RecurringExpenseTemplate por edificio:
+- category (agua, luz, gas, internet, aseo, materiales, etc.)
+- vendorId (opcional)
+- frequency = monthly
+- active true/false
+
+Generar ExpectedRecurringExpense mensual por template activo.
+- CONSERJERÍA puede subir factura.
+- Ejecutivo valida operativamente.
+- Gerencia valida financieramente.
+
+========================================
+F) PERMISOS CRÍTICOS (NO NEGOCIABLES)
+========================================
+
+- CONSERJERÍA: solo input y evidencia.
+- EJECUTIVO: gestión operativa, NO cierre financiero.
+- GERENCIAS: cierre tickets, cierre ciclo, exportación Excel.
+
+Agregar tests de autorización:
+- Conserjería cerrando ticket → 403
+- Ejecutivo cerrando ticket → 403
+- Gerencia cerrando ticket → 200
+
+========================================
+G) DOCUMENTACIÓN
+========================================
+
+Crear documentación en /docs:
+- roles-conserjeria.md
+- exportacion-edipro.md
+- flujo-egresos-recurrentes.md
+
+Confirmar implementación y pantallas finales.

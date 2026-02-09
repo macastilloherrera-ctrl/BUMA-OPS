@@ -28,6 +28,9 @@ import {
   executiveDocuments,
   notifications,
   systemConfig,
+  incomes,
+  expenses,
+  recurringExpenseTemplates,
   projects,
   projectMilestones,
   projectDocuments,
@@ -95,6 +98,12 @@ import {
   type InsertProjectDocument,
   type ProjectUpdate,
   type InsertProjectUpdate,
+  type Income,
+  type InsertIncome,
+  type Expense,
+  type InsertExpense,
+  type RecurringExpenseTemplate,
+  type InsertRecurringExpenseTemplate,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, gte, lte, lt, or, sql, ne } from "drizzle-orm";
@@ -303,6 +312,27 @@ export interface IStorage {
   getProjectUpdates(projectId: string): Promise<ProjectUpdate[]>;
   createProjectUpdate(update: InsertProjectUpdate): Promise<ProjectUpdate>;
   updateProjectUpdate(id: string, data: Partial<InsertProjectUpdate>): Promise<ProjectUpdate | undefined>;
+
+  // Incomes
+  getIncomes(filters?: { buildingId?: string; status?: string; month?: number; year?: number }): Promise<Income[]>;
+  getIncome(id: string): Promise<Income | undefined>;
+  createIncome(income: InsertIncome): Promise<Income>;
+  updateIncome(id: string, data: Partial<InsertIncome>): Promise<Income | undefined>;
+  deleteIncome(id: string): Promise<boolean>;
+
+  // Expenses
+  getExpenses(filters?: { buildingId?: string; sourceType?: string; paymentStatus?: string; inclusionStatus?: string; month?: number; year?: number }): Promise<Expense[]>;
+  getExpense(id: string): Promise<Expense | undefined>;
+  createExpense(expense: InsertExpense): Promise<Expense>;
+  updateExpense(id: string, data: Partial<InsertExpense>): Promise<Expense | undefined>;
+  deleteExpense(id: string): Promise<boolean>;
+
+  // Recurring Expense Templates
+  getRecurringExpenseTemplates(filters?: { buildingId?: string; isActive?: boolean }): Promise<RecurringExpenseTemplate[]>;
+  getRecurringExpenseTemplate(id: string): Promise<RecurringExpenseTemplate | undefined>;
+  createRecurringExpenseTemplate(template: InsertRecurringExpenseTemplate): Promise<RecurringExpenseTemplate>;
+  updateRecurringExpenseTemplate(id: string, data: Partial<InsertRecurringExpenseTemplate>): Promise<RecurringExpenseTemplate | undefined>;
+  deleteRecurringExpenseTemplate(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1276,6 +1306,119 @@ export class DatabaseStorage implements IStorage {
       .where(eq(projectUpdates.id, id))
       .returning();
     return updated || undefined;
+  }
+
+  // Incomes
+  async getIncomes(filters?: { buildingId?: string; status?: string; month?: number; year?: number }): Promise<Income[]> {
+    const conditions = [];
+    if (filters?.buildingId) conditions.push(eq(incomes.buildingId, filters.buildingId));
+    if (filters?.status) conditions.push(eq(incomes.status, filters.status as any));
+    if (filters?.year && filters?.month) {
+      const startDate = new Date(filters.year, filters.month - 1, 1);
+      const endDate = new Date(filters.year, filters.month, 1);
+      conditions.push(gte(incomes.paymentDate, startDate));
+      conditions.push(lt(incomes.paymentDate, endDate));
+    }
+    return db.select().from(incomes)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(incomes.paymentDate));
+  }
+
+  async getIncome(id: string): Promise<Income | undefined> {
+    const [income] = await db.select().from(incomes).where(eq(incomes.id, id));
+    return income || undefined;
+  }
+
+  async createIncome(income: InsertIncome): Promise<Income> {
+    const [newIncome] = await db.insert(incomes).values(income).returning();
+    return newIncome;
+  }
+
+  async updateIncome(id: string, data: Partial<InsertIncome>): Promise<Income | undefined> {
+    const [updated] = await db.update(incomes)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(incomes.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteIncome(id: string): Promise<boolean> {
+    await db.delete(incomes).where(eq(incomes.id, id));
+    return true;
+  }
+
+  // Expenses
+  async getExpenses(filters?: { buildingId?: string; sourceType?: string; paymentStatus?: string; inclusionStatus?: string; month?: number; year?: number }): Promise<Expense[]> {
+    const conditions = [];
+    if (filters?.buildingId) conditions.push(eq(expenses.buildingId, filters.buildingId));
+    if (filters?.sourceType) conditions.push(eq(expenses.sourceType, filters.sourceType as any));
+    if (filters?.paymentStatus) conditions.push(eq(expenses.paymentStatus, filters.paymentStatus as any));
+    if (filters?.inclusionStatus) conditions.push(eq(expenses.inclusionStatus, filters.inclusionStatus as any));
+    if (filters?.year && filters?.month) {
+      const startDate = new Date(filters.year, filters.month - 1, 1);
+      const endDate = new Date(filters.year, filters.month, 1);
+      conditions.push(gte(expenses.paymentDate, startDate));
+      conditions.push(lt(expenses.paymentDate, endDate));
+    }
+    return db.select().from(expenses)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(expenses.paymentDate));
+  }
+
+  async getExpense(id: string): Promise<Expense | undefined> {
+    const [expense] = await db.select().from(expenses).where(eq(expenses.id, id));
+    return expense || undefined;
+  }
+
+  async createExpense(expense: InsertExpense): Promise<Expense> {
+    const [newExpense] = await db.insert(expenses).values(expense).returning();
+    return newExpense;
+  }
+
+  async updateExpense(id: string, data: Partial<InsertExpense>): Promise<Expense | undefined> {
+    const [updated] = await db.update(expenses)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(expenses.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteExpense(id: string): Promise<boolean> {
+    await db.delete(expenses).where(eq(expenses.id, id));
+    return true;
+  }
+
+  // Recurring Expense Templates
+  async getRecurringExpenseTemplates(filters?: { buildingId?: string; isActive?: boolean }): Promise<RecurringExpenseTemplate[]> {
+    const conditions = [];
+    if (filters?.buildingId) conditions.push(eq(recurringExpenseTemplates.buildingId, filters.buildingId));
+    if (filters?.isActive !== undefined) conditions.push(eq(recurringExpenseTemplates.isActive, filters.isActive));
+    return db.select().from(recurringExpenseTemplates)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(recurringExpenseTemplates.category);
+  }
+
+  async getRecurringExpenseTemplate(id: string): Promise<RecurringExpenseTemplate | undefined> {
+    const [template] = await db.select().from(recurringExpenseTemplates).where(eq(recurringExpenseTemplates.id, id));
+    return template || undefined;
+  }
+
+  async createRecurringExpenseTemplate(template: InsertRecurringExpenseTemplate): Promise<RecurringExpenseTemplate> {
+    const [newTemplate] = await db.insert(recurringExpenseTemplates).values(template).returning();
+    return newTemplate;
+  }
+
+  async updateRecurringExpenseTemplate(id: string, data: Partial<InsertRecurringExpenseTemplate>): Promise<RecurringExpenseTemplate | undefined> {
+    const [updated] = await db.update(recurringExpenseTemplates)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(recurringExpenseTemplates.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteRecurringExpenseTemplate(id: string): Promise<boolean> {
+    await db.delete(recurringExpenseTemplates).where(eq(recurringExpenseTemplates.id, id));
+    return true;
   }
 }
 

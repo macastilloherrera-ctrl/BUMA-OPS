@@ -13,7 +13,8 @@ export const userRoleEnum = pgEnum("user_role", [
   "gerente_operaciones",
   "gerente_comercial",
   "gerente_finanzas",
-  "ejecutivo_operaciones"
+  "ejecutivo_operaciones",
+  "conserjeria"
 ]);
 
 export const buildingStatusEnum = pgEnum("building_status", [
@@ -1049,7 +1050,7 @@ export type InsertSystemConfig = z.infer<typeof insertSystemConfigSchema>;
 export type SystemConfig = typeof systemConfig.$inferSelect;
 
 // Helper types for frontend
-export type UserRole = "super_admin" | "gerente_general" | "gerente_operaciones" | "gerente_comercial" | "gerente_finanzas" | "ejecutivo_operaciones";
+export type UserRole = "super_admin" | "gerente_general" | "gerente_operaciones" | "gerente_comercial" | "gerente_finanzas" | "ejecutivo_operaciones" | "conserjeria";
 export type VisitType = "rutina" | "urgente";
 export type TicketPriority = "rojo" | "amarillo" | "verde";
 export type TicketStatus = "pendiente" | "en_curso" | "trabajo_completado" | "vencido" | "resuelto" | "reprogramado";
@@ -1062,6 +1063,163 @@ export type ChecklistType = "rutina" | "emergencia";
 export type EmploymentStatus = "activo" | "inactivo" | "licencia" | "vacaciones";
 export type ExecutiveDocType = "cv" | "certificado_estudios" | "contrato" | "cedula_identidad" | "certificado_afp" | "certificado_salud" | "otro";
 export type NotificationType = "ticket_asignado" | "ticket_derivado" | "ticket_actualizado";
+
+// ============================================
+// MÓDULO FINANCIERO - INGRESOS Y EGRESOS
+// ============================================
+
+export const incomeStatusEnum = pgEnum("income_status", [
+  "pending",
+  "identified",
+  "rejected"
+]);
+
+export const expenseSourceTypeEnum = pgEnum("expense_source_type", [
+  "ticket",
+  "recurrent"
+]);
+
+export const expensePaymentStatusEnum = pgEnum("expense_payment_status", [
+  "pending",
+  "paid",
+  "cancelled"
+]);
+
+export const expenseInclusionStatusEnum = pgEnum("expense_inclusion_status", [
+  "included",
+  "postponed"
+]);
+
+export const expensePaymentMethodEnum = pgEnum("expense_payment_method", [
+  "transferencia",
+  "pac",
+  "pago_electronico",
+  "cheque"
+]);
+
+export const recurringExpenseFrequencyEnum = pgEnum("recurring_expense_frequency", [
+  "monthly"
+]);
+
+export const incomes = pgTable("incomes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  buildingId: varchar("building_id").notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  department: varchar("department", { length: 255 }).notNull(),
+  description: varchar("description", { length: 255 }).default("abono"),
+  paymentDate: timestamp("payment_date").notNull(),
+  bank: varchar("bank", { length: 255 }),
+  bankOperationId: varchar("bank_operation_id", { length: 255 }),
+  status: incomeStatusEnum("status").notNull().default("pending"),
+  notes: text("notes"),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const expenses = pgTable("expenses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  buildingId: varchar("building_id").notNull(),
+  sourceType: expenseSourceTypeEnum("source_type").notNull().default("ticket"),
+  sourceTicketId: varchar("source_ticket_id"),
+  recurringTemplateId: varchar("recurring_template_id"),
+  description: text("description").notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  category: varchar("category", { length: 255 }),
+  vendorName: varchar("vendor_name", { length: 255 }),
+  vendorId: varchar("vendor_id"),
+  documentNumber: varchar("document_number", { length: 255 }),
+  documentKey: text("document_key"),
+  paymentDate: timestamp("payment_date"),
+  paymentMethod: expensePaymentMethodEnum("payment_method").default("transferencia"),
+  paymentStatus: expensePaymentStatusEnum("payment_status").notNull().default("pending"),
+  inclusionStatus: expenseInclusionStatusEnum("inclusion_status").notNull().default("included"),
+  operationallyValidated: boolean("operationally_validated").default(false),
+  operationallyValidatedBy: varchar("operationally_validated_by"),
+  operationallyValidatedAt: timestamp("operationally_validated_at"),
+  financiallyValidated: boolean("financially_validated").default(false),
+  financiallyValidatedBy: varchar("financially_validated_by"),
+  financiallyValidatedAt: timestamp("financially_validated_at"),
+  notes: text("notes"),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const recurringExpenseTemplates = pgTable("recurring_expense_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  buildingId: varchar("building_id").notNull(),
+  category: varchar("category", { length: 255 }).notNull(),
+  description: text("description"),
+  vendorId: varchar("vendor_id"),
+  vendorName: varchar("vendor_name", { length: 255 }),
+  estimatedAmount: decimal("estimated_amount", { precision: 12, scale: 2 }),
+  frequency: recurringExpenseFrequencyEnum("frequency").notNull().default("monthly"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const incomesRelations = relations(incomes, ({ one }) => ({
+  building: one(buildings, {
+    fields: [incomes.buildingId],
+    references: [buildings.id],
+  }),
+}));
+
+export const expensesRelations = relations(expenses, ({ one }) => ({
+  building: one(buildings, {
+    fields: [expenses.buildingId],
+    references: [buildings.id],
+  }),
+  ticket: one(tickets, {
+    fields: [expenses.sourceTicketId],
+    references: [tickets.id],
+  }),
+  template: one(recurringExpenseTemplates, {
+    fields: [expenses.recurringTemplateId],
+    references: [recurringExpenseTemplates.id],
+  }),
+}));
+
+export const recurringExpenseTemplatesRelations = relations(recurringExpenseTemplates, ({ one, many }) => ({
+  building: one(buildings, {
+    fields: [recurringExpenseTemplates.buildingId],
+    references: [buildings.id],
+  }),
+  expenses: many(expenses),
+}));
+
+export const insertIncomeSchema = createInsertSchema(incomes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertIncome = z.infer<typeof insertIncomeSchema>;
+export type Income = typeof incomes.$inferSelect;
+
+export const insertExpenseSchema = createInsertSchema(expenses).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertExpense = z.infer<typeof insertExpenseSchema>;
+export type Expense = typeof expenses.$inferSelect;
+
+export const insertRecurringExpenseTemplateSchema = createInsertSchema(recurringExpenseTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertRecurringExpenseTemplate = z.infer<typeof insertRecurringExpenseTemplateSchema>;
+export type RecurringExpenseTemplate = typeof recurringExpenseTemplates.$inferSelect;
+
+export type IncomeStatus = "pending" | "identified" | "rejected";
+export type ExpenseSourceType = "ticket" | "recurrent";
+export type ExpensePaymentStatus = "pending" | "paid" | "cancelled";
+export type ExpenseInclusionStatus = "included" | "postponed";
+export type ExpensePaymentMethod = "transferencia" | "pac" | "pago_electronico" | "cheque";
 
 // ============================================
 // MÓDULO DE PROYECTOS

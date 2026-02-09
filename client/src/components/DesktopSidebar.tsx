@@ -29,6 +29,9 @@ import {
   BarChart3,
   Shield,
   FolderKanban,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  Repeat,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -66,6 +69,14 @@ const managerNavItems = [
       { path: "/proyectos/semaforo", label: "Proyectos Semáforo", icon: FolderKanban },
       { path: "/proyectos", label: "Panel Proyectos", icon: ClipboardList },
       { path: "/proyectos/calendario", label: "Calendario Proyectos", icon: CalendarDays },
+    ]
+  },
+  {
+    group: "Finanzas",
+    items: [
+      { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
+      { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
+      { path: "/consumos-recurrentes", label: "Consumos Recurrentes", icon: Repeat },
     ]
   },
   {
@@ -113,6 +124,14 @@ const managerWithReportsNavItems = [
       { path: "/proyectos/semaforo", label: "Proyectos Semáforo", icon: FolderKanban },
       { path: "/proyectos", label: "Panel Proyectos", icon: ClipboardList },
       { path: "/proyectos/calendario", label: "Calendario Proyectos", icon: CalendarDays },
+    ]
+  },
+  {
+    group: "Finanzas",
+    items: [
+      { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
+      { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
+      { path: "/consumos-recurrentes", label: "Consumos Recurrentes", icon: Repeat },
     ]
   },
   {
@@ -197,6 +216,14 @@ const generalManagerNavItems = [
     ]
   },
   {
+    group: "Finanzas",
+    items: [
+      { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
+      { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
+      { path: "/consumos-recurrentes", label: "Consumos Recurrentes", icon: Repeat },
+    ]
+  },
+  {
     group: "Gestión",
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2 },
@@ -229,13 +256,31 @@ const financeNavItems = [
   { 
     group: "Dashboards",
     items: [
-      { path: "/dashboard/tickets", label: "Tickets Semaforo", icon: Ticket },
+      { path: "/dashboard/tickets", label: "Tickets Semáforo", icon: Ticket },
+    ]
+  },
+  {
+    group: "Finanzas",
+    items: [
+      { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
+      { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
+      { path: "/consumos-recurrentes", label: "Consumos Recurrentes", icon: Repeat },
     ]
   },
   {
     group: "Reportes",
     items: [
       { path: "/reportes/cumplimiento", label: "Estado Documental y Operativo", icon: FileCheck },
+      { path: "/reportes/egresos", label: "Informe Egresos", icon: FileSpreadsheet },
+    ]
+  },
+];
+
+const conserjeriaNavItems = [
+  {
+    group: "Mi Edificio",
+    items: [
+      { path: "/tickets", label: "Tickets Asignados", icon: Ticket },
     ]
   },
 ];
@@ -275,6 +320,8 @@ export function DesktopSidebar({ user, userRole, onLogout }: DesktopSidebarProps
         return managerNavItems;
       case "gerente_finanzas":
         return financeNavItems;
+      case "conserjeria":
+        return conserjeriaNavItems;
       default:
         return executiveNavItems;
     }

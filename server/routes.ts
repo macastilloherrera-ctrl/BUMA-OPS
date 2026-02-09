@@ -28,6 +28,9 @@ import {
   insertTicketPhotoSchema,
   insertTicketCommunicationSchema,
   insertAttachmentSchema,
+  insertIncomeSchema,
+  insertExpenseSchema,
+  insertRecurringExpenseTemplateSchema,
   userProfiles,
   type UserRole,
   type UserProfile,
@@ -63,7 +66,15 @@ function stripCostFields<T extends { cost?: string | null }>(items: T[], canSeeC
 
 // Helper to check if user is a manager role
 function isManagerRole(profile: UserProfile | null): boolean {
-  return !!profile && ["gerente_general", "gerente_operaciones", "gerente_comercial"].includes(profile.role);
+  return !!profile && ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas"].includes(profile.role);
+}
+
+function isConserjeriaRole(profile: UserProfile | null): boolean {
+  return !!profile && profile.role === "conserjeria";
+}
+
+function canExportFinancial(profile: UserProfile | null): boolean {
+  return !!profile && ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas"].includes(profile.role);
 }
 
 // Helper to check if user can access a building (based on buildingScope)
@@ -1409,11 +1420,18 @@ export async function registerRoutes(
       
       let tickets = await storage.getTickets(filters);
       
-      // For non-managers with "assigned" scope: show tickets where user is assigned, created by, or building is assigned to user
-      if (!isManager && profile?.buildingScope !== "all") {
-        const buildings = await storage.getBuildings();
+      if (isConserjeriaRole(profile)) {
+        const allBuildings = await storage.getBuildings();
         const userBuildingIds = new Set(
-          buildings.filter((b) => b.assignedExecutiveId === req.user!.id).map((b) => b.id)
+          allBuildings.filter((b) => b.assignedExecutiveId === req.user!.id).map((b) => b.id)
+        );
+        tickets = tickets.filter((t) =>
+          userBuildingIds.has(t.buildingId) && t.receiverType === "personal_edificio"
+        );
+      } else if (!isManager && profile?.buildingScope !== "all") {
+        const allBuildings = await storage.getBuildings();
+        const userBuildingIds = new Set(
+          allBuildings.filter((b) => b.assignedExecutiveId === req.user!.id).map((b) => b.id)
         );
         
         tickets = tickets.filter((t) =>
@@ -1422,6 +1440,8 @@ export async function registerRoutes(
           userBuildingIds.has(t.buildingId)
         );
       }
+      
+      const isConserjeria = isConserjeriaRole(profile);
       
       // Add building names and executive info
       const buildings = await storage.getBuildings();
@@ -1448,6 +1468,7 @@ export async function registerRoutes(
         building: buildingsMap.get(t.buildingId),
         executiveName: getUserDisplayName(t.assignedExecutiveId),
         cost: isManager ? t.cost : null,
+        invoiceAmount: isConserjeria ? null : t.invoiceAmount,
         isDelegatedToMe: delegatedTicketIds.has(t.id),
       }));
       
@@ -1673,8 +1694,22 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Ticket no encontrado" });
       }
       
-      if (!isManagerUser) {
-        // Executives can only modify tickets they created or are assigned to
+      if (isConserjeriaRole(profile)) {
+        const allowedFields = ["documentKey", "notes"];
+        const bodyKeys = Object.keys(req.body);
+        const hasDisallowed = bodyKeys.some(k => !allowedFields.includes(k));
+        if (hasDisallowed) {
+          return res.status(403).json({ error: "Conserjería solo puede agregar evidencia o comentarios" });
+        }
+      }
+
+      if (req.body.status === "resuelto") {
+        if (!isManagerRole(profile)) {
+          return res.status(403).json({ error: "Solo gerentes pueden cerrar tickets" });
+        }
+      }
+
+      if (!isManagerUser && !isConserjeriaRole(profile)) {
         if (existingTicket.createdBy !== req.user!.id && existingTicket.assignedExecutiveId !== req.user!.id) {
           return res.status(403).json({ error: "No tienes permiso para modificar este ticket" });
         }
@@ -5487,6 +5522,369 @@ export async function registerRoutes(
       }
       res.json({ success: true });
     });
+  });
+
+  // ==========================================
+  // Financial Module: Incomes
+  // ==========================================
+
+  app.get("/api/incomes", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (isConserjeriaRole(profile)) {
+        return res.status(403).json({ error: "No autorizado" });
+      }
+      const filters: { buildingId?: string; status?: string; month?: number; year?: number } = {};
+      if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
+      if (req.query.status) filters.status = req.query.status as string;
+      if (req.query.month) filters.month = parseInt(req.query.month as string);
+      if (req.query.year) filters.year = parseInt(req.query.year as string);
+      const items = await storage.getIncomes(filters);
+      res.json(items);
+    } catch (error) {
+      console.error("Error obteniendo ingresos:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/incomes", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden crear ingresos" });
+      }
+      const data = insertIncomeSchema.parse({ ...req.body, createdBy: req.user!.id });
+      const income = await storage.createIncome(data);
+      res.status(201).json(income);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
+      console.error("Error creando ingreso:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.patch("/api/incomes/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden modificar ingresos" });
+      }
+      const data = insertIncomeSchema.partial().parse(req.body);
+      const income = await storage.updateIncome(req.params.id, data);
+      if (!income) {
+        return res.status(404).json({ error: "Ingreso no encontrado" });
+      }
+      res.json(income);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
+      console.error("Error actualizando ingreso:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/incomes/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden eliminar ingresos" });
+      }
+      const deleted = await storage.deleteIncome(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Ingreso no encontrado" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error eliminando ingreso:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ==========================================
+  // Financial Module: Expenses
+  // ==========================================
+
+  app.get("/api/expenses", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (isConserjeriaRole(profile)) {
+        return res.status(403).json({ error: "No autorizado" });
+      }
+      const filters: { buildingId?: string; sourceType?: string; paymentStatus?: string; inclusionStatus?: string; month?: number; year?: number } = {};
+      if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
+      if (req.query.sourceType) filters.sourceType = req.query.sourceType as string;
+      if (req.query.paymentStatus) filters.paymentStatus = req.query.paymentStatus as string;
+      if (req.query.inclusionStatus) filters.inclusionStatus = req.query.inclusionStatus as string;
+      if (req.query.month) filters.month = parseInt(req.query.month as string);
+      if (req.query.year) filters.year = parseInt(req.query.year as string);
+      const items = await storage.getExpenses(filters);
+      res.json(items);
+    } catch (error) {
+      console.error("Error obteniendo egresos:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/expenses", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden crear egresos" });
+      }
+      const data = insertExpenseSchema.parse({ ...req.body, createdBy: req.user!.id });
+      const expense = await storage.createExpense(data);
+      res.status(201).json(expense);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
+      console.error("Error creando egreso:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.patch("/api/expenses/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (isConserjeriaRole(profile)) {
+        const allowedFields = ["documentKey"];
+        const bodyKeys = Object.keys(req.body);
+        const hasDisallowed = bodyKeys.some(k => !allowedFields.includes(k));
+        if (hasDisallowed) {
+          return res.status(403).json({ error: "Conserjería solo puede subir documentos de respaldo" });
+        }
+      } else if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden modificar egresos" });
+      }
+      const data = insertExpenseSchema.partial().parse(req.body);
+      const expense = await storage.updateExpense(req.params.id, data);
+      if (!expense) {
+        return res.status(404).json({ error: "Egreso no encontrado" });
+      }
+      res.json(expense);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
+      console.error("Error actualizando egreso:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/expenses/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden eliminar egresos" });
+      }
+      const deleted = await storage.deleteExpense(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Egreso no encontrado" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error eliminando egreso:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ==========================================
+  // Financial Module: Recurring Expense Templates
+  // ==========================================
+
+  app.get("/api/recurring-expense-templates", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (isConserjeriaRole(profile)) {
+        return res.status(403).json({ error: "No autorizado" });
+      }
+      const filters: { buildingId?: string } = {};
+      if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
+      const items = await storage.getRecurringExpenseTemplates(filters);
+      res.json(items);
+    } catch (error) {
+      console.error("Error obteniendo plantillas recurrentes:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/recurring-expense-templates", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden crear plantillas recurrentes" });
+      }
+      const data = insertRecurringExpenseTemplateSchema.parse({ ...req.body, createdBy: req.user!.id });
+      const template = await storage.createRecurringExpenseTemplate(data);
+      res.status(201).json(template);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
+      console.error("Error creando plantilla recurrente:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.patch("/api/recurring-expense-templates/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden modificar plantillas recurrentes" });
+      }
+      const data = insertRecurringExpenseTemplateSchema.partial().parse(req.body);
+      const template = await storage.updateRecurringExpenseTemplate(req.params.id, data);
+      if (!template) {
+        return res.status(404).json({ error: "Plantilla no encontrada" });
+      }
+      res.json(template);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
+      console.error("Error actualizando plantilla recurrente:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/recurring-expense-templates/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden eliminar plantillas recurrentes" });
+      }
+      const deleted = await storage.deleteRecurringExpenseTemplate(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Plantilla no encontrada" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error eliminando plantilla recurrente:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ==========================================
+  // Edipro Excel Export Endpoints
+  // ==========================================
+
+  app.get("/api/incomes/export/edipro", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canExportFinancial(profile)) {
+        return res.status(403).json({ error: "No tiene permisos para exportar datos financieros" });
+      }
+      const buildingId = req.query.buildingId as string;
+      const month = parseInt(req.query.month as string);
+      const year = parseInt(req.query.year as string);
+      if (!buildingId || !month || !year) {
+        return res.status(400).json({ error: "Se requiere buildingId, month y year" });
+      }
+      const building = await storage.getBuilding(buildingId);
+      if (!building) {
+        return res.status(404).json({ error: "Edificio no encontrado" });
+      }
+      const allIncomes = await storage.getIncomes({ buildingId, month, year, status: "identified" });
+      const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+      const monthName = monthNames[month - 1] || "";
+      const XLSX = await import("xlsx");
+      const wsData: any[][] = [
+        ["Número", "Monto", "Unidad", "Descripción", "Anulado", "Fecha ingreso", "Fondo", "Forma de pago", "Banco", "Número comprobante"],
+      ];
+      allIncomes.forEach((inc, idx) => {
+        const dateStr = inc.paymentDate ? new Date(inc.paymentDate).toLocaleDateString("es-CL") : "";
+        wsData.push([
+          idx + 1,
+          inc.amount ? parseFloat(inc.amount) : 0,
+          inc.department || "",
+          "abono",
+          "NO",
+          dateStr,
+          "Gasto común",
+          "Transferencia",
+          inc.bank || "",
+          inc.bankOperationId || "",
+        ]);
+      });
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Ingresos");
+      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      const buildingName = building.name.replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, "").replace(/\s+/g, "_");
+      const filename = `ingresos_${buildingName}_${monthName}_${year}.xlsx`;
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.send(buf);
+    } catch (error) {
+      console.error("Error exportando ingresos Edipro:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/expenses/export/edipro", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canExportFinancial(profile)) {
+        return res.status(403).json({ error: "No tiene permisos para exportar datos financieros" });
+      }
+      const buildingId = req.query.buildingId as string;
+      const month = parseInt(req.query.month as string);
+      const year = parseInt(req.query.year as string);
+      if (!buildingId || !month || !year) {
+        return res.status(400).json({ error: "Se requiere buildingId, month y year" });
+      }
+      const building = await storage.getBuilding(buildingId);
+      if (!building) {
+        return res.status(404).json({ error: "Edificio no encontrado" });
+      }
+      const allExpenses = await storage.getExpenses({ buildingId, month, year, paymentStatus: "paid" });
+      const filtered = allExpenses.filter(e => e.inclusionStatus !== "postponed");
+      const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+      const monthName = monthNames[month - 1] || "";
+      const paymentMethodMap: Record<string, string> = {
+        transferencia: "Transferencia",
+        pac: "PAC",
+        pago_electronico: "Pago electrónico",
+        cheque: "Cheque",
+      };
+      const XLSX = await import("xlsx");
+      const wsData: any[][] = [
+        ["Número", "Fondo", "Subfondo", "Descripción", "Monto", "Documento", "Fecha egreso", "Fecha banco", "Anulado", "Proveedor", "Número respaldo", "Forma de pago", "Fecha cheque"],
+      ];
+      filtered.forEach((exp, idx) => {
+        const dateStr = exp.paymentDate ? new Date(exp.paymentDate).toLocaleDateString("es-CL") : "";
+        wsData.push([
+          idx + 1,
+          "Gasto común",
+          exp.category || "",
+          exp.description || "",
+          exp.amount ? parseFloat(exp.amount) : 0,
+          exp.documentNumber || "",
+          dateStr,
+          "",
+          "NO",
+          exp.vendorName || "",
+          "",
+          paymentMethodMap[exp.paymentMethod || ""] || "",
+          "",
+        ]);
+      });
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Egresos");
+      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      const buildingName = building.name.replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, "").replace(/\s+/g, "_");
+      const filename = `egresos_${buildingName}_${monthName}_${year}.xlsx`;
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.send(buf);
+    } catch (error) {
+      console.error("Error exportando egresos Edipro:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
   });
 
   // ==========================================

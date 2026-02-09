@@ -7,6 +7,7 @@ export const roleHomeRoutes: Record<UserRole, string> = {
   gerente_comercial: "/dashboard/tickets",
   gerente_finanzas: "/dashboard/tickets",
   gerente_general: "/dashboard/overview",
+  conserjeria: "/tickets",
 };
 
 export function getRoleHome(role: UserRole): string {
@@ -51,6 +52,9 @@ export const rolePermissions: Record<UserRole, {
       "/proyectos/calendario",
       "/mantenedores",
       "/ejecutivos",
+      "/ingresos",
+      "/egresos",
+      "/consumos-recurrentes",
       "/reportes/egresos",
       "/reportes/cumplimiento",
       "/reportes/visitas",
@@ -81,6 +85,9 @@ export const rolePermissions: Record<UserRole, {
       "/proyectos/calendario",
       "/mantenedores",
       "/ejecutivos",
+      "/ingresos",
+      "/egresos",
+      "/consumos-recurrentes",
       "/reportes/cumplimiento",
       "/reportes/visitas",
       "/reportes/tickets",
@@ -109,6 +116,9 @@ export const rolePermissions: Record<UserRole, {
       "/proyectos/calendario",
       "/mantenedores",
       "/ejecutivos",
+      "/ingresos",
+      "/egresos",
+      "/consumos-recurrentes",
       "/reportes/egresos",
       "/reportes/cumplimiento",
       "/reportes/visitas",
@@ -127,12 +137,25 @@ export const rolePermissions: Record<UserRole, {
       "/dashboard/tickets",
       "/tickets",
       "/tickets/nuevo",
+      "/ingresos",
+      "/egresos",
+      "/consumos-recurrentes",
       "/reportes/cumplimiento",
+      "/reportes/egresos",
       "/perfil",
     ],
     canViewCosts: true,
     canApproveAssets: false,
     buildingScope: "all",
+  },
+  conserjeria: {
+    allowedRoutes: [
+      "/tickets",
+      "/perfil",
+    ],
+    canViewCosts: false,
+    canApproveAssets: false,
+    buildingScope: "assigned",
   },
   ejecutivo_operaciones: {
     allowedRoutes: [

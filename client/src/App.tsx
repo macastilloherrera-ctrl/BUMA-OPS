@@ -54,6 +54,9 @@ import NewProject from "@/pages/NewProject";
 import ProjectDetail from "@/pages/ProjectDetail";
 import ProjectsSemaforo from "@/pages/ProjectsSemaforo";
 import ProjectsCalendar from "@/pages/ProjectsCalendar";
+import Ingresos from "@/pages/Ingresos";
+import Egresos from "@/pages/Egresos";
+import RecurringExpenses from "@/pages/RecurringExpenses";
 
 function LoadingScreen() {
   return (
@@ -136,6 +139,7 @@ function AuthenticatedApp() {
                   gerente_comercial: "Gerente Comercial",
                   gerente_finanzas: "Gerente Finanzas",
                   ejecutivo_operaciones: "Ejecutivo Operaciones",
+                  conserjeria: "Conserjería",
                 }[userRole] || userRole})
               </span>
               <NotificationBell />
@@ -184,6 +188,14 @@ function AuthenticatedApp() {
                 <Route path="/proyectos/nuevo" component={NewProject} />
                 <Route path="/proyectos/:id" component={ProjectDetail} />
                 
+                {(isManager || isFinance) && (
+                  <>
+                    <Route path="/ingresos" component={Ingresos} />
+                    <Route path="/egresos" component={Egresos} />
+                    <Route path="/consumos-recurrentes" component={RecurringExpenses} />
+                  </>
+                )}
+
                 {isManager && (
                   <>
                     <Route path="/mantenedores" component={Maintainers} />
