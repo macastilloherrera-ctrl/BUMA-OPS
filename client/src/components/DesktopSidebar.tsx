@@ -85,7 +85,7 @@ const managerNavItems = [
       { path: "/reportes/financiero", label: "Informe Financiero", icon: DollarSign },
       { path: "/reportes/equipos", label: "Informe Equipos", icon: Wrench },
       { path: "/reportes/ejecutivos", label: "Informe Ejecutivos", icon: Users },
-      { path: "/reportes/cumplimiento", label: "Cumplimiento Normativo", icon: FileCheck },
+      { path: "/reportes/cumplimiento", label: "Estado Documental y Operativo", icon: FileCheck },
     ]
   },
 ];
@@ -133,7 +133,7 @@ const managerWithReportsNavItems = [
       { path: "/reportes/equipos", label: "Informe Equipos", icon: Wrench },
       { path: "/reportes/ejecutivos", label: "Informe Ejecutivos", icon: Users },
       { path: "/reportes/egresos", label: "Informe Egresos", icon: FileSpreadsheet },
-      { path: "/reportes/cumplimiento", label: "Cumplimiento Normativo", icon: FileCheck },
+      { path: "/reportes/cumplimiento", label: "Estado Documental y Operativo", icon: FileCheck },
     ]
   },
 ];
@@ -165,7 +165,7 @@ const executiveNavItems = [
   {
     group: "Reportes",
     items: [
-      { path: "/reportes/cumplimiento", label: "Cumplimiento Normativo", icon: FileCheck },
+      { path: "/reportes/cumplimiento", label: "Estado Documental y Operativo", icon: FileCheck },
     ]
   },
 ];
@@ -214,7 +214,7 @@ const generalManagerNavItems = [
       { path: "/reportes/equipos", label: "Informe Equipos", icon: Wrench },
       { path: "/reportes/ejecutivos", label: "Informe Ejecutivos", icon: Users },
       { path: "/reportes/egresos", label: "Informe Egresos", icon: FileSpreadsheet },
-      { path: "/reportes/cumplimiento", label: "Cumplimiento Normativo", icon: FileCheck },
+      { path: "/reportes/cumplimiento", label: "Estado Documental y Operativo", icon: FileCheck },
     ]
   },
   {
@@ -235,7 +235,7 @@ const financeNavItems = [
   {
     group: "Reportes",
     items: [
-      { path: "/reportes/cumplimiento", label: "Cumplimiento Normativo", icon: FileCheck },
+      { path: "/reportes/cumplimiento", label: "Estado Documental y Operativo", icon: FileCheck },
     ]
   },
 ];

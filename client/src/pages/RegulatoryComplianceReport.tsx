@@ -107,7 +107,7 @@ export default function RegulatoryComplianceReport() {
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-2">
             <FileCheck className="h-6 w-6 text-primary" />
-            <h1 className="text-xl md:text-2xl font-semibold">Cumplimiento Normativo</h1>
+            <h1 className="text-xl md:text-2xl font-semibold">Estado Documental y Operativo</h1>
           </div>
         </div>
         

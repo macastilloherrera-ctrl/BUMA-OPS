@@ -106,7 +106,7 @@ Modulo para gestionar obras y mejoras a largo plazo en edificios.
 - `PATCH /api/projects/:id/updates/:id/approve` - Aprobar fiscalizacion
 
 ### Reportes (Todos los perfiles)
-- **Cumplimiento Normativo**: Informe por edificio con scoring binario (0-100%)
+- **Estado Documental y Operativo**: Informe por edificio con scoring binario (0-100%)
   - Reglamento de copropiedad cargado (25%)
   - Equipos sin mantenciones vencidas (25%)
   - Minimo 4 visitas en ultimos 30 dias - 1 por semana (25%)
