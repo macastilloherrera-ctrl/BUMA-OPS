@@ -16,6 +16,7 @@ export interface ParseResult {
   transactions: ParsedTransaction[];
   detectedBank: string;
   totalRowsScanned: number;
+  debugRows?: any[];
 }
 
 type RawRow = any[];
@@ -334,6 +335,8 @@ export function parseBankFile(buffer: Buffer, originalName: string): ParseResult
     return { transactions: [], detectedBank: "desconocido", totalRowsScanned: 0 };
   }
 
+  const debugRows = rows.slice(0, 10).map((r, i) => ({ row: i, data: r }));
+
   const detectedBank = detectBank(rows);
   let transactions: ParsedTransaction[];
 
@@ -359,5 +362,6 @@ export function parseBankFile(buffer: Buffer, originalName: string): ParseResult
     transactions,
     detectedBank: bankLabels[detectedBank] || detectedBank,
     totalRowsScanned: rows.length,
+    debugRows,
   };
 }

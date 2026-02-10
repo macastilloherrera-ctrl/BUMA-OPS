@@ -6477,6 +6477,14 @@ export async function registerRoutes(
 
       const parseResult = parseBankFile(file.buffer, file.originalname);
 
+      console.log(`[Bank Import] File: ${file.originalname}, Detected bank: ${parseResult.detectedBank}, Rows scanned: ${parseResult.totalRowsScanned}, Transactions parsed: ${parseResult.transactions.length}`);
+      if (parseResult.transactions.length > 0) {
+        console.log(`[Bank Import] Sample transaction:`, JSON.stringify(parseResult.transactions[0], null, 2));
+      }
+      if (parseResult.debugRows) {
+        console.log(`[Bank Import] First 5 rows of file:`, JSON.stringify(parseResult.debugRows, null, 2));
+      }
+
       if (parseResult.transactions.length === 0) {
         return res.json({ imported: 0, duplicates: 0, total: parseResult.totalRowsScanned, detectedBank: parseResult.detectedBank });
       }
