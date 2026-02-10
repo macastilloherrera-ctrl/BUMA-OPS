@@ -33,6 +33,7 @@ import {
   ArrowUpCircle,
   Repeat,
   Landmark,
+  History,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -124,6 +125,7 @@ const managerWithReportsNavItems = [
     items: [
       { path: "/cierre-mensual", label: "Cierre Mensual", icon: FileCheck },
       { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
+      { path: "/historial-pagos", label: "Historial de Pagos", icon: History },
       { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
       { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
       { path: "/consumos-recurrentes", label: "Consumos Recurrentes", icon: Repeat },
@@ -168,6 +170,12 @@ const executiveNavItems = [
       { path: "/proyectos/semaforo", label: "Proyectos Semáforo", icon: FolderKanban },
       { path: "/proyectos", label: "Panel Proyectos", icon: ClipboardList },
       { path: "/proyectos/calendario", label: "Calendario Proyectos", icon: CalendarDays },
+    ]
+  },
+  {
+    group: "Pagos",
+    items: [
+      { path: "/historial-pagos", label: "Historial de Pagos", icon: History },
     ]
   },
   {
@@ -216,6 +224,7 @@ const generalManagerNavItems = [
     items: [
       { path: "/cierre-mensual", label: "Cierre Mensual", icon: FileCheck },
       { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
+      { path: "/historial-pagos", label: "Historial de Pagos", icon: History },
       { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
       { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
       { path: "/consumos-recurrentes", label: "Consumos Recurrentes", icon: Repeat },
@@ -262,6 +271,7 @@ const financeNavItems = [
     items: [
       { path: "/cierre-mensual", label: "Cierre Mensual", icon: FileCheck },
       { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
+      { path: "/historial-pagos", label: "Historial de Pagos", icon: History },
       { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
       { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
       { path: "/consumos-recurrentes", label: "Consumos Recurrentes", icon: Repeat },

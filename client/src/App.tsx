@@ -56,6 +56,7 @@ import ProjectsSemaforo from "@/pages/ProjectsSemaforo";
 import ProjectsCalendar from "@/pages/ProjectsCalendar";
 import Ingresos from "@/pages/Ingresos";
 import ConciliacionBancaria from "@/pages/ConciliacionBancaria";
+import HistorialPagos from "@/pages/HistorialPagos";
 import Egresos from "@/pages/Egresos";
 import RecurringExpenses from "@/pages/RecurringExpenses";
 import CierreMensual from "@/pages/CierreMensual";
@@ -208,6 +209,10 @@ function AuthenticatedApp() {
 
                 {(isOperations || isManager) && (
                   <Route path="/consulta-operacional" component={ConsultaOperacional} />
+                )}
+
+                {(canAccessFinancial || isOperations) && (
+                  <Route path="/historial-pagos" component={HistorialPagos} />
                 )}
 
                 {isManager && (

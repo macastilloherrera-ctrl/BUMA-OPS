@@ -86,6 +86,10 @@ function isConserjeriaRole(profile: UserProfile | null): boolean {
   return !!profile && profile.role === "conserjeria";
 }
 
+function isOperationsRole(profile: UserProfile | null): boolean {
+  return !!profile && ["gerente_operaciones", "ejecutivo_operaciones"].includes(profile.role);
+}
+
 function canAccessFinancial(profile: UserProfile | null): boolean {
   return !!profile && ["gerente_general", "gerente_comercial", "gerente_finanzas"].includes(profile.role);
 }
@@ -6711,6 +6715,130 @@ export async function registerRoutes(
       res.json(updated);
     } catch (error) {
       console.error("Error assigning bank transaction:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/bank-transactions/confirm-all-suggested", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
+        return res.status(403).json({ error: "No tiene permisos" });
+      }
+      const { buildingId, periodMonth, periodYear } = req.body;
+      if (!buildingId || !periodMonth || !periodYear) {
+        return res.status(400).json({ error: "Se requiere buildingId, periodMonth y periodYear" });
+      }
+
+      const transactions = await storage.getBankTransactions({
+        buildingId,
+        status: "suggested",
+        month: parseInt(periodMonth),
+        year: parseInt(periodYear),
+      });
+
+      let confirmed = 0;
+      for (const txn of transactions) {
+        if (!txn.assignedUnit) continue;
+        await storage.updateBankTransaction(txn.id, {
+          status: "identified",
+          identifiedBy: req.user!.id,
+          identifiedAt: new Date(),
+        });
+        await storage.createIncome({
+          buildingId: txn.buildingId,
+          amount: txn.amount,
+          department: txn.assignedUnit,
+          description: "abono",
+          paymentDate: txn.txnDate,
+          bank: txn.bankName || null,
+          bankOperationId: txn.reference || null,
+          status: "identified",
+          notes: `Desde conciliación bancaria (confirmación masiva) - ${txn.description || ""}`,
+          createdBy: req.user!.id,
+        });
+        confirmed++;
+      }
+
+      res.json({ confirmed });
+    } catch (error) {
+      console.error("Error bulk confirming:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/bank-transactions/payment-history", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile) && !isOperationsRole(profile) && !isManagerRole(profile)) {
+        return res.status(403).json({ error: "No tiene permisos" });
+      }
+      const buildingId = req.query.buildingId as string;
+      if (!buildingId) {
+        return res.status(400).json({ error: "Se requiere buildingId" });
+      }
+
+      const allTxns = await storage.getBankTransactions({ buildingId, status: "identified" });
+
+      const unitMap: Record<string, Array<{ month: number; year: number; amount: number; date: string; payerName: string; payerRut: string; sourceBank: string; description: string }>> = {};
+
+      for (const txn of allTxns) {
+        const unit = txn.assignedUnit || "";
+        if (!unit) continue;
+
+        let splitUnits: Array<{ unit: string; amount: number }> | null = null;
+        if (txn.assignedUnitsSplit) {
+          try { splitUnits = JSON.parse(txn.assignedUnitsSplit); } catch {}
+        }
+
+        if (splitUnits && Array.isArray(splitUnits)) {
+          for (const s of splitUnits) {
+            if (!unitMap[s.unit]) unitMap[s.unit] = [];
+            const d = txn.txnDate ? new Date(txn.txnDate) : new Date();
+            unitMap[s.unit].push({
+              month: d.getMonth() + 1,
+              year: d.getFullYear(),
+              amount: s.amount || 0,
+              date: d.toISOString(),
+              payerName: (txn as any).payerName || "",
+              payerRut: txn.payerRut || "",
+              sourceBank: (txn as any).sourceBank || txn.bankName || "",
+              description: txn.description || "",
+            });
+          }
+        } else {
+          if (!unitMap[unit]) unitMap[unit] = [];
+          const d = txn.txnDate ? new Date(txn.txnDate) : new Date();
+          unitMap[unit].push({
+            month: d.getMonth() + 1,
+            year: d.getFullYear(),
+            amount: parseFloat(txn.amount) || 0,
+            date: d.toISOString(),
+            payerName: (txn as any).payerName || "",
+            payerRut: txn.payerRut || "",
+            sourceBank: (txn as any).sourceBank || txn.bankName || "",
+            description: txn.description || "",
+          });
+        }
+      }
+
+      const units = Object.entries(unitMap).map(([unit, payments]) => ({
+        unit,
+        totalPayments: payments.length,
+        totalAmount: payments.reduce((sum, p) => sum + p.amount, 0),
+        payments: payments.sort((a, b) => {
+          if (a.year !== b.year) return b.year - a.year;
+          if (a.month !== b.month) return b.month - a.month;
+          return new Date(b.date).getTime() - new Date(a.date).getTime();
+        }),
+        months: [...new Set(payments.map(p => `${p.year}-${p.month}`))].length,
+      }));
+
+      units.sort((a, b) => a.unit.localeCompare(b.unit, "es", { numeric: true }));
+
+      res.json({ units, totalUnits: units.length });
+    } catch (error) {
+      console.error("Error getting payment history:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });

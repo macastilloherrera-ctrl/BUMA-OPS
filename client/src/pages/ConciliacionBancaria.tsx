@@ -274,6 +274,24 @@ export default function ConciliacionBancaria() {
     },
   });
 
+  const confirmAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/bank-transactions/confirm-all-suggested", {
+        buildingId,
+        periodMonth: Number(month),
+        periodYear: Number(year),
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions", buildingId, month, year] });
+      toast({ title: `${data.confirmed || 0} transacciones confirmadas` });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error al confirmar", description: error.message, variant: "destructive" });
+    },
+  });
+
   const deletePayerMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiRequest("DELETE", `/api/payer-directory/${id}`);
@@ -712,11 +730,33 @@ export default function ConciliacionBancaria() {
             <Button
               variant="outline"
               size="sm"
+              onClick={() => reconcileMutation.mutate()}
+              disabled={reconcileMutation.isPending}
+              data-testid="button-re-reconcile"
+            >
+              {reconcileMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1" />}
+              Re-conciliar
+            </Button>
+            {statusCounts.suggested > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => confirmAllMutation.mutate()}
+                disabled={confirmAllMutation.isPending}
+                data-testid="button-confirm-all"
+              >
+                {confirmAllMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-1" />}
+                Confirmar todos ({statusCounts.suggested})
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => setPayerDirDialogOpen(true)}
               data-testid="button-payer-directory"
             >
               <Users className="h-4 w-4 mr-1" />
-              Directorio de Pagadores
+              Directorio
             </Button>
             <Button
               size="sm"
