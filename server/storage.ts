@@ -31,6 +31,8 @@ import {
   incomes,
   expenses,
   recurringExpenseTemplates,
+  bankTransactions,
+  payerDirectory,
   projects,
   projectMilestones,
   projectDocuments,
@@ -104,6 +106,10 @@ import {
   type InsertExpense,
   type RecurringExpenseTemplate,
   type InsertRecurringExpenseTemplate,
+  type BankTransaction,
+  type InsertBankTransaction,
+  type PayerDirectoryEntry,
+  type InsertPayerDirectory,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, gte, lte, lt, or, sql, ne } from "drizzle-orm";
@@ -333,6 +339,20 @@ export interface IStorage {
   createRecurringExpenseTemplate(template: InsertRecurringExpenseTemplate): Promise<RecurringExpenseTemplate>;
   updateRecurringExpenseTemplate(id: string, data: Partial<InsertRecurringExpenseTemplate>): Promise<RecurringExpenseTemplate | undefined>;
   deleteRecurringExpenseTemplate(id: string): Promise<boolean>;
+
+  // Bank Transactions (Conciliación)
+  getBankTransactions(filters?: { buildingId?: string; status?: string; month?: number; year?: number }): Promise<BankTransaction[]>;
+  getBankTransaction(id: string): Promise<BankTransaction | undefined>;
+  createBankTransaction(txn: InsertBankTransaction): Promise<BankTransaction>;
+  updateBankTransaction(id: string, data: Partial<InsertBankTransaction>): Promise<BankTransaction | undefined>;
+  deleteBankTransaction(id: string): Promise<boolean>;
+  getBankTransactionByHash(rowHash: string, buildingId: string): Promise<BankTransaction | undefined>;
+
+  // Payer Directory
+  getPayerDirectory(buildingId: string): Promise<PayerDirectoryEntry[]>;
+  createPayerDirectoryEntry(entry: InsertPayerDirectory): Promise<PayerDirectoryEntry>;
+  updatePayerDirectoryEntry(id: string, data: Partial<InsertPayerDirectory>): Promise<PayerDirectoryEntry | undefined>;
+  deletePayerDirectoryEntry(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1418,6 +1438,73 @@ export class DatabaseStorage implements IStorage {
 
   async deleteRecurringExpenseTemplate(id: string): Promise<boolean> {
     await db.delete(recurringExpenseTemplates).where(eq(recurringExpenseTemplates.id, id));
+    return true;
+  }
+
+  // Bank Transactions
+  async getBankTransactions(filters?: { buildingId?: string; status?: string; month?: number; year?: number }): Promise<BankTransaction[]> {
+    const conditions: any[] = [];
+    if (filters?.buildingId) conditions.push(eq(bankTransactions.buildingId, filters.buildingId));
+    if (filters?.status) conditions.push(eq(bankTransactions.status, filters.status as any));
+    if (filters?.month) conditions.push(eq(bankTransactions.periodMonth, filters.month));
+    if (filters?.year) conditions.push(eq(bankTransactions.periodYear, filters.year));
+    if (conditions.length > 0) {
+      return db.select().from(bankTransactions).where(and(...conditions)).orderBy(desc(bankTransactions.txnDate));
+    }
+    return db.select().from(bankTransactions).orderBy(desc(bankTransactions.txnDate));
+  }
+
+  async getBankTransaction(id: string): Promise<BankTransaction | undefined> {
+    const [txn] = await db.select().from(bankTransactions).where(eq(bankTransactions.id, id));
+    return txn || undefined;
+  }
+
+  async createBankTransaction(txn: InsertBankTransaction): Promise<BankTransaction> {
+    const [newTxn] = await db.insert(bankTransactions).values(txn).returning();
+    return newTxn;
+  }
+
+  async updateBankTransaction(id: string, data: Partial<InsertBankTransaction>): Promise<BankTransaction | undefined> {
+    const [updated] = await db.update(bankTransactions)
+      .set(data)
+      .where(eq(bankTransactions.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteBankTransaction(id: string): Promise<boolean> {
+    await db.delete(bankTransactions).where(eq(bankTransactions.id, id));
+    return true;
+  }
+
+  async getBankTransactionByHash(rowHash: string, buildingId: string): Promise<BankTransaction | undefined> {
+    const [txn] = await db.select().from(bankTransactions)
+      .where(and(eq(bankTransactions.rowHash, rowHash), eq(bankTransactions.buildingId, buildingId)));
+    return txn || undefined;
+  }
+
+  // Payer Directory
+  async getPayerDirectory(buildingId: string): Promise<PayerDirectoryEntry[]> {
+    return db.select().from(payerDirectory)
+      .where(eq(payerDirectory.buildingId, buildingId))
+      .orderBy(desc(payerDirectory.createdAt));
+  }
+
+  async createPayerDirectoryEntry(entry: InsertPayerDirectory): Promise<PayerDirectoryEntry> {
+    const [newEntry] = await db.insert(payerDirectory).values(entry).returning();
+    return newEntry;
+  }
+
+  async updatePayerDirectoryEntry(id: string, data: Partial<InsertPayerDirectory>): Promise<PayerDirectoryEntry | undefined> {
+    const [updated] = await db.update(payerDirectory)
+      .set(data)
+      .where(eq(payerDirectory.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deletePayerDirectoryEntry(id: string): Promise<boolean> {
+    await db.delete(payerDirectory).where(eq(payerDirectory.id, id));
     return true;
   }
 }

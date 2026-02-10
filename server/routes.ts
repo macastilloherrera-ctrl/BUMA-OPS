@@ -2,7 +2,10 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import * as fs from "fs";
 import * as path from "path";
+import * as crypto from "crypto";
 import * as bcrypt from "bcryptjs";
+import * as XLSX from "xlsx";
+import multer from "multer";
 import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
@@ -80,6 +83,8 @@ function canAccessFinancial(profile: UserProfile | null): boolean {
 function canExportFinancial(profile: UserProfile | null): boolean {
   return canAccessFinancial(profile);
 }
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // Helper to check if user can access a building (based on buildingScope)
 async function canAccessBuilding(userId: string, buildingId: string, profile: UserProfile | null): Promise<boolean> {
@@ -5940,6 +5945,586 @@ export async function registerRoutes(
       res.send(buf);
     } catch (error) {
       console.error("Error exportando egresos Edipro:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ==========================================
+  // Bank Reconciliation Module
+  // ==========================================
+
+  app.get("/api/bank-transactions", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile)) {
+        return res.status(403).json({ error: "No tiene permisos para acceder a datos financieros" });
+      }
+      const buildingId = req.query.buildingId as string | undefined;
+      const status = req.query.status as string | undefined;
+      const month = req.query.month ? parseInt(req.query.month as string) : undefined;
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const transactions = await storage.getBankTransactions({ buildingId, status, month, year });
+      res.json(transactions);
+    } catch (error) {
+      console.error("Error getting bank transactions:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/bank-transactions/import", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
+        return res.status(403).json({ error: "No tiene permisos para importar transacciones" });
+      }
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ error: "Se requiere un archivo" });
+      }
+      const { buildingId, periodMonth, periodYear } = req.body;
+      if (!buildingId || !periodMonth || !periodYear) {
+        return res.status(400).json({ error: "Se requiere buildingId, periodMonth y periodYear" });
+      }
+      const pMonth = parseInt(periodMonth);
+      const pYear = parseInt(periodYear);
+
+      let workbook: XLSX.WorkBook;
+      const originalName = file.originalname.toLowerCase();
+      if (originalName.endsWith(".csv")) {
+        const csvText = file.buffer.toString("utf-8");
+        workbook = XLSX.read(csvText, { type: "string" });
+      } else {
+        workbook = XLSX.read(file.buffer, { type: "buffer" });
+      }
+
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+      if (rows.length === 0) {
+        return res.json({ imported: 0, duplicates: 0, total: 0 });
+      }
+
+      const headers = Object.keys(rows[0]);
+      const findCol = (patterns: string[]) => headers.find(h => patterns.some(p => h.toLowerCase().includes(p.toLowerCase())));
+
+      const dateCol = findCol(["Fecha", "fecha", "Date", "date"]);
+      const descCol = findCol(["Descripción", "descripcion", "Descripcion", "Glosa", "glosa", "Description"]);
+      const abonoCol = findCol(["Abono", "abono"]);
+      const cargoCol = findCol(["Cargo", "cargo"]);
+      const montoCol = findCol(["Monto", "monto", "Amount", "amount"]);
+      const refCol = findCol(["N° Operación", "Nro Operación", "Operación", "Referencia", "referencia", "Reference", "Comprobante"]);
+      const rutCol = findCol(["RUT", "Rut", "rut"]);
+      const bankCol = findCol(["Banco", "banco", "Bank"]);
+
+      let imported = 0;
+      let duplicates = 0;
+
+      for (const row of rows) {
+        let amount = 0;
+        if (abonoCol && row[abonoCol]) {
+          const val = String(row[abonoCol]).replace(/[^0-9.,\-]/g, "").replace(/\./g, "").replace(",", ".");
+          amount = parseFloat(val) || 0;
+        } else if (montoCol && row[montoCol]) {
+          const val = String(row[montoCol]).replace(/[^0-9.,\-]/g, "").replace(/\./g, "").replace(",", ".");
+          amount = parseFloat(val) || 0;
+        }
+
+        if (amount <= 0) continue;
+
+        let txnDate: Date | null = null;
+        if (dateCol && row[dateCol]) {
+          const raw = String(row[dateCol]).trim();
+          const ddmmyyyy = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+          if (ddmmyyyy) {
+            txnDate = new Date(parseInt(ddmmyyyy[3]), parseInt(ddmmyyyy[2]) - 1, parseInt(ddmmyyyy[1]));
+          } else {
+            txnDate = new Date(raw);
+          }
+          if (isNaN(txnDate.getTime())) txnDate = new Date();
+        } else {
+          txnDate = new Date();
+        }
+
+        const description = descCol ? String(row[descCol] || "") : "";
+        const reference = refCol ? String(row[refCol] || "") : "";
+        const payerRut = rutCol ? String(row[rutCol] || "") : "";
+        const bankName = bankCol ? String(row[bankCol] || "") : "";
+
+        const rowHash = crypto.createHash("sha256").update(JSON.stringify({
+          date: txnDate.toISOString().slice(0, 10),
+          amount,
+          description,
+          reference,
+        })).digest("hex");
+
+        const existing = await storage.getBankTransactionByHash(rowHash, buildingId);
+        if (existing) {
+          duplicates++;
+          continue;
+        }
+
+        await storage.createBankTransaction({
+          buildingId,
+          txnDate,
+          amount: String(amount),
+          description: description || null,
+          reference: reference || null,
+          payerRut: payerRut || null,
+          bankName: bankName || null,
+          rawRowJson: JSON.stringify(row),
+          rowHash,
+          periodMonth: pMonth,
+          periodYear: pYear,
+          status: "pending",
+          importedBy: req.user!.id,
+          sourceFileName: file.originalname,
+        });
+        imported++;
+      }
+
+      res.json({ imported, duplicates, total: rows.length });
+    } catch (error) {
+      console.error("Error importing bank transactions:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/bank-transactions/reconcile", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
+        return res.status(403).json({ error: "No tiene permisos para conciliar transacciones" });
+      }
+      const { buildingId, periodMonth, periodYear } = req.body;
+      if (!buildingId || !periodMonth || !periodYear) {
+        return res.status(400).json({ error: "Se requiere buildingId, periodMonth y periodYear" });
+      }
+
+      const transactions = await storage.getBankTransactions({
+        buildingId,
+        status: "pending",
+        month: parseInt(periodMonth),
+        year: parseInt(periodYear),
+      });
+
+      const directory = await storage.getPayerDirectory(buildingId);
+      const allTxns = await storage.getBankTransactions({ buildingId });
+      const identifiedHistory = allTxns.filter(t => t.status === "identified");
+
+      let identified = 0;
+      let suggested = 0;
+      let pending = 0;
+      let multi = 0;
+
+      const unitRegex = /(?:dep(?:to|artamento)?\.?\s*|local\s*|of(?:icina)?\.?\s*|bodega\s*|unidad\s*)?(\d{1,4}[a-zA-Z]?)/i;
+
+      for (const txn of transactions) {
+        let matched = false;
+
+        if (txn.payerRut) {
+          const rutEntry = directory.find(d => d.rut && d.rut === txn.payerRut);
+          if (rutEntry) {
+            const status = rutEntry.confidence >= 80 ? "identified" : "suggested";
+            await storage.updateBankTransaction(txn.id, {
+              status,
+              assignedUnit: rutEntry.unit,
+              matchScore: rutEntry.confidence,
+              matchReason: `RUT ${txn.payerRut} encontrado en directorio de pagadores`,
+            });
+            if (status === "identified") identified++;
+            else suggested++;
+            matched = true;
+            continue;
+          }
+        }
+
+        if (!matched && txn.description) {
+          const patternEntry = directory.find(d => d.pattern && txn.description && txn.description.toLowerCase().includes(d.pattern.toLowerCase()));
+          if (patternEntry) {
+            const status = patternEntry.confidence >= 80 ? "identified" : "suggested";
+            await storage.updateBankTransaction(txn.id, {
+              status,
+              assignedUnit: patternEntry.unit,
+              matchScore: patternEntry.confidence,
+              matchReason: `Patrón "${patternEntry.pattern}" encontrado en descripción`,
+            });
+            if (status === "identified") identified++;
+            else suggested++;
+            matched = true;
+            continue;
+          }
+        }
+
+        if (!matched && txn.description) {
+          const glosaMatch = txn.description.match(unitRegex);
+          if (glosaMatch && glosaMatch[1]) {
+            const unit = glosaMatch[1];
+            await storage.updateBankTransaction(txn.id, {
+              status: "suggested",
+              assignedUnit: unit,
+              matchScore: 60,
+              matchReason: `Unidad "${unit}" detectada en glosa`,
+            });
+            suggested++;
+            matched = true;
+            continue;
+          }
+        }
+
+        if (!matched) {
+          const histMatch = identifiedHistory.find(h => {
+            if (txn.payerRut && h.payerRut && txn.payerRut === h.payerRut) return true;
+            if (txn.description && h.description && txn.description.toLowerCase() === h.description.toLowerCase()) return true;
+            return false;
+          });
+          if (histMatch && histMatch.assignedUnit) {
+            await storage.updateBankTransaction(txn.id, {
+              status: "suggested",
+              assignedUnit: histMatch.assignedUnit,
+              matchScore: 50,
+              matchReason: `Coincidencia histórica con transacción anterior`,
+            });
+            suggested++;
+            matched = true;
+            continue;
+          }
+        }
+
+        if (!matched) {
+          pending++;
+        }
+      }
+
+      res.json({ identified, suggested, pending, multi });
+    } catch (error) {
+      console.error("Error reconciling bank transactions:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.patch("/api/bank-transactions/:id/assign", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
+        return res.status(403).json({ error: "No tiene permisos para asignar transacciones" });
+      }
+      const { id } = req.params;
+      const { unit, notes } = req.body;
+      if (!unit) {
+        return res.status(400).json({ error: "Se requiere la unidad" });
+      }
+
+      const txn = await storage.getBankTransaction(id);
+      if (!txn) {
+        return res.status(404).json({ error: "Transacción no encontrada" });
+      }
+
+      const updated = await storage.updateBankTransaction(id, {
+        status: "identified",
+        assignedUnit: unit,
+        identifiedBy: req.user!.id,
+        identifiedAt: new Date(),
+        notes: notes || txn.notes,
+        matchScore: 100,
+        matchReason: "Asignación manual",
+      });
+
+      if (txn.payerRut || txn.description) {
+        try {
+          await storage.createPayerDirectoryEntry({
+            buildingId: txn.buildingId,
+            rut: txn.payerRut || null,
+            pattern: txn.description ? txn.description.substring(0, 100) : null,
+            unit,
+            confidence: 90,
+            notes: "Auto-creado desde asignación manual",
+            createdBy: req.user!.id,
+          });
+        } catch (e) {
+        }
+      }
+
+      await storage.createIncome({
+        buildingId: txn.buildingId,
+        amount: txn.amount,
+        department: unit,
+        description: "abono",
+        paymentDate: txn.txnDate,
+        bank: txn.bankName || null,
+        bankOperationId: txn.reference || null,
+        status: "identified",
+        notes: `Desde conciliación bancaria - ${txn.description || ""}`,
+        createdBy: req.user!.id,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error assigning bank transaction:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.patch("/api/bank-transactions/:id/confirm", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
+        return res.status(403).json({ error: "No tiene permisos para confirmar transacciones" });
+      }
+      const { id } = req.params;
+      const txn = await storage.getBankTransaction(id);
+      if (!txn) {
+        return res.status(404).json({ error: "Transacción no encontrada" });
+      }
+      if (txn.status !== "suggested") {
+        return res.status(400).json({ error: "Solo se pueden confirmar transacciones sugeridas" });
+      }
+
+      const updated = await storage.updateBankTransaction(id, {
+        status: "identified",
+        identifiedBy: req.user!.id,
+        identifiedAt: new Date(),
+      });
+
+      await storage.createIncome({
+        buildingId: txn.buildingId,
+        amount: txn.amount,
+        department: txn.assignedUnit || "",
+        description: "abono",
+        paymentDate: txn.txnDate,
+        bank: txn.bankName || null,
+        bankOperationId: txn.reference || null,
+        status: "identified",
+        notes: `Desde conciliación bancaria (confirmado) - ${txn.description || ""}`,
+        createdBy: req.user!.id,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error confirming bank transaction:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.patch("/api/bank-transactions/:id/ignore", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
+        return res.status(403).json({ error: "No tiene permisos para ignorar transacciones" });
+      }
+      const { id } = req.params;
+      const { reason } = req.body;
+      const txn = await storage.getBankTransaction(id);
+      if (!txn) {
+        return res.status(404).json({ error: "Transacción no encontrada" });
+      }
+
+      const updated = await storage.updateBankTransaction(id, {
+        status: "ignored",
+        ignoreReason: reason || null,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error ignoring bank transaction:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/bank-transactions/:id/split", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
+        return res.status(403).json({ error: "No tiene permisos para dividir transacciones" });
+      }
+      const { id } = req.params;
+      const { splits } = req.body;
+      if (!splits || !Array.isArray(splits) || splits.length === 0) {
+        return res.status(400).json({ error: "Se requiere un arreglo de divisiones" });
+      }
+
+      const txn = await storage.getBankTransaction(id);
+      if (!txn) {
+        return res.status(404).json({ error: "Transacción no encontrada" });
+      }
+
+      const totalSplit = splits.reduce((sum: number, s: any) => sum + (parseFloat(s.amount) || 0), 0);
+      const txnAmount = parseFloat(txn.amount);
+      if (Math.abs(totalSplit - txnAmount) > 0.01) {
+        return res.status(400).json({ error: `La suma de las divisiones (${totalSplit}) no coincide con el monto de la transacción (${txnAmount})` });
+      }
+
+      const updated = await storage.updateBankTransaction(id, {
+        status: "identified",
+        assignedUnitsSplit: JSON.stringify(splits),
+        identifiedBy: req.user!.id,
+        identifiedAt: new Date(),
+        matchReason: "División manual",
+      });
+
+      for (const split of splits) {
+        await storage.createIncome({
+          buildingId: txn.buildingId,
+          amount: String(split.amount),
+          department: split.unit,
+          description: split.description || "abono",
+          paymentDate: txn.txnDate,
+          bank: txn.bankName || null,
+          bankOperationId: txn.reference || null,
+          status: "identified",
+          notes: `Desde conciliación bancaria (split) - ${txn.description || ""}`,
+          createdBy: req.user!.id,
+        });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error splitting bank transaction:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/bank-transactions/export", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile)) {
+        return res.status(403).json({ error: "No tiene permisos para exportar datos financieros" });
+      }
+      const buildingId = req.query.buildingId as string;
+      const month = parseInt(req.query.month as string);
+      const year = parseInt(req.query.year as string);
+      const format = (req.query.format as string) || "generico";
+
+      if (!buildingId || !month || !year) {
+        return res.status(400).json({ error: "Se requiere buildingId, month y year" });
+      }
+
+      const building = await storage.getBuilding(buildingId);
+      if (!building) {
+        return res.status(404).json({ error: "Edificio no encontrado" });
+      }
+
+      const transactions = await storage.getBankTransactions({ buildingId, status: "identified", month, year });
+      const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+      const monthName = monthNames[month - 1] || "";
+
+      let wsData: any[][] = [];
+
+      if (format === "edipro") {
+        wsData.push(["Número", "Monto", "Unidad", "Descripción", "Anulado", "Fecha ingreso", "Fondo", "Forma de pago", "Banco", "Número comprobante"]);
+        transactions.forEach((txn, idx) => {
+          const d = txn.txnDate ? new Date(txn.txnDate) : new Date();
+          const dateStr = `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+          const unit = txn.assignedUnit || "";
+          wsData.push([
+            idx + 1,
+            txn.amount ? parseFloat(txn.amount) : 0,
+            unit,
+            "abono",
+            "NO",
+            dateStr,
+            "Gasto común",
+            "Transferencia",
+            txn.bankName || "",
+            txn.reference || "",
+          ]);
+        });
+      } else if (format === "comunidadfeliz") {
+        wsData.push(["Fecha", "Unidad", "Monto", "Descripcion", "Referencia"]);
+        transactions.forEach((txn) => {
+          const d = txn.txnDate ? new Date(txn.txnDate) : new Date();
+          const dateStr = `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+          wsData.push([dateStr, txn.assignedUnit || "", txn.amount ? parseFloat(txn.amount) : 0, txn.description || "", txn.reference || ""]);
+        });
+      } else if (format === "kastor") {
+        wsData.push(["Fecha", "Departamento", "Monto", "Glosa", "Comprobante"]);
+        transactions.forEach((txn) => {
+          const d = txn.txnDate ? new Date(txn.txnDate) : new Date();
+          const dateStr = `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+          wsData.push([dateStr, txn.assignedUnit || "", txn.amount ? parseFloat(txn.amount) : 0, txn.description || "", txn.reference || ""]);
+        });
+      } else {
+        wsData.push(["Fecha", "Unidad", "Monto", "Descripcion", "Banco", "Referencia", "RUT Pagador"]);
+        transactions.forEach((txn) => {
+          const d = txn.txnDate ? new Date(txn.txnDate) : new Date();
+          const dateStr = `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+          wsData.push([dateStr, txn.assignedUnit || "", txn.amount ? parseFloat(txn.amount) : 0, txn.description || "", txn.bankName || "", txn.reference || "", txn.payerRut || ""]);
+        });
+      }
+
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Transacciones");
+      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      const buildingName = building.name.replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, "").replace(/\s+/g, "_");
+      const filename = `banco_${format}_${buildingName}_${monthName}_${year}.xlsx`;
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.send(buf);
+    } catch (error) {
+      console.error("Error exporting bank transactions:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/payer-directory", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile)) {
+        return res.status(403).json({ error: "No tiene permisos para acceder al directorio de pagadores" });
+      }
+      const buildingId = req.query.buildingId as string;
+      if (!buildingId) {
+        return res.status(400).json({ error: "Se requiere buildingId" });
+      }
+      const entries = await storage.getPayerDirectory(buildingId);
+      res.json(entries);
+    } catch (error) {
+      console.error("Error getting payer directory:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/payer-directory", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
+        return res.status(403).json({ error: "No tiene permisos para crear entradas en el directorio" });
+      }
+      const { buildingId, rut, pattern, unit, confidence, notes } = req.body;
+      if (!buildingId || !unit) {
+        return res.status(400).json({ error: "Se requiere buildingId y unit" });
+      }
+      const entry = await storage.createPayerDirectoryEntry({
+        buildingId,
+        rut: rut || null,
+        pattern: pattern || null,
+        unit,
+        confidence: confidence || 80,
+        notes: notes || null,
+        createdBy: req.user!.id,
+      });
+      res.json(entry);
+    } catch (error) {
+      console.error("Error creating payer directory entry:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/payer-directory/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
+        return res.status(403).json({ error: "No tiene permisos para eliminar entradas del directorio" });
+      }
+      const { id } = req.params;
+      const deleted = await storage.deletePayerDirectoryEntry(id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Entrada no encontrada" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting payer directory entry:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });

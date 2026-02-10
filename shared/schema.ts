@@ -1224,6 +1224,88 @@ export type ExpenseInclusionStatus = "included" | "postponed";
 export type ExpensePaymentMethod = "transferencia" | "pac" | "pago_electronico" | "cheque";
 
 // ============================================
+// CONCILIACIÓN BANCARIA
+// ============================================
+
+export const bankTxnStatusEnum = pgEnum("bank_txn_status", [
+  "identified",
+  "suggested",
+  "pending",
+  "multi",
+  "ignored"
+]);
+
+export const bankTransactions = pgTable("bank_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  buildingId: varchar("building_id").notNull(),
+  txnDate: timestamp("txn_date").notNull(),
+  amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+  description: text("description"),
+  reference: varchar("reference", { length: 255 }),
+  payerRut: varchar("payer_rut", { length: 50 }),
+  bankName: varchar("bank_name", { length: 255 }),
+  rawRowJson: text("raw_row_json"),
+  rowHash: varchar("row_hash", { length: 64 }).notNull(),
+  periodMonth: integer("period_month").notNull(),
+  periodYear: integer("period_year").notNull(),
+  status: bankTxnStatusEnum("status").notNull().default("pending"),
+  assignedUnit: varchar("assigned_unit", { length: 255 }),
+  assignedUnitsSplit: text("assigned_units_split"),
+  matchScore: integer("match_score"),
+  matchReason: text("match_reason"),
+  identifiedBy: varchar("identified_by"),
+  identifiedAt: timestamp("identified_at"),
+  ignoreReason: text("ignore_reason"),
+  notes: text("notes"),
+  sourceFileName: varchar("source_file_name", { length: 255 }),
+  importedBy: varchar("imported_by").notNull(),
+  importedAt: timestamp("imported_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const payerDirectory = pgTable("payer_directory", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  buildingId: varchar("building_id").notNull(),
+  rut: varchar("rut", { length: 50 }),
+  pattern: varchar("pattern", { length: 255 }),
+  unit: varchar("unit", { length: 255 }).notNull(),
+  confidence: integer("confidence").notNull().default(80),
+  notes: text("notes"),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const bankTransactionsRelations = relations(bankTransactions, ({ one }) => ({
+  building: one(buildings, {
+    fields: [bankTransactions.buildingId],
+    references: [buildings.id],
+  }),
+}));
+
+export const payerDirectoryRelations = relations(payerDirectory, ({ one }) => ({
+  building: one(buildings, {
+    fields: [payerDirectory.buildingId],
+    references: [buildings.id],
+  }),
+}));
+
+export const insertBankTransactionSchema = createInsertSchema(bankTransactions).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertBankTransaction = z.infer<typeof insertBankTransactionSchema>;
+export type BankTransaction = typeof bankTransactions.$inferSelect;
+
+export const insertPayerDirectorySchema = createInsertSchema(payerDirectory).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertPayerDirectory = z.infer<typeof insertPayerDirectorySchema>;
+export type PayerDirectoryEntry = typeof payerDirectory.$inferSelect;
+
+export type BankTxnStatus = "identified" | "suggested" | "pending" | "multi" | "ignored";
+
+// ============================================
 // MÓDULO DE PROYECTOS
 // ============================================
 

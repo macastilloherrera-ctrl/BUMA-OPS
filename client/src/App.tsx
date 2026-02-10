@@ -55,6 +55,7 @@ import ProjectDetail from "@/pages/ProjectDetail";
 import ProjectsSemaforo from "@/pages/ProjectsSemaforo";
 import ProjectsCalendar from "@/pages/ProjectsCalendar";
 import Ingresos from "@/pages/Ingresos";
+import ConciliacionBancaria from "@/pages/ConciliacionBancaria";
 import Egresos from "@/pages/Egresos";
 import RecurringExpenses from "@/pages/RecurringExpenses";
 
@@ -190,6 +191,7 @@ function AuthenticatedApp() {
                 
                 {(isManager || isFinance) && (
                   <>
+                    <Route path="/conciliacion-bancaria" component={ConciliacionBancaria} />
                     <Route path="/ingresos" component={Ingresos} />
                     <Route path="/egresos" component={Egresos} />
                     <Route path="/consumos-recurrentes" component={RecurringExpenses} />

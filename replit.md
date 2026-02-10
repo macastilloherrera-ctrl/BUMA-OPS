@@ -154,6 +154,36 @@ Gestion de ingresos, egresos y consumos recurrentes con exportacion Edipro.
 - `GET/POST /api/recurring-expense-templates` - Listar/crear templates
 - `PATCH/DELETE /api/recurring-expense-templates/:id` - Editar/eliminar template
 
+### Conciliacion Bancaria
+Importacion de cartolas bancarias, matching automatico y exportacion multi-formato.
+
+**Tablas de BD:**
+- `bank_transactions`: Transacciones bancarias importadas (fecha, monto, glosa, RUT, estado, unidad asignada)
+- `payer_directory`: Directorio de pagadores por edificio (RUT, patron, unidad, confianza)
+
+**Estados de transaccion:** pending, identified, suggested, multi, ignored
+
+**Motor de matching (4 reglas):**
+1. Directorio de pagadores por RUT (confianza >= 80% → identificado)
+2. Directorio de pagadores por patron de texto
+3. Patrones en glosa (regex: dpto/local/oficina/bodega + numero)
+4. Historial de transacciones previas identificadas
+
+**Formatos de exportacion:** Edipro (10 col), Comunidad Feliz (5 col), Kastor (5 col), Generico (7 col)
+
+**Deduplicacion:** Hash SHA-256 de {fecha, monto, descripcion, referencia}
+
+**Rutas de API:**
+- `GET /api/bank-transactions` - Listar transacciones (filtros: buildingId, status, month, year)
+- `POST /api/bank-transactions/import` - Importar cartola CSV/XLSX
+- `POST /api/bank-transactions/reconcile` - Ejecutar motor de matching
+- `PATCH /api/bank-transactions/:id/assign` - Asignar unidad manualmente
+- `PATCH /api/bank-transactions/:id/confirm` - Confirmar sugerencia
+- `PATCH /api/bank-transactions/:id/ignore` - Ignorar transaccion
+- `POST /api/bank-transactions/:id/split` - Dividir deposito en N unidades
+- `GET /api/bank-transactions/export` - Exportar (formato: edipro/comunidadfeliz/kastor/generico)
+- `GET/POST/DELETE /api/payer-directory` - CRUD directorio de pagadores
+
 ### Conserjeria
 - Solo ve tickets asignados a su edificio con receiverType="personal_edificio"
 - Puede subir evidencia (documentKey) y agregar notas en tickets

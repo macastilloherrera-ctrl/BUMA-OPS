@@ -32,6 +32,7 @@ import {
   ArrowDownCircle,
   ArrowUpCircle,
   Repeat,
+  Landmark,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -74,6 +75,7 @@ const managerNavItems = [
   {
     group: "Finanzas",
     items: [
+      { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
       { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
       { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
       { path: "/consumos-recurrentes", label: "Consumos Recurrentes", icon: Repeat },
@@ -129,6 +131,7 @@ const managerWithReportsNavItems = [
   {
     group: "Finanzas",
     items: [
+      { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
       { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
       { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
       { path: "/consumos-recurrentes", label: "Consumos Recurrentes", icon: Repeat },
@@ -218,6 +221,7 @@ const generalManagerNavItems = [
   {
     group: "Finanzas",
     items: [
+      { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
       { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
       { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
       { path: "/consumos-recurrentes", label: "Consumos Recurrentes", icon: Repeat },
@@ -262,6 +266,7 @@ const financeNavItems = [
   {
     group: "Finanzas",
     items: [
+      { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
       { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
       { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
       { path: "/consumos-recurrentes", label: "Consumos Recurrentes", icon: Repeat },

@@ -1,0 +1,155 @@
+REPLIT — Necesito RECONSTRUIR el módulo de INGRESOS porque el enfoque actual (CRUD de ingresos uno a uno) NO calza con el proceso real de administración de edificios.
+
+CONTEXTO REAL (OBLIGATORIO)
+- La “verdad” de los ingresos es la CARTOLA BANCARIA del edificio.
+- Los residentes pueden pagar:
+  a) el mes actual
+  b) meses atrasados (monto = suma de varios meses)
+  c) parcialmente
+  d) varios deptos en un solo depósito
+- Por eso, el matching NO puede basarse en “monto exacto del gasto común”.
+- “Dividir Depósito” debe ser una herramienta SOLO para excepciones (pagos múltiples o no identificables).
+- Edipro/Comunidad Feliz/Kastor son SOLO destinos de exportación. NO usar “Edipro” como concepto principal en UI (solo “Formato de exportación”).
+
+OBJETIVO
+Reemplazar la experiencia de “Ingresos” por un módulo de “Conciliación Bancaria”, manteniendo exportación por formato.
+
+========================================
+A) NUEVO MÓDULO: CONCILIACIÓN BANCARIA
+========================================
+Crear una nueva sección/página principal para ingresos:
+- Sidebar: “Conciliación Bancaria” (reemplaza “Ingresos” como entrada principal).
+- Flujo en 4 pasos:
+
+PASO 1: Seleccionar Edificio + Mes/Año.
+PASO 2: Subir Cartola bancaria (CSV/XLSX).
+PASO 3: Motor de conciliación (auto + sugerencias + pendientes).
+PASO 4: Exportar (según formato destino) SOLO movimientos “Identificados”.
+
+========================================
+B) IMPORTACIÓN DE CARTOLA (SIN IA CARA)
+========================================
+Implementar importador de cartolas con normalización.
+- Aceptar CSV y XLSX.
+- Normalizar a un esquema común “BankTransaction”:
+  - buildingId
+  - txnDate (fecha movimiento)
+  - amount (positivo ingresos)
+  - description/glosa (texto)
+  - reference/operationId (si existe)
+  - payerRut (si se puede extraer, opcional)
+  - bankName (opcional)
+  - rawRowJson (guardar fila original)
+  - periodMonth, periodYear
+- Deduplicación: evitar cargar la misma cartola 2 veces (por hash de filas o por operationId+fecha+monto).
+
+Crear tabla: bankTransactions.
+
+========================================
+C) ESTADOS DE CONCILIACIÓN
+========================================
+Cada bankTransaction debe tener:
+- status:
+  - IDENTIFIED (asignado a 1 unidad)
+  - SUGGESTED (sugerido por reglas, requiere confirmación)
+  - PENDING (no identificado)
+  - MULTI (probable pago múltiple / requiere división)
+  - IGNORED (no corresponde / reversa / transferencia interna)
+- assignedUnit (si aplica)
+- assignedUnitsSplit[] (si aplica, para división)
+- notes
+- identifiedBy (userId) + timestamp
+
+========================================
+D) MOTOR DE MATCHING POR REGLAS (NO “MONTO EXACTO”)
+========================================
+Implementar un motor simple pero útil con “score” por señales:
+Señales:
+1) Diccionario de pagadores (payer directory):
+   - rut -> unidad (buildingId + unit)
+   - glosa/patrón -> unidad
+2) Patrones en glosa:
+   - buscar strings tipo “dpto 101”, “depto 101”, “101”, “UF 101”, “local 3”, etc.
+3) Historial:
+   - si un rut/glosa ya se asignó a unidad antes, sugerir la misma unidad.
+4) Heurística por monto:
+   - NO exigir exactitud.
+   - Permitir coincidencias por “rangos” y “suma de meses”:
+     - detectar si el monto podría ser 2x o 3x del pago típico de esa unidad (aprox).
+     - esta heurística debe ser SUGGESTED, no automática.
+
+Resultado:
+- Si alta confianza (rut o patrón fuerte) -> IDENTIFIED automático
+- Si media -> SUGGESTED
+- Si baja -> PENDING
+- Si detecta pago potencialmente múltiple -> MULTI
+
+Crear tabla: payerDirectory (buildingId, rut, pattern, unit, confidence, createdAt).
+
+UI debe permitir:
+- “Confirmar sugerencia” (pasa a IDENTIFIED)
+- “Asignar manualmente”
+- “Marcar como pago múltiple” (activa división)
+- “Ignorar” (IGONORED con motivo)
+
+========================================
+E) DIVIDIR DEPÓSITO (EXCEPCIÓN)
+========================================
+Mantener “Dividir Depósito” pero:
+- SOLO accesible desde transacciones status=PENDING/MULTI.
+- UI debe mostrar primero la transacción bancaria seleccionada (fecha, monto, glosa).
+- Permitir dividir en N unidades con montos.
+- Validar que suma divisiones == monto total (tolerancia 0.01).
+- Al confirmar:
+  - guardar split en bankTransaction
+  - crear registros “IncomeExportLine” (o equivalente) por unidad
+  - status pasa a IDENTIFIED
+
+IMPORTANTE: “Dividir Depósito” no debe ser una pantalla aislada como flujo principal.
+
+========================================
+F) ARCHIVO DE GASTOS COMUNES (OPCIONAL)
+========================================
+NO exigir archivo de GC para conciliar.
+Pero agregar opción opcional:
+- subir “referencia de pagos esperados” (gastos comunes) por edificio/mes para sugerencias:
+  - esto sirve solo para heurística (SUGGESTED), no para asignación automática.
+- Si no existe, el sistema funciona igual.
+
+========================================
+G) EXPORTACIÓN POR FORMATO (DESTINOS)
+========================================
+Cambiar el lenguaje UI:
+- “Formato de exportación” (Edipro / Comunidad Feliz / Kastor / Genérico)
+- NO poner “Edipro” en nombres de campos del formulario principal.
+
+Exportar SOLO transacciones IDENTIFIED.
+Generar XLSX según formato seleccionado.
+
+Mantener compatibilidad con el formato Edipro que ya implementaste, pero:
+- Los nombres de campos deben ser neutrales (ej: “Proveedor para exportación”, “Nombre proveedor estándar”).
+- Edipro es solo una opción del selector de formato.
+
+========================================
+H) PERMISOS / ROLES
+========================================
+- Ejecutivos: 403 en todo finanzas + conciliación.
+- Conserjería: 403 en todo finanzas + conciliación.
+- Solo roles gerenciales + finanzas acceden conciliación y exportaciones.
+
+========================================
+I) ENTREGABLES Y PRUEBAS (OBLIGATORIO)
+========================================
+1) Pantalla “Conciliación Bancaria” funcional end-to-end.
+2) Importador CSV/XLSX probado con al menos 1 cartola de ejemplo (mock).
+3) Matching por reglas + sugerencias + confirmación.
+4) Dividir depósito desde PENDING/MULTI.
+5) Exportación por formato desde transacciones IDENTIFIED.
+6) Tests de autorización: ejecutivo/conserjería 403.
+7) Documentación en /docs:
+   - manual-conciliacion-bancaria.md (paso a paso)
+   - formatos-exportacion.md (Edipro/CF/Kastor)
+
+IMPORTANTE DE PRODUCTO:
+- Esto debe reemplazar el ingreso uno a uno como flujo principal.
+- Si mantienes “Ingreso manual”, que sea solo “Ajuste / Excepción”, no el corazón del módulo.
