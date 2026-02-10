@@ -127,6 +127,7 @@ const expenseFormSchema = z.object({
   category: z.string().optional(),
   vendorName: z.string().optional(),
   vendorEdipro: z.string().optional(),
+  documentType: z.enum(["factura", "boleta", "otro", ""]).optional(),
   documentNumber: z.string().optional(),
   paymentDate: z.string().optional(),
   paymentMethod: z.enum(["transferencia", "pac", "pago_electronico", "cheque", ""]).optional(),
@@ -189,6 +190,7 @@ export default function Egresos() {
       category: "",
       vendorName: "",
       vendorEdipro: "",
+      documentType: "",
       documentNumber: "",
       paymentDate: "",
       paymentMethod: "",
@@ -200,54 +202,47 @@ export default function Egresos() {
     },
   });
 
+  function buildExpensePayload(data: ExpenseFormValues) {
+    return {
+      buildingId: data.buildingId,
+      description: data.description,
+      amount: data.amount,
+      category: data.category || null,
+      vendorName: data.vendorName || null,
+      vendorEdipro: data.vendorEdipro || null,
+      documentType: data.documentType || null,
+      documentNumber: data.documentNumber || null,
+      paymentDate: data.paymentDate ? new Date(data.paymentDate).toISOString() : null,
+      paymentMethod: data.paymentMethod || null,
+      paymentStatus: data.paymentStatus,
+      inclusionStatus: data.inclusionStatus,
+      postponementReason: data.inclusionStatus === "postponed" ? (data.postponementReason || null) : null,
+      sourceType: data.sourceType,
+      notes: data.notes || null,
+    };
+  }
+
   const createMutation = useMutation({
     mutationFn: async (data: ExpenseFormValues) => {
       await apiRequest("POST", "/api/expenses", {
-        buildingId: data.buildingId,
-        description: data.description,
-        amount: data.amount,
-        category: data.category || null,
-        vendorName: data.vendorName || null,
-        vendorEdipro: data.vendorEdipro || null,
-        documentNumber: data.documentNumber || null,
-        paymentDate: data.paymentDate ? new Date(data.paymentDate).toISOString() : null,
-        paymentMethod: data.paymentMethod || null,
-        paymentStatus: data.paymentStatus,
-        inclusionStatus: data.inclusionStatus,
-        postponementReason: data.inclusionStatus === "postponed" ? (data.postponementReason || null) : null,
-        sourceType: data.sourceType,
-        notes: data.notes || null,
+        ...buildExpensePayload(data),
         createdBy: user?.id || "",
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
       toast({ title: "Egreso creado exitosamente" });
       closeDialog();
     },
     onError: (error: Error) => {
-      toast({ title: "Error al crear egreso", description: error.message, variant: "destructive" });
+      toast({ title: "Documento duplicado", description: error.message, variant: "destructive" });
     },
   });
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: ExpenseFormValues }) => {
-      await apiRequest("PATCH", `/api/expenses/${id}`, {
-        buildingId: data.buildingId,
-        description: data.description,
-        amount: data.amount,
-        category: data.category || null,
-        vendorName: data.vendorName || null,
-        vendorEdipro: data.vendorEdipro || null,
-        documentNumber: data.documentNumber || null,
-        paymentDate: data.paymentDate ? new Date(data.paymentDate).toISOString() : null,
-        paymentMethod: data.paymentMethod || null,
-        paymentStatus: data.paymentStatus,
-        inclusionStatus: data.inclusionStatus,
-        postponementReason: data.inclusionStatus === "postponed" ? (data.postponementReason || null) : null,
-        sourceType: data.sourceType,
-        notes: data.notes || null,
-      });
+      await apiRequest("PATCH", `/api/expenses/${id}`, buildExpensePayload(data));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
@@ -273,6 +268,17 @@ export default function Egresos() {
     },
   });
 
+  const { data: vendorList } = useQuery<{ id: string; name: string; rut: string | null }[]>({
+    queryKey: ["/api/vendors"],
+  });
+
+  const [vendorSearch, setVendorSearch] = useState("");
+  const [showVendorSuggestions, setShowVendorSuggestions] = useState(false);
+
+  const filteredVendors = vendorList?.filter(v =>
+    v.name.includes(vendorSearch.toUpperCase())
+  ).slice(0, 8) || [];
+
   const defaultFormValues: ExpenseFormValues = {
     buildingId: "",
     description: "",
@@ -280,6 +286,7 @@ export default function Egresos() {
     category: "",
     vendorName: "",
     vendorEdipro: "",
+    documentType: "",
     documentNumber: "",
     paymentDate: "",
     paymentMethod: "",
@@ -294,6 +301,8 @@ export default function Egresos() {
     setDialogOpen(false);
     setEditingExpense(null);
     form.reset(defaultFormValues);
+    setVendorSearch("");
+    setShowVendorSuggestions(false);
   }
 
   function openCreate() {
@@ -312,6 +321,7 @@ export default function Egresos() {
       category: expense.category || "",
       vendorName: expense.vendorName || "",
       vendorEdipro: expense.vendorEdipro || "",
+      documentType: (expense as any).documentType || "",
       documentNumber: expense.documentNumber || "",
       paymentDate,
       paymentMethod: (expense.paymentMethod as ExpenseFormValues["paymentMethod"]) || "",
@@ -532,6 +542,7 @@ export default function Egresos() {
                           <TableHead>Edificio</TableHead>
                           <TableHead className="max-w-[200px]">Descripción</TableHead>
                           <TableHead>Proveedor</TableHead>
+                          <TableHead>Doc</TableHead>
                           <TableHead className="text-right">Monto</TableHead>
                           <TableHead>Fecha</TableHead>
                           <TableHead>Estado Pago</TableHead>
@@ -546,6 +557,16 @@ export default function Egresos() {
                             <TableCell>{getBuildingName(expense.buildingId)}</TableCell>
                             <TableCell className="max-w-[200px] truncate">{expense.description}</TableCell>
                             <TableCell>{expense.vendorName || "-"}</TableCell>
+                            <TableCell>
+                              {(expense as any).documentType ? (
+                                <span className="text-xs">
+                                  {(expense as any).documentType === "factura" ? "F" : (expense as any).documentType === "boleta" ? "B" : "O"}
+                                  {expense.documentNumber ? ` ${expense.documentNumber}` : ""}
+                                </span>
+                              ) : expense.documentNumber ? (
+                                <span className="text-xs">{expense.documentNumber}</span>
+                              ) : "-"}
+                            </TableCell>
                             <TableCell className="text-right font-medium">
                               {formatCurrency(expense.amount)}
                             </TableCell>
@@ -736,15 +757,47 @@ export default function Egresos() {
                   control={form.control}
                   name="vendorName"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem className="relative">
                       <FormLabel>Proveedor</FormLabel>
                       <FormControl>
                         <Input
-                          placeholder="Nombre del proveedor"
+                          placeholder="Nombre del proveedor (se guardará en MAYÚSCULAS)"
                           data-testid="input-vendor-name"
-                          {...field}
+                          value={field.value}
+                          onChange={(e) => {
+                            const val = e.target.value.toUpperCase();
+                            field.onChange(val);
+                            setVendorSearch(val);
+                            setShowVendorSuggestions(val.length > 0);
+                          }}
+                          onFocus={() => {
+                            if (field.value && field.value.length > 0) setShowVendorSuggestions(true);
+                          }}
+                          onBlur={() => {
+                            setTimeout(() => setShowVendorSuggestions(false), 200);
+                          }}
                         />
                       </FormControl>
+                      {showVendorSuggestions && filteredVendors.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-popover border rounded-md shadow-md max-h-40 overflow-y-auto" data-testid="vendor-suggestions">
+                          {filteredVendors.map(v => (
+                            <button
+                              key={v.id}
+                              type="button"
+                              className="w-full text-left px-3 py-2 text-sm hover-elevate cursor-pointer"
+                              data-testid={`vendor-suggestion-${v.id}`}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                field.onChange(v.name);
+                                setVendorSearch(v.name);
+                                setShowVendorSuggestions(false);
+                              }}
+                            >
+                              {v.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -772,7 +825,30 @@ export default function Egresos() {
                 )}
               />
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="documentType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo Documento</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-document-type">
+                            <SelectValue placeholder="Seleccionar" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="factura">Factura</SelectItem>
+                          <SelectItem value="boleta">Boleta</SelectItem>
+                          <SelectItem value="otro">Otro</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <FormField
                   control={form.control}
                   name="documentNumber"

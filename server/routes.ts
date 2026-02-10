@@ -5800,6 +5800,20 @@ export async function registerRoutes(
   });
 
   // ==========================================
+  // Vendor Directory
+  // ==========================================
+
+  app.get("/api/vendors", isAuthenticated, async (req, res) => {
+    try {
+      const vendorList = await storage.getVendors();
+      res.json(vendorList);
+    } catch (error) {
+      console.error("Error obteniendo proveedores:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ==========================================
   // Financial Module: Expenses
   // ==========================================
 
@@ -5830,7 +5844,39 @@ export async function registerRoutes(
       if (!isManagerRole(profile)) {
         return res.status(403).json({ error: "Solo gerentes pueden crear egresos" });
       }
-      const data = insertExpenseSchema.parse({ ...req.body, createdBy: req.user!.id });
+
+      let vendorName = req.body.vendorName ? String(req.body.vendorName).toUpperCase().trim() : null;
+      let vendorId = req.body.vendorId || null;
+      let vendorEdipro = req.body.vendorEdipro ? String(req.body.vendorEdipro).toUpperCase().trim() : null;
+
+      if (vendorName) {
+        const vendor = await storage.findOrCreateVendor(vendorName);
+        vendorId = vendor.id;
+      }
+
+      const docType = req.body.documentType || null;
+      const docNumber = req.body.documentNumber ? String(req.body.documentNumber).trim() : null;
+
+      if (docType && docType !== "otro" && docNumber && vendorName) {
+        const duplicate = await storage.checkDuplicateDocument(docType, docNumber, vendorName);
+        if (duplicate) {
+          const typeLabel = docType === "factura" ? "Factura" : "Boleta";
+          return res.status(409).json({
+            error: `${typeLabel} N° ${docNumber} del proveedor ${vendorName} ya existe en el sistema`,
+            duplicateId: duplicate.id,
+          });
+        }
+      }
+
+      const data = insertExpenseSchema.parse({
+        ...req.body,
+        vendorName,
+        vendorId,
+        vendorEdipro,
+        documentType: docType,
+        documentNumber: docNumber,
+        createdBy: req.user!.id,
+      });
       const expense = await storage.createExpense(data);
       res.status(201).json(expense);
     } catch (error) {
@@ -5855,7 +5901,40 @@ export async function registerRoutes(
       } else if (!canAccessFinancial(profile)) {
         return res.status(403).json({ error: "No autorizado para modificar egresos" });
       }
-      const data = insertExpenseSchema.partial().parse(req.body);
+      const updates: any = { ...req.body };
+      
+      if (updates.vendorName) {
+        updates.vendorName = String(updates.vendorName).toUpperCase().trim();
+        const vendor = await storage.findOrCreateVendor(updates.vendorName);
+        updates.vendorId = vendor.id;
+      }
+      if (updates.vendorEdipro) {
+        updates.vendorEdipro = String(updates.vendorEdipro).toUpperCase().trim();
+      }
+      if (updates.documentNumber) {
+        updates.documentNumber = String(updates.documentNumber).trim();
+      }
+
+      const existingExpense = await storage.getExpense(req.params.id);
+      if (!existingExpense) {
+        return res.status(404).json({ error: "Egreso no encontrado" });
+      }
+
+      const docType = updates.documentType !== undefined ? updates.documentType : (existingExpense as any).documentType;
+      const docNumber = updates.documentNumber !== undefined ? updates.documentNumber : existingExpense.documentNumber;
+      const vName = updates.vendorName !== undefined ? updates.vendorName : existingExpense.vendorName;
+      if (docType && docType !== "otro" && docNumber && vName) {
+        const duplicate = await storage.checkDuplicateDocument(docType, docNumber, vName, req.params.id);
+        if (duplicate) {
+          const typeLabel = docType === "factura" ? "Factura" : "Boleta";
+          return res.status(409).json({
+            error: `${typeLabel} N° ${docNumber} del proveedor ${vName} ya existe en el sistema`,
+            duplicateId: duplicate.id,
+          });
+        }
+      }
+
+      const data = insertExpenseSchema.partial().parse(updates);
       const expense = await storage.updateExpense(req.params.id, data);
       if (!expense) {
         return res.status(404).json({ error: "Egreso no encontrado" });

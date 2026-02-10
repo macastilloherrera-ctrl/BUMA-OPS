@@ -145,13 +145,27 @@ Gestion de ingresos, egresos y consumos recurrentes con exportacion Edipro.
 - Activacion/desactivacion de templates
 - Fase 2 prevista: Generacion automatica de instancias mensuales desde templates
 
+**Directorio de Proveedores:**
+- Tabla `vendors`: id, name (MAYUSCULAS), rut, isActive
+- Auto-creacion: al ingresar un egreso, si el proveedor no existe se crea automaticamente
+- Normalizacion: todos los nombres se guardan en MAYUSCULAS para evitar duplicados
+- Autocompletado: el formulario de egresos sugiere proveedores existentes mientras se escribe
+- API: `GET /api/vendors` - Lista todos los proveedores activos
+
+**Prevencion de duplicados de documentos:**
+- Campo `documentType` en egresos: factura, boleta, otro
+- Validacion: no se permite ingresar dos facturas/boletas con el mismo numero y proveedor
+- Backend retorna 409 si detecta duplicado con mensaje descriptivo
+- Aplica en creacion (POST) y edicion (PATCH) de egresos
+
 **Rutas de API:**
+- `GET /api/vendors` - Listar proveedores activos
 - `GET/POST /api/incomes` - Listar/crear ingresos
 - `PATCH/DELETE /api/incomes/:id` - Editar/eliminar ingreso
 - `POST /api/incomes/split` - Dividir deposito en N departamentos
 - `GET /api/incomes/export` - Exportar ingresos (formato: edipro/comunidadfeliz/kastor/generico)
-- `GET/POST /api/expenses` - Listar/crear egresos
-- `PATCH/DELETE /api/expenses/:id` - Editar/eliminar egreso
+- `GET/POST /api/expenses` - Listar/crear egresos (con deteccion de duplicados)
+- `PATCH/DELETE /api/expenses/:id` - Editar/eliminar egreso (con deteccion de duplicados)
 - `GET /api/expenses/export` - Exportar egresos (formato: edipro/comunidadfeliz/kastor/generico)
 - `GET/POST /api/recurring-expense-templates` - Listar/crear templates
 - `PATCH/DELETE /api/recurring-expense-templates/:id` - Editar/eliminar template

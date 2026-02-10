@@ -110,6 +110,9 @@ import {
   type InsertBankTransaction,
   type PayerDirectoryEntry,
   type InsertPayerDirectory,
+  vendors,
+  type Vendor,
+  type InsertVendor,
   monthlyClosingCycles,
   monthlyClosingChecklistItems,
   monthlyClosingStatusLogs,
@@ -335,12 +338,19 @@ export interface IStorage {
   updateIncome(id: string, data: Partial<InsertIncome>): Promise<Income | undefined>;
   deleteIncome(id: string): Promise<boolean>;
 
+  // Vendors
+  getVendors(): Promise<Vendor[]>;
+  getVendorByName(name: string): Promise<Vendor | undefined>;
+  createVendor(vendor: InsertVendor): Promise<Vendor>;
+  findOrCreateVendor(name: string): Promise<Vendor>;
+
   // Expenses
   getExpenses(filters?: { buildingId?: string; sourceType?: string; paymentStatus?: string; inclusionStatus?: string; month?: number; year?: number }): Promise<Expense[]>;
   getExpense(id: string): Promise<Expense | undefined>;
   createExpense(expense: InsertExpense): Promise<Expense>;
   updateExpense(id: string, data: Partial<InsertExpense>): Promise<Expense | undefined>;
   deleteExpense(id: string): Promise<boolean>;
+  checkDuplicateDocument(documentType: string, documentNumber: string, vendorName: string, excludeId?: string): Promise<Expense | undefined>;
 
   // Recurring Expense Templates
   getRecurringExpenseTemplates(filters?: { buildingId?: string; isActive?: boolean }): Promise<RecurringExpenseTemplate[]>;
@@ -1411,6 +1421,48 @@ export class DatabaseStorage implements IStorage {
   async getExpense(id: string): Promise<Expense | undefined> {
     const [expense] = await db.select().from(expenses).where(eq(expenses.id, id));
     return expense || undefined;
+  }
+
+  // Vendors
+  async getVendors(): Promise<Vendor[]> {
+    return db.select().from(vendors).where(eq(vendors.isActive, true)).orderBy(vendors.name);
+  }
+
+  async getVendorByName(name: string): Promise<Vendor | undefined> {
+    const normalized = name.toUpperCase().trim();
+    const [vendor] = await db.select().from(vendors).where(eq(vendors.name, normalized));
+    return vendor || undefined;
+  }
+
+  async createVendor(vendor: InsertVendor): Promise<Vendor> {
+    const [newVendor] = await db.insert(vendors).values({
+      ...vendor,
+      name: vendor.name.toUpperCase().trim(),
+    }).returning();
+    return newVendor;
+  }
+
+  async findOrCreateVendor(name: string): Promise<Vendor> {
+    const normalized = name.toUpperCase().trim();
+    if (!normalized) throw new Error("Nombre de proveedor vacío");
+    const existing = await this.getVendorByName(normalized);
+    if (existing) return existing;
+    return this.createVendor({ name: normalized, isActive: true });
+  }
+
+  async checkDuplicateDocument(documentType: string, documentNumber: string, vendorName: string, excludeId?: string): Promise<Expense | undefined> {
+    const normalizedVendor = vendorName.toUpperCase().trim();
+    const normalizedDocNum = documentNumber.trim();
+    const conditions = [
+      eq(expenses.documentType, documentType as any),
+      eq(sql`UPPER(TRIM(${expenses.documentNumber}))`, normalizedDocNum.toUpperCase()),
+      eq(sql`UPPER(TRIM(${expenses.vendorName}))`, normalizedVendor),
+    ];
+    if (excludeId) {
+      conditions.push(ne(expenses.id, excludeId));
+    }
+    const [duplicate] = await db.select().from(expenses).where(and(...conditions));
+    return duplicate || undefined;
   }
 
   async createExpense(expense: InsertExpense): Promise<Expense> {

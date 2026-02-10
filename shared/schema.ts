@@ -1103,6 +1103,24 @@ export const recurringExpenseFrequencyEnum = pgEnum("recurring_expense_frequency
   "monthly"
 ]);
 
+export const expenseDocumentTypeEnum = pgEnum("expense_document_type", [
+  "factura",
+  "boleta",
+  "otro"
+]);
+
+// ============================================
+// DIRECTORIO DE PROVEEDORES
+// ============================================
+
+export const vendors = pgTable("vendors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  rut: varchar("rut", { length: 20 }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const incomes = pgTable("incomes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   buildingId: varchar("building_id").notNull(),
@@ -1130,6 +1148,7 @@ export const expenses = pgTable("expenses", {
   category: varchar("category", { length: 255 }),
   vendorName: varchar("vendor_name", { length: 255 }),
   vendorId: varchar("vendor_id"),
+  documentType: expenseDocumentTypeEnum("document_type"),
   documentNumber: varchar("document_number", { length: 255 }),
   documentKey: text("document_key"),
   paymentDate: timestamp("payment_date"),
@@ -1219,11 +1238,19 @@ export const insertRecurringExpenseTemplateSchema = createInsertSchema(recurring
 export type InsertRecurringExpenseTemplate = z.infer<typeof insertRecurringExpenseTemplateSchema>;
 export type RecurringExpenseTemplate = typeof recurringExpenseTemplates.$inferSelect;
 
+export const insertVendorSchema = createInsertSchema(vendors).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertVendor = z.infer<typeof insertVendorSchema>;
+export type Vendor = typeof vendors.$inferSelect;
+
 export type IncomeStatus = "pending" | "identified" | "rejected";
 export type ExpenseSourceType = "ticket" | "recurrent";
 export type ExpensePaymentStatus = "pending" | "paid" | "cancelled";
 export type ExpenseInclusionStatus = "included" | "postponed";
 export type ExpensePaymentMethod = "transferencia" | "pac" | "pago_electronico" | "cheque";
+export type ExpenseDocumentType = "factura" | "boleta" | "otro";
 
 // ============================================
 // CONCILIACIÓN BANCARIA
