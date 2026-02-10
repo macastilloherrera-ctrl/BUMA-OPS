@@ -46,6 +46,10 @@ function isAuthenticated(req: Request, res: Response, next: NextFunction) {
   if (!req.isAuthenticated() || !req.user) {
     return res.status(401).json({ error: "No autenticado" });
   }
+  const user = req.user as any;
+  if (!user.id && user.claims?.sub) {
+    user.id = user.claims.sub;
+  }
   next();
 }
 
@@ -54,7 +58,10 @@ async function isManager(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {
     return res.status(401).json({ error: "No autenticado" });
   }
-  
+  const user = req.user as any;
+  if (!user.id && user.claims?.sub) {
+    user.id = user.claims.sub;
+  }
   const profile = await storage.getUserProfile(req.user.id);
   if (!profile || !["gerente_general", "gerente_operaciones"].includes(profile.role)) {
     return res.status(403).json({ error: "Acceso denegado" });
@@ -215,7 +222,14 @@ export async function registerRoutes(
         });
       }
       
-      res.json(profile);
+      const enriched: any = { ...profile };
+      if (profile.role === "conserjeria") {
+        const buildings = await storage.getBuildings();
+        const myBuilding = buildings.find(b => b.conserjeriaUserId === userId);
+        enriched.assignedBuildings = myBuilding ? [myBuilding.id] : [];
+      }
+      
+      res.json(enriched);
     } catch (error) {
       console.error("Error getting user profile:", error);
       res.status(500).json({ error: "Error interno del servidor" });
@@ -5820,9 +5834,12 @@ export async function registerRoutes(
   app.get("/api/expenses", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile)) {
+      const isConserjeria = isConserjeriaRole(profile);
+
+      if (!isConserjeria && !canAccessFinancial(profile)) {
         return res.status(403).json({ error: "No autorizado para acceder a datos financieros" });
       }
+
       const filters: { buildingId?: string; sourceType?: string; paymentStatus?: string; inclusionStatus?: string; month?: number; year?: number } = {};
       if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
       if (req.query.sourceType) filters.sourceType = req.query.sourceType as string;
@@ -5830,7 +5847,31 @@ export async function registerRoutes(
       if (req.query.inclusionStatus) filters.inclusionStatus = req.query.inclusionStatus as string;
       if (req.query.month) filters.month = parseInt(req.query.month as string);
       if (req.query.year) filters.year = parseInt(req.query.year as string);
+
+      if (isConserjeria) {
+        filters.sourceType = "recurrent";
+        const allBuildings = await storage.getBuildings();
+        const myBuilding = allBuildings.find(b => b.conserjeriaUserId === req.user!.id);
+        if (myBuilding) {
+          filters.buildingId = myBuilding.id;
+        }
+      }
+
       const items = await storage.getExpenses(filters);
+
+      if (isConserjeria) {
+        const sanitized = items.map((e: any) => ({
+          ...e,
+          amount: undefined,
+          paymentMethod: undefined,
+          operationallyValidated: undefined,
+          financiallyValidated: undefined,
+          inclusionStatus: undefined,
+          postponementReason: undefined,
+        }));
+        return res.json(sanitized);
+      }
+
       res.json(items);
     } catch (error) {
       console.error("Error obteniendo egresos:", error);
@@ -5841,7 +5882,18 @@ export async function registerRoutes(
   app.post("/api/expenses", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!isManagerRole(profile)) {
+      const isConserjeria = isConserjeriaRole(profile);
+
+      if (isConserjeria) {
+        if (req.body.sourceType !== "recurrent") {
+          return res.status(403).json({ error: "Conserjería solo puede ingresar egresos recurrentes" });
+        }
+        const allBuildings = await storage.getBuildings();
+        const myBuilding = allBuildings.find(b => b.conserjeriaUserId === req.user!.id);
+        if (!req.body.buildingId || !myBuilding || req.body.buildingId !== myBuilding.id) {
+          return res.status(403).json({ error: "Solo puede ingresar egresos de su edificio asignado" });
+        }
+      } else if (!isManagerRole(profile)) {
         return res.status(403).json({ error: "Solo gerentes pueden crear egresos" });
       }
 
@@ -5868,7 +5920,7 @@ export async function registerRoutes(
         }
       }
 
-      const data = insertExpenseSchema.parse({
+      const expenseData: any = {
         ...req.body,
         vendorName,
         vendorId,
@@ -5876,7 +5928,14 @@ export async function registerRoutes(
         documentType: docType,
         documentNumber: docNumber,
         createdBy: req.user!.id,
-      });
+      };
+
+      if (isConserjeria) {
+        expenseData.operationallyValidated = false;
+        expenseData.financiallyValidated = false;
+      }
+
+      const data = insertExpenseSchema.parse(expenseData);
       const expense = await storage.createExpense(data);
       res.status(201).json(expense);
     } catch (error) {

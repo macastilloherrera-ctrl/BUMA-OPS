@@ -154,6 +154,7 @@ export const rolePermissions: Record<UserRole, {
   conserjeria: {
     allowedRoutes: [
       "/tickets",
+      "/egresos",
       "/perfil",
     ],
     canViewCosts: false,

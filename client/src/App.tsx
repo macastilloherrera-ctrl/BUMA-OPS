@@ -115,6 +115,7 @@ function AuthenticatedApp() {
   const isFinance = isFinanceRole(userRole);
   const isManager = isManagerRole(userRole);
   const canAccessFinancial = ["gerente_general", "gerente_comercial", "gerente_finanzas"].includes(userRole);
+  const isConserjeria = userRole === "conserjeria";
   const isOperations = userRole === "gerente_operaciones" || userRole === "ejecutivo_operaciones";
   const roleHome = getRoleHome(userRole);
 
@@ -193,12 +194,14 @@ function AuthenticatedApp() {
                 <Route path="/proyectos/nuevo" component={NewProject} />
                 <Route path="/proyectos/:id" component={ProjectDetail} />
                 
+                {(canAccessFinancial || isConserjeria) && (
+                  <Route path="/egresos" component={Egresos} />
+                )}
                 {canAccessFinancial && (
                   <>
                     <Route path="/cierre-mensual" component={CierreMensual} />
                     <Route path="/conciliacion-bancaria" component={ConciliacionBancaria} />
                     <Route path="/ingresos" component={Ingresos} />
-                    <Route path="/egresos" component={Egresos} />
                     <Route path="/consumos-recurrentes" component={RecurringExpenses} />
                   </>
                 )}

@@ -281,6 +281,7 @@ const conserjeriaNavItems = [
     group: "Mi Edificio",
     items: [
       { path: "/tickets", label: "Tickets Asignados", icon: Ticket },
+      { path: "/egresos", label: "Cuentas / Egresos", icon: ArrowUpCircle },
     ]
   },
 ];

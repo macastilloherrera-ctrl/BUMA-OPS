@@ -68,7 +68,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
-import type { Building, Expense } from "@shared/schema";
+import type { Building, Expense, UserProfile } from "@shared/schema";
 
 const months = [
   { value: "1", label: "Enero" },
@@ -160,6 +160,11 @@ export default function Egresos() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  const { data: userProfile } = useQuery<UserProfile>({
+    queryKey: ["/api/user/profile"],
+  });
+  const isConserjeria = userProfile?.role === "conserjeria";
 
   const { data: buildings, isLoading: buildingsLoading } = useQuery<Building[]>({
     queryKey: ["/api/buildings"],
@@ -307,7 +312,23 @@ export default function Egresos() {
 
   function openCreate() {
     setEditingExpense(null);
-    form.reset(defaultFormValues);
+    let conserjeriaBuilding = "";
+    if (isConserjeria) {
+      if (userProfile?.assignedBuildings?.length) {
+        conserjeriaBuilding = userProfile.assignedBuildings[0];
+      } else if (buildings?.length) {
+        const myBuilding = buildings.find((b: any) => b.conserjeriaUserId === user?.id);
+        if (myBuilding) conserjeriaBuilding = myBuilding.id;
+        else if (buildings.length === 1) conserjeriaBuilding = buildings[0].id;
+      }
+    }
+    form.reset({
+      ...defaultFormValues,
+      sourceType: isConserjeria ? "recurrent" : "ticket",
+      buildingId: isConserjeria ? conserjeriaBuilding : "",
+      paymentStatus: isConserjeria ? "pending" : "pending",
+      inclusionStatus: "included",
+    });
     setDialogOpen(true);
   }
 
@@ -379,53 +400,61 @@ export default function Egresos() {
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-2">
             <DollarSign className="h-6 w-6 text-primary" />
-            <h1 className="text-xl md:text-2xl font-semibold" data-testid="text-page-title">Egresos</h1>
+            <h1 className="text-xl md:text-2xl font-semibold" data-testid="text-page-title">
+              {isConserjeria ? "Cuentas de Servicios" : "Egresos"}
+            </h1>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <Select value={exportFormat} onValueChange={setExportFormat}>
-              <SelectTrigger className="w-[150px]" data-testid="select-export-format">
-                <SelectValue placeholder="Formato" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="edipro">Edipro</SelectItem>
-                <SelectItem value="comunidadfeliz">Comunidad Feliz</SelectItem>
-                <SelectItem value="kastor">Kastor</SelectItem>
-                <SelectItem value="generico">Genérico</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              variant="outline"
-              onClick={() => handleExport(exportFormat)}
-              disabled={!expenses || expenses.length === 0}
-              data-testid="button-export"
-            >
-              <Download className="h-4 w-4 mr-1" />
-              Exportar
-            </Button>
+            {!isConserjeria && (
+              <>
+                <Select value={exportFormat} onValueChange={setExportFormat}>
+                  <SelectTrigger className="w-[150px]" data-testid="select-export-format">
+                    <SelectValue placeholder="Formato" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="edipro">Edipro</SelectItem>
+                    <SelectItem value="comunidadfeliz">Comunidad Feliz</SelectItem>
+                    <SelectItem value="kastor">Kastor</SelectItem>
+                    <SelectItem value="generico">Genérico</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  onClick={() => handleExport(exportFormat)}
+                  disabled={!expenses || expenses.length === 0}
+                  data-testid="button-export"
+                >
+                  <Download className="h-4 w-4 mr-1" />
+                  Exportar
+                </Button>
+              </>
+            )}
             <Button onClick={openCreate} data-testid="button-create-expense">
               <Plus className="h-4 w-4 mr-1" />
-              Nuevo Egreso
+              {isConserjeria ? "Registrar Cuenta" : "Nuevo Egreso"}
             </Button>
           </div>
         </div>
 
         <div className="mt-4 flex gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Building2 className="h-4 w-4 text-muted-foreground" />
-            <Select value={selectedBuilding} onValueChange={setSelectedBuilding}>
-              <SelectTrigger className="w-[200px]" data-testid="select-building">
-                <SelectValue placeholder="Seleccionar edificio" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los edificios</SelectItem>
-                {buildings?.map((building) => (
-                  <SelectItem key={building.id} value={building.id}>
-                    {building.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {!isConserjeria && (
+            <div className="flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-muted-foreground" />
+              <Select value={selectedBuilding} onValueChange={setSelectedBuilding}>
+                <SelectTrigger className="w-[200px]" data-testid="select-building">
+                  <SelectValue placeholder="Seleccionar edificio" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los edificios</SelectItem>
+                  {buildings?.map((building) => (
+                    <SelectItem key={building.id} value={building.id}>
+                      {building.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <Select value={selectedMonth} onValueChange={setSelectedMonth}>
             <SelectTrigger className="w-[150px]" data-testid="select-month">
@@ -453,28 +482,32 @@ export default function Egresos() {
             </SelectContent>
           </Select>
 
-          <Select value={selectedSourceType} onValueChange={setSelectedSourceType}>
-            <SelectTrigger className="w-[160px]" data-testid="select-source-type">
-              <SelectValue placeholder="Tipo origen" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los tipos</SelectItem>
-              <SelectItem value="ticket">Ticket</SelectItem>
-              <SelectItem value="recurrent">Recurrente</SelectItem>
-            </SelectContent>
-          </Select>
+          {!isConserjeria && (
+            <Select value={selectedSourceType} onValueChange={setSelectedSourceType}>
+              <SelectTrigger className="w-[160px]" data-testid="select-source-type">
+                <SelectValue placeholder="Tipo origen" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los tipos</SelectItem>
+                <SelectItem value="ticket">Ticket</SelectItem>
+                <SelectItem value="recurrent">Recurrente</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
 
-          <Select value={selectedPaymentStatus} onValueChange={setSelectedPaymentStatus}>
-            <SelectTrigger className="w-[160px]" data-testid="select-payment-status">
-              <SelectValue placeholder="Estado pago" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los estados</SelectItem>
-              <SelectItem value="pending">Pendiente</SelectItem>
-              <SelectItem value="paid">Pagado</SelectItem>
-              <SelectItem value="cancelled">Cancelado</SelectItem>
-            </SelectContent>
-          </Select>
+          {!isConserjeria && (
+            <Select value={selectedPaymentStatus} onValueChange={setSelectedPaymentStatus}>
+              <SelectTrigger className="w-[160px]" data-testid="select-payment-status">
+                <SelectValue placeholder="Estado pago" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los estados</SelectItem>
+                <SelectItem value="pending">Pendiente</SelectItem>
+                <SelectItem value="paid">Pagado</SelectItem>
+                <SelectItem value="cancelled">Cancelado</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
         </div>
       </div>
 
@@ -486,47 +519,49 @@ export default function Egresos() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Total Egresos
-                  </CardTitle>
-                  <DollarSign className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold" data-testid="text-total-expenses">
-                    {formatCurrency(totalAmount)}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Pagados
-                  </CardTitle>
-                  <CheckCircle className="h-4 w-4 text-green-600" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-green-600" data-testid="text-paid-expenses">
-                    {formatCurrency(paidAmount)}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Pendientes
-                  </CardTitle>
-                  <Clock className="h-4 w-4 text-yellow-600" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-yellow-600" data-testid="text-pending-expenses">
-                    {formatCurrency(pendingAmount)}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            {!isConserjeria && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Total Egresos
+                    </CardTitle>
+                    <DollarSign className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold" data-testid="text-total-expenses">
+                      {formatCurrency(totalAmount)}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Pagados
+                    </CardTitle>
+                    <CheckCircle className="h-4 w-4 text-green-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-600" data-testid="text-paid-expenses">
+                      {formatCurrency(paidAmount)}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">
+                      Pendientes
+                    </CardTitle>
+                    <Clock className="h-4 w-4 text-yellow-600" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-yellow-600" data-testid="text-pending-expenses">
+                      {formatCurrency(pendingAmount)}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
 
             {expenses && expenses.length > 0 ? (
               <Card>
@@ -539,14 +574,14 @@ export default function Egresos() {
                       <TableHeader>
                         <TableRow>
                           <TableHead className="w-[60px]">N</TableHead>
-                          <TableHead>Edificio</TableHead>
+                          {!isConserjeria && <TableHead>Edificio</TableHead>}
                           <TableHead className="max-w-[200px]">Descripción</TableHead>
                           <TableHead>Proveedor</TableHead>
                           <TableHead>Doc</TableHead>
-                          <TableHead className="text-right">Monto</TableHead>
+                          {!isConserjeria && <TableHead className="text-right">Monto</TableHead>}
                           <TableHead>Fecha</TableHead>
-                          <TableHead>Estado Pago</TableHead>
-                          <TableHead>Inclusión</TableHead>
+                          {!isConserjeria && <TableHead>Estado Pago</TableHead>}
+                          {!isConserjeria && <TableHead>Inclusión</TableHead>}
                           <TableHead className="text-right">Acciones</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -554,7 +589,7 @@ export default function Egresos() {
                         {expenses.map((expense, index) => (
                           <TableRow key={expense.id} data-testid={`row-expense-${expense.id}`}>
                             <TableCell className="font-medium">{index + 1}</TableCell>
-                            <TableCell>{getBuildingName(expense.buildingId)}</TableCell>
+                            {!isConserjeria && <TableCell>{getBuildingName(expense.buildingId)}</TableCell>}
                             <TableCell className="max-w-[200px] truncate">{expense.description}</TableCell>
                             <TableCell>{expense.vendorName || "-"}</TableCell>
                             <TableCell>
@@ -567,76 +602,88 @@ export default function Egresos() {
                                 <span className="text-xs">{expense.documentNumber}</span>
                               ) : "-"}
                             </TableCell>
-                            <TableCell className="text-right font-medium">
-                              {formatCurrency(expense.amount)}
-                            </TableCell>
+                            {!isConserjeria && (
+                              <TableCell className="text-right font-medium">
+                                {formatCurrency(expense.amount)}
+                              </TableCell>
+                            )}
                             <TableCell>{formatDate(expense.paymentDate)}</TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={paymentStatusVariants[expense.paymentStatus]}
-                                className={
-                                  expense.paymentStatus === "pending"
-                                    ? "border-yellow-500 text-yellow-700 dark:text-yellow-400"
-                                    : expense.paymentStatus === "paid"
-                                      ? "bg-green-600 text-white border-green-600"
-                                      : ""
-                                }
-                                data-testid={`badge-payment-status-${expense.id}`}
-                              >
-                                {paymentStatusLabels[expense.paymentStatus] || expense.paymentStatus}
-                              </Badge>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col gap-1">
-                                {expense.inclusionStatus === "postponed" && expense.postponementReason ? (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Badge
-                                        variant="outline"
-                                        className="border-orange-500 text-orange-700 dark:text-orange-400 cursor-help"
-                                        data-testid={`badge-inclusion-status-${expense.id}`}
-                                      >
-                                        {inclusionStatusLabels[expense.inclusionStatus] || expense.inclusionStatus}
-                                      </Badge>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top" className="max-w-[300px]">
-                                      <p className="text-xs font-medium">Motivo: {expense.postponementReason}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                ) : (
-                                  <Badge
-                                    variant="outline"
-                                    className={
-                                      expense.inclusionStatus === "included"
-                                        ? "border-green-500 text-green-700 dark:text-green-400"
-                                        : "border-orange-500 text-orange-700 dark:text-orange-400"
-                                    }
-                                    data-testid={`badge-inclusion-status-${expense.id}`}
-                                  >
-                                    {inclusionStatusLabels[expense.inclusionStatus] || expense.inclusionStatus}
-                                  </Badge>
-                                )}
-                              </div>
-                            </TableCell>
+                            {!isConserjeria && (
+                              <TableCell>
+                                <Badge
+                                  variant={paymentStatusVariants[expense.paymentStatus]}
+                                  className={
+                                    expense.paymentStatus === "pending"
+                                      ? "border-yellow-500 text-yellow-700 dark:text-yellow-400"
+                                      : expense.paymentStatus === "paid"
+                                        ? "bg-green-600 text-white border-green-600"
+                                        : ""
+                                  }
+                                  data-testid={`badge-payment-status-${expense.id}`}
+                                >
+                                  {paymentStatusLabels[expense.paymentStatus] || expense.paymentStatus}
+                                </Badge>
+                              </TableCell>
+                            )}
+                            {!isConserjeria && (
+                              <TableCell>
+                                <div className="flex flex-col gap-1">
+                                  {expense.inclusionStatus === "postponed" && expense.postponementReason ? (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Badge
+                                          variant="outline"
+                                          className="border-orange-500 text-orange-700 dark:text-orange-400 cursor-help"
+                                          data-testid={`badge-inclusion-status-${expense.id}`}
+                                        >
+                                          {inclusionStatusLabels[expense.inclusionStatus] || expense.inclusionStatus}
+                                        </Badge>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top" className="max-w-[300px]">
+                                        <p className="text-xs font-medium">Motivo: {expense.postponementReason}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  ) : (
+                                    <Badge
+                                      variant="outline"
+                                      className={
+                                        expense.inclusionStatus === "included"
+                                          ? "border-green-500 text-green-700 dark:text-green-400"
+                                          : "border-orange-500 text-orange-700 dark:text-orange-400"
+                                      }
+                                      data-testid={`badge-inclusion-status-${expense.id}`}
+                                    >
+                                      {inclusionStatusLabels[expense.inclusionStatus] || expense.inclusionStatus}
+                                    </Badge>
+                                  )}
+                                </div>
+                              </TableCell>
+                            )}
                             <TableCell className="text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => openEdit(expense)}
-                                  data-testid={`button-edit-${expense.id}`}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => setDeleteId(expense.id)}
-                                  data-testid={`button-delete-${expense.id}`}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
+                              {isConserjeria ? (
+                                <Badge variant="outline" className="text-xs">
+                                  Enviado
+                                </Badge>
+                              ) : (
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => openEdit(expense)}
+                                    data-testid={`button-edit-${expense.id}`}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => setDeleteId(expense.id)}
+                                    data-testid={`button-delete-${expense.id}`}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              )}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -666,35 +713,57 @@ export default function Egresos() {
         <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle data-testid="text-dialog-title">
-              {editingExpense ? "Editar Egreso" : "Nuevo Egreso"}
+              {isConserjeria
+                ? (editingExpense ? "Editar Cuenta" : "Registrar Cuenta de Servicio")
+                : (editingExpense ? "Editar Egreso" : "Nuevo Egreso")}
             </DialogTitle>
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              <FormField
-                control={form.control}
-                name="buildingId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Edificio</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+              {isConserjeria ? (
+                <FormField
+                  control={form.control}
+                  name="buildingId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Edificio</FormLabel>
                       <FormControl>
-                        <SelectTrigger data-testid="input-building">
-                          <SelectValue placeholder="Seleccionar edificio" />
-                        </SelectTrigger>
+                        <Input
+                          disabled
+                          value={buildings?.find(b => b.id === field.value)?.name || "Mi edificio"}
+                          data-testid="input-building-readonly"
+                        />
                       </FormControl>
-                      <SelectContent>
-                        {buildings?.map((building) => (
-                          <SelectItem key={building.id} value={building.id}>
-                            {building.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : (
+                <FormField
+                  control={form.control}
+                  name="buildingId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Edificio</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="input-building">
+                            <SelectValue placeholder="Seleccionar edificio" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {buildings?.map((building) => (
+                            <SelectItem key={building.id} value={building.id}>
+                              {building.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <FormField
                 control={form.control}
@@ -886,102 +955,106 @@ export default function Egresos() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="paymentMethod"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Forma de pago</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="input-payment-method">
-                            <SelectValue placeholder="Seleccionar" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="transferencia">Transferencia</SelectItem>
-                          <SelectItem value="pac">PAC</SelectItem>
-                          <SelectItem value="pago_electronico">Pago electrónico</SelectItem>
-                          <SelectItem value="cheque">Cheque</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              {!isConserjeria && (
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="paymentMethod"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Forma de pago</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="input-payment-method">
+                              <SelectValue placeholder="Seleccionar" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="transferencia">Transferencia</SelectItem>
+                            <SelectItem value="pac">PAC</SelectItem>
+                            <SelectItem value="pago_electronico">Pago electrónico</SelectItem>
+                            <SelectItem value="cheque">Cheque</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <FormField
-                  control={form.control}
-                  name="sourceType"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Tipo origen</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="input-source-type">
-                            <SelectValue placeholder="Seleccionar" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="ticket">Ticket</SelectItem>
-                          <SelectItem value="recurrent">Recurrente</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+                  <FormField
+                    control={form.control}
+                    name="sourceType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tipo origen</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="input-source-type">
+                              <SelectValue placeholder="Seleccionar" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="ticket">Ticket</SelectItem>
+                            <SelectItem value="recurrent">Recurrente</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="paymentStatus"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Estado de pago</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="input-payment-status">
-                            <SelectValue placeholder="Seleccionar" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="pending">Pendiente</SelectItem>
-                          <SelectItem value="paid">Pagado</SelectItem>
-                          <SelectItem value="cancelled">Cancelado</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              {!isConserjeria && (
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="paymentStatus"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Estado de pago</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="input-payment-status">
+                              <SelectValue placeholder="Seleccionar" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="pending">Pendiente</SelectItem>
+                            <SelectItem value="paid">Pagado</SelectItem>
+                            <SelectItem value="cancelled">Cancelado</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <FormField
-                  control={form.control}
-                  name="inclusionStatus"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Inclusión</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="input-inclusion-status">
-                            <SelectValue placeholder="Seleccionar" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="included">Incluido</SelectItem>
-                          <SelectItem value="postponed">Postergado</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+                  <FormField
+                    control={form.control}
+                    name="inclusionStatus"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Inclusión</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="input-inclusion-status">
+                              <SelectValue placeholder="Seleccionar" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="included">Incluido</SelectItem>
+                            <SelectItem value="postponed">Postergado</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
 
-              {form.watch("inclusionStatus") === "postponed" && (
+              {!isConserjeria && form.watch("inclusionStatus") === "postponed" && (
                 <FormField
                   control={form.control}
                   name="postponementReason"
