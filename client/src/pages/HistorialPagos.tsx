@@ -1,9 +1,8 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -31,11 +30,10 @@ import {
   History,
   Search,
   Building2,
-  ChevronDown,
-  ChevronRight,
   Ticket,
-  CalendarDays,
-  DollarSign,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -47,8 +45,6 @@ const formatCurrency = (amount: number) =>
 
 const formatDate = (date: string) =>
   new Date(date).toLocaleDateString("es-CL");
-
-const monthNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
 interface PaymentRecord {
   month: number;
@@ -74,13 +70,27 @@ interface PaymentHistoryResponse {
   totalUnits: number;
 }
 
+interface FlatPayment {
+  unit: string;
+  date: string;
+  amount: number;
+  payerName: string;
+  payerRut: string;
+  sourceBank: string;
+  description: string;
+}
+
+type SortField = "date" | "unit" | "amount" | "payerName" | "payerRut";
+type SortDir = "asc" | "desc";
+
 export default function HistorialPagos() {
   const { user } = useAuth();
   const { toast } = useToast();
 
   const [buildingId, setBuildingId] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [expandedUnit, setExpandedUnit] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<SortField>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [ticketDialogOpen, setTicketDialogOpen] = useState(false);
   const [ticketUnit, setTicketUnit] = useState("");
   const [ticketTitle, setTicketTitle] = useState("");
@@ -118,31 +128,77 @@ export default function HistorialPagos() {
     },
   });
 
-  const filteredUnits = paymentHistory?.units.filter((u) => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      u.unit.toLowerCase().includes(term) ||
-      u.payments.some(
+  const flatPayments = useMemo<FlatPayment[]>(() => {
+    if (!paymentHistory?.units) return [];
+    const all: FlatPayment[] = [];
+    for (const u of paymentHistory.units) {
+      for (const p of u.payments) {
+        all.push({
+          unit: u.unit,
+          date: p.date,
+          amount: p.amount,
+          payerName: p.payerName,
+          payerRut: p.payerRut,
+          sourceBank: p.sourceBank,
+          description: p.description,
+        });
+      }
+    }
+    return all;
+  }, [paymentHistory]);
+
+  const filteredPayments = useMemo(() => {
+    let result = flatPayments;
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(
         (p) =>
+          p.unit.toLowerCase().includes(term) ||
           p.payerName.toLowerCase().includes(term) ||
           p.payerRut.toLowerCase().includes(term)
-      )
-    );
-  }) || [];
+      );
+    }
 
-  const totalIdentifiedAmount = filteredUnits.reduce((sum, u) => sum + u.totalAmount, 0);
-
-  const allMonthYears = new Set<string>();
-  paymentHistory?.units.forEach((u) => {
-    u.payments.forEach((p) => {
-      allMonthYears.add(`${p.year}-${String(p.month).padStart(2, "0")}`);
+    result = [...result].sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case "date":
+          cmp = new Date(a.date).getTime() - new Date(b.date).getTime();
+          break;
+        case "unit":
+          cmp = a.unit.localeCompare(b.unit, "es", { numeric: true });
+          break;
+        case "amount":
+          cmp = a.amount - b.amount;
+          break;
+        case "payerName":
+          cmp = (a.payerName || "").localeCompare(b.payerName || "", "es");
+          break;
+        case "payerRut":
+          cmp = (a.payerRut || "").localeCompare(b.payerRut || "", "es");
+          break;
+      }
+      return sortDir === "asc" ? cmp : -cmp;
     });
-  });
-  const sortedMonthYears = [...allMonthYears].sort().reverse();
 
-  function toggleUnit(unit: string) {
-    setExpandedUnit(expandedUnit === unit ? null : unit);
+    return result;
+  }, [flatPayments, searchTerm, sortField, sortDir]);
+
+  const totalFilteredAmount = filteredPayments.reduce((sum, p) => sum + p.amount, 0);
+  const uniqueUnits = new Set(filteredPayments.map((p) => p.unit)).size;
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDir(field === "date" ? "desc" : "asc");
+    }
+  }
+
+  function SortIcon({ field }: { field: SortField }) {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
+    return sortDir === "asc" ? <ArrowUp className="h-3 w-3 ml-1" /> : <ArrowDown className="h-3 w-3 ml-1" />;
   }
 
   function openTicketDialog(unit: string) {
@@ -171,7 +227,7 @@ export default function HistorialPagos() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
-        <div className="max-w-6xl mx-auto space-y-4">
+        <div className="max-w-7xl mx-auto space-y-4">
           <Card>
             <CardContent className="pt-4 pb-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -217,19 +273,19 @@ export default function HistorialPagos() {
                 <Card>
                   <CardContent className="pt-4 pb-4">
                     <p className="text-xs text-muted-foreground">Unidades con pagos</p>
-                    <p className="text-lg font-semibold" data-testid="text-total-units">{filteredUnits.length}</p>
+                    <p className="text-lg font-semibold" data-testid="text-total-units">{uniqueUnits}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-4 pb-4">
-                    <p className="text-xs text-muted-foreground">Meses con datos</p>
-                    <p className="text-lg font-semibold" data-testid="text-total-months">{sortedMonthYears.length}</p>
+                    <p className="text-xs text-muted-foreground">Transacciones</p>
+                    <p className="text-lg font-semibold" data-testid="text-total-transactions">{filteredPayments.length}</p>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="pt-4 pb-4">
                     <p className="text-xs text-muted-foreground">Total identificado</p>
-                    <p className="text-lg font-semibold text-green-600" data-testid="text-total-amount">{formatCurrency(totalIdentifiedAmount)}</p>
+                    <p className="text-lg font-semibold text-green-600" data-testid="text-total-amount">{formatCurrency(totalFilteredAmount)}</p>
                   </CardContent>
                 </Card>
               </div>
@@ -242,7 +298,7 @@ export default function HistorialPagos() {
                         <Skeleton key={i} className="h-12 w-full" />
                       ))}
                     </div>
-                  ) : filteredUnits.length === 0 ? (
+                  ) : filteredPayments.length === 0 ? (
                     <div className="p-6 text-center text-sm text-muted-foreground" data-testid="text-no-data">
                       {paymentHistory?.totalUnits === 0
                         ? "No hay pagos identificados para este edificio. Importe y concilie cartolas bancarias primero."
@@ -253,17 +309,95 @@ export default function HistorialPagos() {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="w-8"></TableHead>
-                            <TableHead>Unidad</TableHead>
-                            <TableHead className="text-right">Total</TableHead>
-                            <TableHead className="text-center">Pagos</TableHead>
-                            <TableHead className="text-center">Meses</TableHead>
-                            <TableHead>Acciones</TableHead>
+                            <TableHead>
+                              <button
+                                className="flex items-center text-xs font-medium"
+                                onClick={() => toggleSort("date")}
+                                data-testid="sort-date"
+                              >
+                                Fecha
+                                <SortIcon field="date" />
+                              </button>
+                            </TableHead>
+                            <TableHead>
+                              <button
+                                className="flex items-center text-xs font-medium"
+                                onClick={() => toggleSort("unit")}
+                                data-testid="sort-unit"
+                              >
+                                Unidad
+                                <SortIcon field="unit" />
+                              </button>
+                            </TableHead>
+                            <TableHead>
+                              <button
+                                className="flex items-center text-xs font-medium"
+                                onClick={() => toggleSort("payerName")}
+                                data-testid="sort-name"
+                              >
+                                Nombre
+                                <SortIcon field="payerName" />
+                              </button>
+                            </TableHead>
+                            <TableHead>
+                              <button
+                                className="flex items-center text-xs font-medium"
+                                onClick={() => toggleSort("payerRut")}
+                                data-testid="sort-rut"
+                              >
+                                RUT
+                                <SortIcon field="payerRut" />
+                              </button>
+                            </TableHead>
+                            <TableHead className="text-right">
+                              <button
+                                className="flex items-center text-xs font-medium ml-auto"
+                                onClick={() => toggleSort("amount")}
+                                data-testid="sort-amount"
+                              >
+                                Monto Pagado
+                                <SortIcon field="amount" />
+                              </button>
+                            </TableHead>
+                            <TableHead>Banco</TableHead>
+                            <TableHead className="w-20"></TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {filteredUnits.map((unitData) => (
-                            <UnitRow key={unitData.unit} unitData={unitData} />
+                          {filteredPayments.map((payment, idx) => (
+                            <TableRow key={`${payment.unit}-${payment.date}-${idx}`} data-testid={`row-payment-${idx}`}>
+                              <TableCell className="text-sm whitespace-nowrap" data-testid={`text-date-${idx}`}>
+                                {formatDate(payment.date)}
+                              </TableCell>
+                              <TableCell className="font-medium" data-testid={`text-unit-${idx}`}>
+                                {payment.unit}
+                              </TableCell>
+                              <TableCell className="text-sm" data-testid={`text-name-${idx}`}>
+                                <span className="truncate block max-w-[200px]" title={payment.payerName}>
+                                  {payment.payerName || "-"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="text-sm font-mono" data-testid={`text-rut-${idx}`}>
+                                {payment.payerRut || "-"}
+                              </TableCell>
+                              <TableCell className="text-right font-mono whitespace-nowrap" data-testid={`text-amount-${idx}`}>
+                                {formatCurrency(payment.amount)}
+                              </TableCell>
+                              <TableCell className="text-sm text-muted-foreground" data-testid={`text-bank-${idx}`}>
+                                {payment.sourceBank || "-"}
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => openTicketDialog(payment.unit)}
+                                  title="Crear ticket"
+                                  data-testid={`button-ticket-${idx}`}
+                                >
+                                  <Ticket className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
                           ))}
                         </TableBody>
                       </Table>
@@ -335,107 +469,4 @@ export default function HistorialPagos() {
       </Dialog>
     </div>
   );
-
-  function UnitRow({ unitData }: { unitData: UnitPayments }) {
-    const isExpanded = expandedUnit === unitData.unit;
-    const paymentsByMonth: Record<string, PaymentRecord[]> = {};
-    unitData.payments.forEach((p) => {
-      const key = `${p.year}-${String(p.month).padStart(2, "0")}`;
-      if (!paymentsByMonth[key]) paymentsByMonth[key] = [];
-      paymentsByMonth[key].push(p);
-    });
-
-    return (
-      <>
-        <TableRow
-          className="cursor-pointer hover-elevate"
-          onClick={() => toggleUnit(unitData.unit)}
-          data-testid={`row-unit-${unitData.unit}`}
-        >
-          <TableCell>
-            {isExpanded ? (
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
-            ) : (
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            )}
-          </TableCell>
-          <TableCell className="font-medium" data-testid={`text-unit-name-${unitData.unit}`}>
-            {unitData.unit}
-          </TableCell>
-          <TableCell className="text-right font-mono" data-testid={`text-unit-total-${unitData.unit}`}>
-            {formatCurrency(unitData.totalAmount)}
-          </TableCell>
-          <TableCell className="text-center" data-testid={`text-unit-payments-${unitData.unit}`}>
-            <Badge variant="secondary">{unitData.totalPayments}</Badge>
-          </TableCell>
-          <TableCell className="text-center" data-testid={`text-unit-months-${unitData.unit}`}>
-            <Badge variant="outline">{unitData.months}</Badge>
-          </TableCell>
-          <TableCell>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={(e) => {
-                e.stopPropagation();
-                openTicketDialog(unitData.unit);
-              }}
-              data-testid={`button-ticket-${unitData.unit}`}
-            >
-              <Ticket className="h-3 w-3 mr-1" />
-              Ticket
-            </Button>
-          </TableCell>
-        </TableRow>
-
-        {isExpanded && (
-          <>
-            {Object.entries(paymentsByMonth)
-              .sort(([a], [b]) => b.localeCompare(a))
-              .map(([monthKey, payments]) => {
-                const [yr, mo] = monthKey.split("-");
-                const monthLabel = `${monthNames[parseInt(mo) - 1]} ${yr}`;
-                const monthTotal = payments.reduce((sum, p) => sum + p.amount, 0);
-
-                return payments.map((payment, idx) => (
-                  <TableRow
-                    key={`${monthKey}-${idx}`}
-                    className="bg-muted/30"
-                    data-testid={`row-payment-${unitData.unit}-${monthKey}-${idx}`}
-                  >
-                    <TableCell></TableCell>
-                    <TableCell className="text-sm text-muted-foreground pl-8">
-                      <CalendarDays className="inline h-3 w-3 mr-1" />
-                      {monthLabel}
-                    </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {formatCurrency(payment.amount)}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground" colSpan={2}>
-                      <div className="space-y-0.5">
-                        {payment.payerName && (
-                          <p className="truncate max-w-[200px]" title={payment.payerName}>
-                            {payment.payerName}
-                          </p>
-                        )}
-                        {payment.payerRut && (
-                          <p className="text-xs">{payment.payerRut}</p>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      <div className="space-y-0.5">
-                        <p>{formatDate(payment.date)}</p>
-                        {payment.sourceBank && (
-                          <p className="text-xs">{payment.sourceBank}</p>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ));
-              })}
-          </>
-        )}
-      </>
-    );
-  }
 }
