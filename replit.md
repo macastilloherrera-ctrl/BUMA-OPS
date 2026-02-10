@@ -47,6 +47,16 @@ Key architectural patterns include:
   - Default category is "gasto_comun" (Gasto Común) for backward compatibility
   - Added payerRut and payerName fields to incomes table for future payer tracking
 
+- **Feb 2026 - Conserjería Username Login**: Changed concierge user authentication from email to username-based:
+  - Added `username` field (varchar 100, unique) to users table
+  - When a building is created, auto-generates conserjeria user with username format: `conserjeria_{building_slug}_{short_id}` (accent-stripped, lowercased)
+  - Auto-generates 4-digit numeric PIN as password (not requiring change on first login)
+  - Login endpoint accepts either username or email via single identifier field
+  - Frontend login form updated: single "Usuario o correo electrónico" input field
+  - BuildingDetail shows username instead of email for conserjeria credentials
+  - AdminUsers displays username fallback when email is null
+  - Password reset for conserjeria generates new 4-digit PIN
+
 ## External Dependencies
 - **PostgreSQL (Neon)**: Primary database for all application data.
 - **Replit Object Storage**: Used for storing image uploads, particularly from field visits.

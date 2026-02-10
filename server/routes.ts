@@ -427,19 +427,23 @@ export async function registerRoutes(
       const data = insertBuildingSchema.parse(req.body);
       const building = await storage.createBuilding(data);
 
-      const buildingSlug = building.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-      const conserjeriaEmail = `conserjeria_${buildingSlug}_${building.id.slice(0, 8)}@ops.local`;
-      const tempPassword = `Buma${Math.random().toString(36).slice(2, 8)}!`;
+      const buildingSlug = building.name.toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+      const shortId = building.id.slice(0, 4);
+      const conserjeriaUsername = `conserjeria_${buildingSlug}_${shortId}`;
+      const tempPassword = String(Math.floor(1000 + Math.random() * 9000));
       const passwordHash = await bcrypt.hash(tempPassword, 10);
       const conserjeriaUserId = `conserjeria-${building.id}`;
 
       const conserjeriaUser = await storage.createUser({
         id: conserjeriaUserId,
-        email: conserjeriaEmail,
+        email: null,
+        username: conserjeriaUsername,
         firstName: "Conserjería",
         lastName: building.name,
         passwordHash,
-        mustChangePassword: true,
+        mustChangePassword: false,
       });
 
       await storage.createUserProfile({
@@ -458,7 +462,7 @@ export async function registerRoutes(
         ...building,
         conserjeriaUserId: conserjeriaUser.id,
         conserjeriaCredentials: {
-          email: conserjeriaEmail,
+          username: conserjeriaUsername,
           tempPassword,
           userId: conserjeriaUser.id,
         },
@@ -506,6 +510,7 @@ export async function registerRoutes(
       return res.json({
         exists: true,
         userId: conserjeriaUser.id,
+        username: conserjeriaUser.username || conserjeriaUser.email,
         email: conserjeriaUser.email,
         displayName: `${conserjeriaUser.firstName || ""} ${conserjeriaUser.lastName || ""}`.trim(),
         isActive: profile?.isActive ?? false,
@@ -522,12 +527,12 @@ export async function registerRoutes(
       if (!building) return res.status(404).json({ error: "Edificio no encontrado" });
       if (!building.conserjeriaUserId) return res.status(404).json({ error: "No hay usuario conserjería para este edificio" });
 
-      const newPassword = `Buma${Math.random().toString(36).slice(2, 8)}!`;
+      const newPassword = String(Math.floor(1000 + Math.random() * 9000));
       const passwordHash = await bcrypt.hash(newPassword, 10);
 
       await storage.updateUser(building.conserjeriaUserId, {
         passwordHash,
-        mustChangePassword: true,
+        mustChangePassword: false,
       });
 
       res.json({ newPassword, userId: building.conserjeriaUserId });
@@ -543,19 +548,23 @@ export async function registerRoutes(
       if (!building) return res.status(404).json({ error: "Edificio no encontrado" });
       if (building.conserjeriaUserId) return res.status(400).json({ error: "Ya existe un usuario conserjería para este edificio" });
 
-      const buildingSlug = building.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-      const conserjeriaEmail = `conserjeria_${buildingSlug}_${building.id.slice(0, 8)}@ops.local`;
-      const tempPassword = `Buma${Math.random().toString(36).slice(2, 8)}!`;
+      const buildingSlug = building.name.toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+      const shortId = building.id.slice(0, 4);
+      const conserjeriaUsername = `conserjeria_${buildingSlug}_${shortId}`;
+      const tempPassword = String(Math.floor(1000 + Math.random() * 9000));
       const passwordHash = await bcrypt.hash(tempPassword, 10);
       const conserjeriaUserId = `conserjeria-${building.id}`;
 
       const conserjeriaUser = await storage.createUser({
         id: conserjeriaUserId,
-        email: conserjeriaEmail,
+        email: null,
+        username: conserjeriaUsername,
         firstName: "Conserjería",
         lastName: building.name,
         passwordHash,
-        mustChangePassword: true,
+        mustChangePassword: false,
       });
 
       await storage.createUserProfile({
@@ -569,7 +578,7 @@ export async function registerRoutes(
 
       res.status(201).json({
         userId: conserjeriaUser.id,
-        email: conserjeriaEmail,
+        username: conserjeriaUsername,
         tempPassword,
       });
     } catch (error) {
@@ -5655,14 +5664,20 @@ export async function registerRoutes(
   // Login with email and password
   app.post("/api/auth/login", async (req, res) => {
     try {
-      const { email, password } = req.body;
+      const { email, password, username } = req.body;
+      const loginIdentifier = username || email;
       
-      if (!email || !password) {
-        return res.status(400).json({ error: "Email y contraseña son requeridos" });
+      if (!loginIdentifier || !password) {
+        return res.status(400).json({ error: "Usuario/email y contraseña son requeridos" });
       }
       
-      // Find user by email
-      const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase().trim()));
+      const identifierLower = loginIdentifier.toLowerCase().trim();
+      const [user] = await db.select().from(usersTable).where(
+        or(
+          eq(usersTable.email, identifierLower),
+          eq(usersTable.username, identifierLower)
+        )
+      );
       
       if (!user) {
         return res.status(401).json({ error: "Credenciales inválidas" });

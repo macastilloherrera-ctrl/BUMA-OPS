@@ -26,6 +26,7 @@ interface UserProfile {
 interface AdminUser {
   id: string;
   email: string | null;
+  username: string | null;
   firstName: string | null;
   lastName: string | null;
   profileImageUrl: string | null;
@@ -685,7 +686,7 @@ function UserTable({
                           ? `${user.firstName || ''} ${user.lastName || ''}`.trim()
                           : "Sin nombre"}
                       </p>
-                      <p className="text-sm text-muted-foreground">{user.email || "Sin email"}</p>
+                      <p className="text-sm text-muted-foreground">{user.username || user.email || "Sin email"}</p>
                     </div>
                   </td>
                   <td className="p-4">

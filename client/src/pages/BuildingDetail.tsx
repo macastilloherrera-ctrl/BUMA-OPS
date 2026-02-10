@@ -132,6 +132,7 @@ export default function BuildingDetail() {
   const { data: conserjeriaInfo } = useQuery<{
     exists: boolean;
     userId?: string;
+    username?: string;
     email?: string;
     displayName?: string;
     isActive?: boolean;
@@ -159,7 +160,7 @@ export default function BuildingDetail() {
       const res = await apiRequest("POST", `/api/buildings/${id}/conserjeria/create`);
       return res.json();
     },
-    onSuccess: (data: { email: string; tempPassword: string }) => {
+    onSuccess: (data: { username: string; tempPassword: string }) => {
       setShowConserjeriaPassword(data.tempPassword);
       queryClient.invalidateQueries({ queryKey: ["/api/buildings", id, "conserjeria"] });
       toast({ title: "Usuario conserjería creado" });
@@ -458,15 +459,15 @@ export default function BuildingDetail() {
                           <div className="flex items-center gap-2 text-sm">
                             <User className="h-4 w-4 text-muted-foreground" />
                             <span className="text-muted-foreground">Usuario:</span>
-                            <span className="font-medium" data-testid="text-conserjeria-email">{conserjeriaInfo.email}</span>
+                            <span className="font-medium" data-testid="text-conserjeria-username">{conserjeriaInfo.username}</span>
                             <Button
                               size="icon"
                               variant="ghost"
                               onClick={() => {
-                                navigator.clipboard.writeText(conserjeriaInfo.email || "");
-                                toast({ title: "Email copiado" });
+                                navigator.clipboard.writeText(conserjeriaInfo.username || "");
+                                toast({ title: "Usuario copiado" });
                               }}
-                              data-testid="button-copy-conserjeria-email"
+                              data-testid="button-copy-conserjeria-username"
                             >
                               <Copy className="h-3 w-3" />
                             </Button>
@@ -501,7 +502,7 @@ export default function BuildingDetail() {
                                 <Copy className="h-3 w-3" />
                               </Button>
                             </div>
-                            <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">El usuario deberá cambiar la contraseña en su primer ingreso</p>
+                            <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">Guarde esta clave de 4 dígitos en un lugar seguro</p>
                           </div>
                         )}
                         <div className="flex flex-wrap gap-2">
@@ -519,7 +520,7 @@ export default function BuildingDetail() {
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              const text = `Usuario: ${conserjeriaInfo.email}\nEdificio: ${building?.name}`;
+                              const text = `Usuario: ${conserjeriaInfo.username}\nEdificio: ${building?.name}`;
                               navigator.clipboard.writeText(text);
                               toast({ title: "Credenciales copiadas" });
                             }}

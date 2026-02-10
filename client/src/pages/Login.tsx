@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Logo } from "@/components/Logo";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Loader2, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { Loader2, User, Lock, Eye, EyeOff } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 
@@ -34,6 +34,8 @@ function getRedirectByRole(role: string): string {
       return "/dashboard/tickets";
     case "ejecutivo_operaciones":
       return "/visitas";
+    case "conserjeria":
+      return "/conserjeria";
     default:
       return "/dashboard/tickets";
   }
@@ -53,13 +55,13 @@ function speakWelcome(firstName: string) {
 
 export default function Login() {
   const [, setLocation] = useLocation();
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loginMutation = useMutation({
-    mutationFn: async (credentials: { email: string; password: string }) => {
+    mutationFn: async (credentials: { email?: string; username?: string; password: string }) => {
       const response = await apiRequest("POST", "/api/auth/login", credentials);
       if (!response.ok) {
         const errorData = await response.json();
@@ -89,12 +91,18 @@ export default function Login() {
     e.preventDefault();
     setError(null);
     
-    if (!email.trim() || !password.trim()) {
-      setError("Por favor ingresa tu email y contraseña");
+    if (!identifier.trim() || !password.trim()) {
+      setError("Por favor ingresa tu usuario/email y contraseña");
       return;
     }
     
-    loginMutation.mutate({ email: email.trim(), password });
+    const trimmed = identifier.trim();
+    const isEmail = trimmed.includes("@");
+    loginMutation.mutate(
+      isEmail
+        ? { email: trimmed, password }
+        : { username: trimmed, password }
+    );
   };
 
   return (
@@ -120,19 +128,19 @@ export default function Login() {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Correo electrónico</Label>
+                <Label htmlFor="identifier">Usuario o correo electrónico</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    id="email"
-                    type="email"
-                    placeholder="usuario@buma.cl"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    id="identifier"
+                    type="text"
+                    placeholder="usuario o email@buma.cl"
+                    value={identifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
                     className="pl-10"
                     disabled={loginMutation.isPending}
-                    autoComplete="email"
-                    data-testid="input-email"
+                    autoComplete="username"
+                    data-testid="input-identifier"
                   />
                 </div>
               </div>
