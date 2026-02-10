@@ -6957,6 +6957,102 @@ export async function registerRoutes(
     return { created, skipped, errors };
   }
 
+  // ========== CLOSING CYCLE ALERTS ==========
+  async function checkClosingCycleAlerts() {
+    try {
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1;
+      const currentYear = now.getFullYear();
+
+      const cycles = await storage.getMonthlyClosingCycles({ year: currentYear });
+      const currentCycles = cycles.filter(c => c.month === currentMonth && c.status !== "issued" && c.status !== "approved");
+      
+      if (currentCycles.length === 0) return { alerts: 0 };
+
+      const profiles = await storage.getUserProfiles();
+      const financialRoles = ["gerente_general", "gerente_comercial", "gerente_finanzas"];
+      const operationalRoles = ["gerente_operaciones", "ejecutivo_operaciones"];
+      const financialUsers = profiles.filter(p => financialRoles.includes(p.role) && p.isActive);
+      
+      const buildings = await storage.getBuildings();
+      const buildingMap = new Map(buildings.map(b => [b.id, b]));
+      
+      let alerts = 0;
+
+      for (const cycle of currentCycles) {
+        const building = buildingMap.get(cycle.buildingId);
+        const buildingName = building?.name || "Edificio";
+        const dateChecks: { date: Date | null; label: string; daysWarning: number }[] = [
+          { date: cycle.cutoffExpensesDate ? new Date(cycle.cutoffExpensesDate) : null, label: "Corte de egresos", daysWarning: 3 },
+          { date: cycle.cutoffIncomesDate ? new Date(cycle.cutoffIncomesDate) : null, label: "Corte de ingresos", daysWarning: 3 },
+          { date: cycle.preStatementDate ? new Date(cycle.preStatementDate) : null, label: "Pre-estado de cuenta", daysWarning: 2 },
+          { date: cycle.finalIssueDate ? new Date(cycle.finalIssueDate) : null, label: "Emisión final", daysWarning: 5 },
+        ];
+
+        for (const check of dateChecks) {
+          if (!check.date) continue;
+          const daysUntil = Math.ceil((check.date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          
+          if (daysUntil < 0) {
+            const title = `${check.label} VENCIDA - ${buildingName}`;
+            const message = `La fecha de ${check.label.toLowerCase()} para ${buildingName} venció hace ${Math.abs(daysUntil)} día(s). Estado actual: ${cycle.status}.`;
+            
+            for (const user of financialUsers) {
+              await storage.createNotification({
+                userId: user.userId,
+                type: "cierre_mensual_alerta",
+                title,
+                message,
+                isRead: false,
+              });
+            }
+            
+            if (check.label === "Emisión final" && building?.assignedExecutiveId) {
+              await storage.createNotification({
+                userId: building.assignedExecutiveId,
+                type: "cierre_mensual_alerta",
+                title: `Cierre mensual atrasado - ${buildingName}`,
+                message: `La emisión final de gastos comunes de ${buildingName} está vencida.`,
+                isRead: false,
+              });
+            }
+            alerts++;
+          } else if (daysUntil <= check.daysWarning && daysUntil >= 0) {
+            const title = `${check.label} próxima - ${buildingName}`;
+            const message = `La fecha de ${check.label.toLowerCase()} para ${buildingName} es en ${daysUntil} día(s) (${check.date.toLocaleDateString("es-CL")}). Estado actual: ${cycle.status}.`;
+            
+            for (const user of financialUsers) {
+              await storage.createNotification({
+                userId: user.userId,
+                type: "cierre_mensual_alerta",
+                title,
+                message,
+                isRead: false,
+              });
+            }
+            
+            if (check.label === "Emisión final" && building?.assignedExecutiveId) {
+              await storage.createNotification({
+                userId: building.assignedExecutiveId,
+                type: "cierre_mensual_alerta",
+                title: `Cierre mensual próximo - ${buildingName}`,
+                message: `La emisión final de gastos comunes de ${buildingName} es en ${daysUntil} día(s).`,
+                isRead: false,
+              });
+            }
+            alerts++;
+          }
+        }
+      }
+
+      console.log(`[Closing Cycle Alerts] Complete: ${alerts} alert events processed`);
+      return { alerts };
+    } catch (error) {
+      console.error("[Closing Cycle Alerts] Error:", error);
+      return { alerts: 0 };
+    }
+  }
+
   // Run insurance check on server startup and schedule daily (with guard for hot reloads)
   if (!INSURANCE_CHECK_INITIALIZED) {
     (global as any).__INSURANCE_CHECK_INITIALIZED__ = true;
@@ -6965,6 +7061,8 @@ export async function registerRoutes(
     setTimeout(async () => {
       console.log("[Insurance Check] Running initial insurance policy check...");
       await checkAndCreateInsuranceTickets();
+      console.log("[Closing Cycle Alerts] Running initial closing cycle alert check...");
+      await checkClosingCycleAlerts();
     }, 10000);
 
     // Schedule daily check at 8:00 AM
@@ -6979,10 +7077,14 @@ export async function registerRoutes(
       setTimeout(async () => {
         console.log("[Insurance Check] Running scheduled daily insurance policy check...");
         await checkAndCreateInsuranceTickets();
+        console.log("[Closing Cycle Alerts] Running scheduled daily closing cycle alert check...");
+        await checkClosingCycleAlerts();
         // Schedule subsequent checks every 24 hours
         setInterval(async () => {
           console.log("[Insurance Check] Running scheduled daily insurance policy check...");
           await checkAndCreateInsuranceTickets();
+          console.log("[Closing Cycle Alerts] Running scheduled daily closing cycle alert check...");
+          await checkClosingCycleAlerts();
         }, 24 * 60 * 60 * 1000);
       }, msUntilNext8AM);
       

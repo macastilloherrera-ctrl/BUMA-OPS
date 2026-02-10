@@ -104,7 +104,10 @@ export default function CierreMensual() {
   const { data: buildings } = useQuery<Building[]>({ queryKey: ["/api/buildings"] });
 
   const { data: cycles, isLoading } = useQuery<MonthlyClosingCycle[]>({
-    queryKey: [`/api/monthly-closing-cycles/dashboard?year=${selectedYear}`],
+    queryKey: ["/api/monthly-closing-cycles/dashboard", selectedYear],
+    queryFn: () =>
+      fetch(`/api/monthly-closing-cycles/dashboard?year=${selectedYear}`, { credentials: "include" })
+        .then(r => { if (!r.ok) throw new Error("Error al cargar ciclos"); return r.json(); }),
   });
 
   const { data: cycleDetail, isLoading: detailLoading } = useQuery<{ cycle: MonthlyClosingCycle; checklistItems: MonthlyClosingChecklistItem[] }>({

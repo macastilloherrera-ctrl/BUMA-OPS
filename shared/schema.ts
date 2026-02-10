@@ -133,7 +133,8 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "ticket_asignado",
   "ticket_derivado",
   "ticket_actualizado",
-  "visita_vencida"
+  "visita_vencida",
+  "cierre_mensual_alerta"
 ]);
 
 // User profiles table (extends auth users with role info)
