@@ -6656,10 +6656,12 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Solo gerente general o comercial pueden crear ciclos" });
       }
 
-      const data = insertMonthlyClosingCycleSchema.parse({
-        ...req.body,
-        createdBy: req.user!.id,
-      });
+      const body = { ...req.body, createdBy: req.user!.id };
+      if (body.cutoffExpensesDate && typeof body.cutoffExpensesDate === "string") body.cutoffExpensesDate = new Date(body.cutoffExpensesDate);
+      if (body.cutoffIncomesDate && typeof body.cutoffIncomesDate === "string") body.cutoffIncomesDate = new Date(body.cutoffIncomesDate);
+      if (body.preStatementDate && typeof body.preStatementDate === "string") body.preStatementDate = new Date(body.preStatementDate);
+      if (body.finalIssueDate && typeof body.finalIssueDate === "string") body.finalIssueDate = new Date(body.finalIssueDate);
+      const data = insertMonthlyClosingCycleSchema.parse(body);
 
       const existing = await storage.getMonthlyClosingCycleByBuildingAndPeriod(data.buildingId, data.month, data.year);
       if (existing) {
@@ -6707,7 +6709,12 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Ciclo no encontrado" });
       }
 
-      const updated = await storage.updateMonthlyClosingCycle(req.params.id, req.body);
+      const updateData = { ...req.body };
+      const dateFields = ["cutoffExpensesDate", "cutoffIncomesDate", "preStatementDate", "finalIssueDate"];
+      for (const field of dateFields) {
+        if (updateData[field] && typeof updateData[field] === "string") updateData[field] = new Date(updateData[field]);
+      }
+      const updated = await storage.updateMonthlyClosingCycle(req.params.id, updateData);
       res.json(updated);
     } catch (error) {
       console.error("Error updating closing cycle:", error);
