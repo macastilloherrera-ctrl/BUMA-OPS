@@ -1905,29 +1905,33 @@ export async function registerRoutes(
       }
       
       // Auto-create expense when work is completed with invoice data
-      if (patchBody.status === "trabajo_completado" && patchBody.invoiceStatus === "submitted") {
+      if (patchBody.status === "trabajo_completado" && patchBody.invoiceStatus === "submitted"
+          && patchBody.invoiceAmount && Number(patchBody.invoiceAmount) > 0) {
         try {
-          let vendorName = "";
-          if (existingTicket.maintainerId) {
-            const maintainer = await storage.getMaintainer(existingTicket.maintainerId);
-            if (maintainer) vendorName = maintainer.companyName;
+          const existingExpenses = await storage.getExpenses({ buildingId: existingTicket.buildingId });
+          const alreadyHasExpense = existingExpenses.some(e => e.sourceTicketId === existingTicket.id);
+          if (!alreadyHasExpense) {
+            let vendorName = "";
+            if (existingTicket.maintainerId) {
+              const maintainer = await storage.getMaintainer(existingTicket.maintainerId);
+              if (maintainer) vendorName = maintainer.companyName;
+            }
+            await storage.createExpense({
+              buildingId: existingTicket.buildingId,
+              sourceType: "ticket",
+              sourceTicketId: existingTicket.id,
+              description: `Ticket ${existingTicket.id.substring(0, 8).toUpperCase()} - ${existingTicket.description?.substring(0, 100) || "Trabajo completado"}`,
+              amount: String(patchBody.invoiceAmount),
+              vendorName: vendorName || null,
+              vendorId: existingTicket.maintainerId || null,
+              documentType: "factura",
+              documentNumber: patchBody.invoiceNumber || null,
+              documentKey: patchBody.invoiceDocumentKey || null,
+              paymentDate: new Date(),
+              validationStatus: "pendiente",
+              createdBy: req.user!.id,
+            });
           }
-          const invoiceAmt = patchBody.invoiceAmount ? String(patchBody.invoiceAmount) : "0";
-          await storage.createExpense({
-            buildingId: existingTicket.buildingId,
-            sourceType: "ticket",
-            sourceTicketId: existingTicket.id,
-            description: `Ticket ${existingTicket.id.substring(0, 8).toUpperCase()} - ${existingTicket.description?.substring(0, 100) || "Trabajo completado"}`,
-            amount: invoiceAmt,
-            vendorName: vendorName || null,
-            vendorId: existingTicket.maintainerId || null,
-            documentType: "factura",
-            documentNumber: patchBody.invoiceNumber || null,
-            documentKey: patchBody.invoiceDocumentKey || null,
-            paymentDate: new Date(),
-            validationStatus: "pendiente",
-            createdBy: req.user!.id,
-          });
         } catch (expError) {
           console.error("Error auto-creating expense from ticket:", expError);
         }
