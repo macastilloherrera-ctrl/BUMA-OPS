@@ -77,7 +77,8 @@ function stripCostFields<T extends { cost?: string | null }>(items: T[], canSeeC
 
 // Helper to check if user is a manager role
 function isManagerRole(profile: UserProfile | null): boolean {
-  return !!profile && ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas"].includes(profile.role);
+  if (!profile) return false;
+  return ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas"].includes(profile.role);
 }
 
 function isConserjeriaRole(profile: UserProfile | null): boolean {
@@ -3424,16 +3425,13 @@ export async function registerRoutes(
     }
   });
 
-  // Helper function to check if user is a manager
-  const isManagerRole = (role: string) => {
-    return ["gerente_general", "gerente_operaciones", "gerente_comercial"].includes(role);
-  };
+  // Note: uses the outer isManagerRole(profile) function defined at top of file
 
   // Visits Report - for managers only (with analytical metrics)
   app.get("/api/reports/visits", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isManagerRole(profile.role)) {
+      if (!profile || !isManagerRole(profile)) {
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
@@ -3595,7 +3593,7 @@ export async function registerRoutes(
   app.get("/api/reports/tickets", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isManagerRole(profile.role)) {
+      if (!profile || !isManagerRole(profile)) {
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
@@ -3772,7 +3770,7 @@ export async function registerRoutes(
   app.get("/api/reports/financial", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isManagerRole(profile.role)) {
+      if (!profile || !isManagerRole(profile)) {
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
@@ -3903,7 +3901,7 @@ export async function registerRoutes(
   app.get("/api/reports/equipment", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isManagerRole(profile.role)) {
+      if (!profile || !isManagerRole(profile)) {
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
@@ -4026,7 +4024,7 @@ export async function registerRoutes(
   app.get("/api/reports/executives", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isManagerRole(profile.role)) {
+      if (!profile || !isManagerRole(profile)) {
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
@@ -4159,7 +4157,7 @@ export async function registerRoutes(
   app.get("/api/reports/visits/excel", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isManagerRole(profile.role)) {
+      if (!profile || !isManagerRole(profile)) {
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
@@ -4220,7 +4218,7 @@ export async function registerRoutes(
   app.get("/api/reports/tickets/excel", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isManagerRole(profile.role)) {
+      if (!profile || !isManagerRole(profile)) {
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
@@ -4279,7 +4277,7 @@ export async function registerRoutes(
   app.get("/api/reports/financial/excel", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isManagerRole(profile.role)) {
+      if (!profile || !isManagerRole(profile)) {
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
@@ -4335,7 +4333,7 @@ export async function registerRoutes(
   app.get("/api/reports/equipment/excel", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isManagerRole(profile.role)) {
+      if (!profile || !isManagerRole(profile)) {
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
@@ -4397,7 +4395,7 @@ export async function registerRoutes(
   app.get("/api/reports/executives/excel", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isManagerRole(profile.role)) {
+      if (!profile || !isManagerRole(profile)) {
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
@@ -5079,11 +5077,12 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Proyecto no encontrado" });
       }
       
-      const [milestones, documents, updates, building] = await Promise.all([
+      const [milestones, documents, updates, building, projectVendorsList] = await Promise.all([
         storage.getProjectMilestones(project.id),
         storage.getProjectDocuments(project.id),
         storage.getProjectUpdates(project.id),
         storage.getBuilding(project.buildingId),
+        storage.getProjectVendors(project.id),
       ]);
       
       res.json({
@@ -5092,6 +5091,7 @@ export async function registerRoutes(
         milestones,
         documents,
         updates,
+        vendors: projectVendorsList,
       });
     } catch (error) {
       console.error("Error fetching project:", error);
@@ -5255,7 +5255,6 @@ export async function registerRoutes(
       const isManager = profile && canManageProjects(profile.role);
       const isExecutive = profile?.role === "ejecutivo_operaciones";
       
-      // Ejecutivos solo pueden cambiar status y observaciones
       if (!isManager && !isExecutive) {
         return res.status(403).json({ error: "No tiene permisos" });
       }
@@ -5263,23 +5262,90 @@ export async function registerRoutes(
       const updateData: any = {};
       
       if (isManager) {
-        // Managers can update everything
         Object.assign(updateData, req.body);
       } else {
-        // Executives can only update status and observations
         if (req.body.status) updateData.status = req.body.status;
         if (req.body.observations) updateData.observations = req.body.observations;
+        if (req.body.invoiceStatus) updateData.invoiceStatus = req.body.invoiceStatus;
+        if (req.body.invoiceNumber) updateData.invoiceNumber = req.body.invoiceNumber;
+        if (req.body.invoiceAmount) updateData.invoiceAmount = req.body.invoiceAmount;
+        if (req.body.invoiceDocumentKey) updateData.invoiceDocumentKey = req.body.invoiceDocumentKey;
+        if (req.body.invoiceVendorId) updateData.invoiceVendorId = req.body.invoiceVendorId;
+        if (req.body.invoiceVendorName) updateData.invoiceVendorName = req.body.invoiceVendorName;
       }
       
-      // If completing, set completedAt and completedBy
       if (updateData.status === "completado") {
         updateData.completedAt = new Date();
         updateData.completedBy = (req.user as any).id;
       }
       
+      // Convert date strings
+      if (updateData.dueDate && typeof updateData.dueDate === "string") {
+        updateData.dueDate = new Date(updateData.dueDate);
+      }
+      
+      const existingMilestone = await storage.getProjectMilestone(req.params.id);
+      if (!existingMilestone) {
+        return res.status(404).json({ error: "Hito no encontrado" });
+      }
+      
+      // Pre-update validation: when invoiceStatus will be "submitted", require invoice fields
+      const finalInvoiceStatus = updateData.invoiceStatus || existingMilestone.invoiceStatus;
+      if (finalInvoiceStatus === "submitted") {
+        const finalNumber = updateData.invoiceNumber || existingMilestone.invoiceNumber;
+        const finalAmount = updateData.invoiceAmount || existingMilestone.invoiceAmount;
+        if (!finalNumber) {
+          return res.status(400).json({ error: "Número de factura es requerido al enviar factura" });
+        }
+        if (!finalAmount || Number(finalAmount) <= 0) {
+          return res.status(400).json({ error: "Monto de factura debe ser mayor a 0" });
+        }
+      }
+      
       const updated = await storage.updateProjectMilestone(req.params.id, updateData);
       if (!updated) {
-        return res.status(404).json({ error: "Hito no encontrado" });
+        return res.status(404).json({ error: "Error al actualizar hito" });
+      }
+
+      // Auto-create expense when payment milestone has invoiceStatus=submitted AND is completed
+      // Check using updated milestone state (not just PATCH payload)
+      const shouldCreateExpense = updated.isPaymentMilestone
+        && updated.invoiceStatus === "submitted"
+        && updated.status === "completado"
+        && updated.invoiceAmount
+        && Number(updated.invoiceAmount) > 0;
+      
+      if (shouldCreateExpense) {
+        try {
+          const project = await storage.getProject(req.params.projectId);
+          if (project) {
+            const existingExpenses = await storage.getExpenses({ buildingId: project.buildingId });
+            const alreadyHasExpense = existingExpenses.some(
+              e => e.sourceProjectId === req.params.projectId && e.sourceProjectMilestoneId === req.params.id
+            );
+            if (!alreadyHasExpense) {
+              const vendorName = updated.invoiceVendorName || project.contractorName || "";
+              await storage.createExpense({
+                buildingId: project.buildingId,
+                sourceType: "project",
+                sourceProjectId: project.id,
+                sourceProjectMilestoneId: updated.id,
+                description: `Proyecto ${project.name} - ${updated.name}`,
+                amount: String(updated.invoiceAmount),
+                vendorName: vendorName || null,
+                vendorId: updated.invoiceVendorId || null,
+                documentType: "factura",
+                documentNumber: updated.invoiceNumber || null,
+                documentKey: updated.invoiceDocumentKey || null,
+                paymentDate: new Date(),
+                validationStatus: "pendiente",
+                createdBy: (req.user as any).id,
+              });
+            }
+          }
+        } catch (expError) {
+          console.error("Error auto-creating expense from project milestone:", expError);
+        }
       }
       
       res.json(updated);
@@ -5856,6 +5922,82 @@ export async function registerRoutes(
       res.json(vendorList);
     } catch (error) {
       console.error("Error obteniendo proveedores:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/vendors", isAuthenticated, async (req, res) => {
+    try {
+      const { name, rut } = req.body;
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: "El nombre del proveedor es requerido" });
+      }
+      const vendor = await storage.findOrCreateVendor(name.trim());
+      res.json(vendor);
+    } catch (error) {
+      console.error("Error creando proveedor:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Project Vendors CRUD
+  app.get("/api/projects/:projectId/vendors", isAuthenticated, async (req, res) => {
+    try {
+      const pvs = await storage.getProjectVendors(req.params.projectId);
+      res.json(pvs);
+    } catch (error) {
+      console.error("Error getting project vendors:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/projects/:projectId/vendors", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any).claims?.sub || (req.user as any).id;
+      const profile = await storage.getUserProfile(userId);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden gestionar proveedores de proyecto" });
+      }
+      const data = {
+        ...req.body,
+        projectId: req.params.projectId,
+      };
+      if (data.vendorName) {
+        await storage.findOrCreateVendor(data.vendorName);
+      }
+      const pv = await storage.createProjectVendor(data);
+      res.json(pv);
+    } catch (error) {
+      console.error("Error creating project vendor:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.patch("/api/projects/:projectId/vendors/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden gestionar proveedores de proyecto" });
+      }
+      const updated = await storage.updateProjectVendor(req.params.id, req.body);
+      if (!updated) return res.status(404).json({ error: "Proveedor de proyecto no encontrado" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating project vendor:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/projects/:projectId/vendors/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden eliminar proveedores de proyecto" });
+      }
+      await storage.deleteProjectVendor(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting project vendor:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });

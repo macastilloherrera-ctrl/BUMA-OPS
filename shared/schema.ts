@@ -1078,7 +1078,8 @@ export const incomeStatusEnum = pgEnum("income_status", [
 
 export const expenseSourceTypeEnum = pgEnum("expense_source_type", [
   "ticket",
-  "recurrent"
+  "recurrent",
+  "project"
 ]);
 
 export const expensePaymentStatusEnum = pgEnum("expense_payment_status", [
@@ -1142,6 +1143,8 @@ export const expenses = pgTable("expenses", {
   buildingId: varchar("building_id").notNull(),
   sourceType: expenseSourceTypeEnum("source_type").notNull().default("ticket"),
   sourceTicketId: varchar("source_ticket_id"),
+  sourceProjectId: varchar("source_project_id"),
+  sourceProjectMilestoneId: varchar("source_project_milestone_id"),
   recurringTemplateId: varchar("recurring_template_id"),
   description: text("description").notNull(),
   amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
@@ -1421,6 +1424,15 @@ export const projectMilestones = pgTable("project_milestones", {
   observations: text("observations"),
   linkedVisitId: varchar("linked_visit_id"),
   isReview: boolean("is_review").default(false),
+  isPaymentMilestone: boolean("is_payment_milestone").default(false),
+  paymentAmount: decimal("payment_amount", { precision: 12, scale: 2 }),
+  paymentPercentage: decimal("payment_percentage", { precision: 5, scale: 2 }),
+  invoiceStatus: invoiceStatusEnum("invoice_status"),
+  invoiceNumber: varchar("invoice_number", { length: 100 }),
+  invoiceAmount: decimal("invoice_amount", { precision: 12, scale: 2 }),
+  invoiceDocumentKey: text("invoice_document_key"),
+  invoiceVendorId: varchar("invoice_vendor_id"),
+  invoiceVendorName: varchar("invoice_vendor_name", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1452,11 +1464,32 @@ export const projectUpdates = pgTable("project_updates", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const projectVendorRoleEnum = pgEnum("project_vendor_role", [
+  "contratista",
+  "ito",
+  "otro"
+]);
+
+export const projectVendors = pgTable("project_vendors", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull(),
+  vendorId: varchar("vendor_id"),
+  vendorName: varchar("vendor_name", { length: 255 }).notNull(),
+  role: projectVendorRoleEnum("role").notNull().default("contratista"),
+  approvedAmount: decimal("approved_amount", { precision: 12, scale: 2 }),
+  contactName: varchar("contact_name", { length: 255 }),
+  contactPhone: varchar("contact_phone", { length: 50 }),
+  contactEmail: varchar("contact_email", { length: 255 }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Project Schemas
 export const insertProjectSchema = createInsertSchema(projects).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertProjectMilestoneSchema = createInsertSchema(projectMilestones).omit({ id: true, createdAt: true });
 export const insertProjectDocumentSchema = createInsertSchema(projectDocuments).omit({ id: true, createdAt: true });
 export const insertProjectUpdateSchema = createInsertSchema(projectUpdates).omit({ id: true, createdAt: true });
+export const insertProjectVendorSchema = createInsertSchema(projectVendors).omit({ id: true, createdAt: true });
 
 // Project Types
 export type InsertProject = z.infer<typeof insertProjectSchema>;
@@ -1470,6 +1503,9 @@ export type ProjectDocument = typeof projectDocuments.$inferSelect;
 
 export type InsertProjectUpdate = z.infer<typeof insertProjectUpdateSchema>;
 export type ProjectUpdate = typeof projectUpdates.$inferSelect;
+
+export type InsertProjectVendor = z.infer<typeof insertProjectVendorSchema>;
+export type ProjectVendor = typeof projectVendors.$inferSelect;
 
 export type ProjectStatus = "planificado" | "en_ejecucion" | "pausado" | "completado" | "cancelado";
 export type ProjectAwardType = "asignacion_directa" | "licitacion";

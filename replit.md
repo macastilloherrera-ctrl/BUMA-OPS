@@ -20,6 +20,16 @@ Key architectural patterns include:
 - **Semaforo System**: Visual indicators (green, yellow, red) are used across various modules (Projects, Monthly Closing) to quickly convey status and urgency.
 - **Mobile-First for Executives, Desktop-First for Managers**: UI/UX design adapts to the primary use case of each user role.
 
+## Recent Changes
+- **Feb 2026 - Project Expense Management**: Added comprehensive project expense management with:
+  - Payment milestones on projects (isPaymentMilestone flag, payment amounts, invoice data fields)
+  - Multi-vendor support via project_vendors junction table (contratista/ito/otro roles)
+  - Vendor directory with search and auto-create functionality
+  - Auto-expense generation: When a payment milestone is completed with invoice data (invoiceStatus=submitted), an expense is automatically created with full traceability (Project > Milestone > Invoice > Expense)
+  - "Pagos" tab in ProjectDetail with financial summary, payment milestone management, and invoice registration
+  - "Proveedores" section in ProjectDetail with vendor management and autocomplete
+  - Expenses table extended with sourceType='project', sourceProjectId, sourceProjectMilestoneId for traceability
+
 ## External Dependencies
 - **PostgreSQL (Neon)**: Primary database for all application data.
 - **Replit Object Storage**: Used for storing image uploads, particularly from field visits.

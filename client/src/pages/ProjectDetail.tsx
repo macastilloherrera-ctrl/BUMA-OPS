@@ -42,12 +42,17 @@ import {
   Play
 } from "lucide-react";
 import { ObjectUploader } from "@/components/ObjectUploader";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import type { 
   Project, 
   ProjectMilestone, 
   ProjectDocument, 
   ProjectUpdate, 
-  Building 
+  ProjectVendor,
+  Vendor,
+  Building,
+  UserProfile
 } from "@shared/schema";
 
 type ProjectWithDetails = Project & {
@@ -55,6 +60,7 @@ type ProjectWithDetails = Project & {
   milestones: ProjectMilestone[];
   documents: ProjectDocument[];
   updates: ProjectUpdate[];
+  vendors: ProjectVendor[];
 };
 
 const statusLabels: Record<string, string> = {
@@ -121,6 +127,9 @@ export default function ProjectDetail() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { data: userProfile } = useQuery<UserProfile>({
+    queryKey: ["/api/user/profile"],
+  });
   
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
   const [reviewDialogType, setReviewDialogType] = useState<"complete" | "not-done" | "ticket">("complete");
@@ -135,8 +144,25 @@ export default function ProjectDetail() {
   const [newReviewDate, setNewReviewDate] = useState("");
   const [startingVisitId, setStartingVisitId] = useState<string | null>(null);
 
+  const [vendorDialogOpen, setVendorDialogOpen] = useState(false);
+  const [vendorForm, setVendorForm] = useState({ vendorName: "", role: "contratista", approvedAmount: "", contactName: "", contactPhone: "", contactEmail: "" });
+  const [vendorSearch, setVendorSearch] = useState("");
+  const [vendorDropdownOpen, setVendorDropdownOpen] = useState(false);
+  const [deleteVendorId, setDeleteVendorId] = useState<string | null>(null);
+
+  const [paymentMilestoneDialogOpen, setPaymentMilestoneDialogOpen] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({ name: "", paymentPercentage: "", paymentAmount: "", dueDate: "", invoiceVendorId: "", invoiceVendorName: "" });
+
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [selectedPaymentMilestone, setSelectedPaymentMilestone] = useState<ProjectMilestone | null>(null);
+  const [invoiceForm, setInvoiceForm] = useState({ invoiceStatus: "submitted" as string, invoiceNumber: "", invoiceAmount: "", invoiceDocumentKey: "", invoiceVendorName: "" });
+
   const { data: project, isLoading } = useQuery<ProjectWithDetails>({
     queryKey: ["/api/projects", id],
+  });
+
+  const { data: allVendors } = useQuery<Vendor[]>({
+    queryKey: ["/api/vendors"],
   });
 
   const updateProjectMutation = useMutation({
@@ -297,6 +323,91 @@ export default function ProjectDetail() {
     },
   });
 
+  const addVendorMutation = useMutation({
+    mutationFn: async (data: typeof vendorForm) => {
+      return apiRequest("POST", `/api/projects/${id}/vendors`, {
+        ...data,
+        approvedAmount: data.approvedAmount ? parseFloat(data.approvedAmount) : undefined,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
+      setVendorDialogOpen(false);
+      setVendorForm({ vendorName: "", role: "contratista", approvedAmount: "", contactName: "", contactPhone: "", contactEmail: "" });
+      toast({ title: "Proveedor agregado" });
+    },
+    onError: () => {
+      toast({ title: "Error al agregar proveedor", variant: "destructive" });
+    },
+  });
+
+  const deleteVendorMutation = useMutation({
+    mutationFn: async (vendorId: string) => {
+      return apiRequest("DELETE", `/api/projects/${id}/vendors/${vendorId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
+      setDeleteVendorId(null);
+      toast({ title: "Proveedor eliminado" });
+    },
+    onError: () => {
+      toast({ title: "Error al eliminar proveedor", variant: "destructive" });
+    },
+  });
+
+  const addPaymentMilestoneMutation = useMutation({
+    mutationFn: async (data: typeof paymentForm) => {
+      const milestoneCount = project?.milestones?.length || 0;
+      return apiRequest("POST", `/api/projects/${id}/milestones`, {
+        projectId: id,
+        name: data.name,
+        isPaymentMilestone: true,
+        paymentPercentage: data.paymentPercentage ? parseFloat(data.paymentPercentage) : undefined,
+        paymentAmount: data.paymentAmount ? parseFloat(data.paymentAmount) : undefined,
+        dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
+        invoiceVendorId: data.invoiceVendorId || undefined,
+        invoiceVendorName: data.invoiceVendorName || undefined,
+        orderIndex: milestoneCount,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
+      setPaymentMilestoneDialogOpen(false);
+      setPaymentForm({ name: "", paymentPercentage: "", paymentAmount: "", dueDate: "", invoiceVendorId: "", invoiceVendorName: "" });
+      toast({ title: "Hito de pago agregado" });
+    },
+    onError: () => {
+      toast({ title: "Error al agregar hito de pago", variant: "destructive" });
+    },
+  });
+
+  const updateInvoiceMutation = useMutation({
+    mutationFn: async ({ milestoneId, data }: { milestoneId: string; data: typeof invoiceForm }) => {
+      const payload: Record<string, any> = {
+        invoiceStatus: data.invoiceStatus,
+        invoiceNumber: data.invoiceNumber || undefined,
+        invoiceAmount: data.invoiceAmount ? parseFloat(data.invoiceAmount) : undefined,
+        invoiceDocumentKey: data.invoiceDocumentKey || undefined,
+        invoiceVendorName: data.invoiceVendorName || undefined,
+      };
+      if (data.invoiceStatus === "submitted") {
+        payload.status = "completado";
+      }
+      return apiRequest("PATCH", `/api/projects/${id}/milestones/${milestoneId}`, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/projects", id] });
+      setInvoiceDialogOpen(false);
+      setSelectedPaymentMilestone(null);
+      setInvoiceForm({ invoiceStatus: "submitted", invoiceNumber: "", invoiceAmount: "", invoiceDocumentKey: "", invoiceVendorName: "" });
+      toast({ title: "Factura registrada exitosamente" });
+    },
+    onError: (error: any) => {
+      const message = error?.message || "Error al registrar factura";
+      toast({ title: message, variant: "destructive" });
+    },
+  });
+
   const handleDownloadDocument = async (doc: ProjectDocument) => {
     try {
       const objectPath = doc.fileUrl.startsWith("/objects/") ? doc.fileUrl : `/objects/${doc.fileUrl}`;
@@ -316,7 +427,7 @@ export default function ProjectDetail() {
     }
   };
 
-  const isManager = (user as any)?.role && ["super_admin", "gerente_general", "gerente_operaciones", "gerente_comercial"].includes((user as any).role);
+  const isManager = userProfile?.role && ["super_admin", "gerente_general", "gerente_operaciones", "gerente_comercial"].includes(userProfile.role);
 
   const getNextReviewNumber = () => {
     if (!project) return 1;
@@ -457,6 +568,66 @@ export default function ProjectDetail() {
         </Card>
       )}
 
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
+          <CardTitle>Proveedores del Proyecto</CardTitle>
+          {isManager && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setVendorForm({ vendorName: "", role: "contratista", approvedAmount: "", contactName: "", contactPhone: "", contactEmail: "" });
+                setVendorSearch("");
+                setVendorDialogOpen(true);
+              }}
+              data-testid="button-add-vendor"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Agregar Proveedor
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          {(!project.vendors || project.vendors.length === 0) ? (
+            <p className="text-muted-foreground text-center py-6">No hay proveedores asignados</p>
+          ) : (
+            <div className="space-y-3">
+              {project.vendors.map((v) => (
+                <div key={v.id} className="flex items-center gap-4 p-3 border rounded-lg" data-testid={`vendor-${v.id}`}>
+                  <Users className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium" data-testid={`text-vendor-name-${v.id}`}>{v.vendorName}</p>
+                      <Badge variant="outline" className="no-default-hover-elevate no-default-active-elevate">
+                        {v.role === "contratista" ? "Contratista" : v.role === "ito" ? "ITO" : "Otro"}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap gap-4 mt-1 text-sm text-muted-foreground">
+                      {v.approvedAmount && (
+                        <span data-testid={`text-vendor-amount-${v.id}`}>{formatCurrency(v.approvedAmount)}</span>
+                      )}
+                      {v.contactName && <span>{v.contactName}</span>}
+                      {v.contactPhone && <span>{v.contactPhone}</span>}
+                    </div>
+                  </div>
+                  {isManager && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive shrink-0"
+                      onClick={() => setDeleteVendorId(v.id)}
+                      data-testid={`button-delete-vendor-${v.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Tabs defaultValue="milestones">
         <TabsList>
           <TabsTrigger value="milestones" data-testid="tab-milestones">
@@ -464,6 +635,9 @@ export default function ProjectDetail() {
           </TabsTrigger>
           <TabsTrigger value="documents" data-testid="tab-documents">
             Cotizaciones y Documentos ({project.documents.length})
+          </TabsTrigger>
+          <TabsTrigger value="payments" data-testid="tab-payments">
+            Pagos ({project.milestones.filter(m => m.isPaymentMilestone).length})
           </TabsTrigger>
         </TabsList>
 
@@ -990,6 +1164,137 @@ export default function ProjectDetail() {
             </CardContent>
           </Card>
         </TabsContent>
+        <TabsContent value="payments" className="mt-4 space-y-4">
+          {(() => {
+            const paymentMilestones = project.milestones.filter(m => m.isPaymentMilestone);
+            const totalBudget = project.approvedBudget ? parseFloat(project.approvedBudget as string) : 0;
+            const totalInvoiced = paymentMilestones
+              .filter(m => m.invoiceStatus === "submitted" && m.invoiceAmount)
+              .reduce((sum, m) => sum + parseFloat(m.invoiceAmount as string), 0);
+            const pendingBalance = totalBudget - totalInvoiced;
+
+            return (
+              <>
+                <div className="grid md:grid-cols-3 gap-4">
+                  <Card>
+                    <CardContent className="p-4">
+                      <p className="text-sm text-muted-foreground">Presupuesto Aprobado</p>
+                      <p className="text-xl font-bold" data-testid="text-total-budget">{formatCurrency(totalBudget)}</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <p className="text-sm text-muted-foreground">Total Facturado</p>
+                      <p className="text-xl font-bold" data-testid="text-total-invoiced">{formatCurrency(totalInvoiced)}</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <p className="text-sm text-muted-foreground">Saldo Pendiente</p>
+                      <p className="text-xl font-bold" data-testid="text-pending-balance">{formatCurrency(pendingBalance)}</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
+                    <CardTitle>Hitos de Pago</CardTitle>
+                    {isManager && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setPaymentForm({ name: "", paymentPercentage: "", paymentAmount: "", dueDate: "", invoiceVendorId: "", invoiceVendorName: "" });
+                          setPaymentMilestoneDialogOpen(true);
+                        }}
+                        data-testid="button-add-payment-milestone"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Agregar Hito de Pago
+                      </Button>
+                    )}
+                  </CardHeader>
+                  <CardContent>
+                    {paymentMilestones.length === 0 ? (
+                      <div className="text-center py-6">
+                        <DollarSign className="h-10 w-10 mx-auto text-muted-foreground mb-2" />
+                        <p className="text-muted-foreground">No hay hitos de pago definidos</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {paymentMilestones.map((pm) => (
+                          <div key={pm.id} className="flex items-start gap-4 p-4 border rounded-lg" data-testid={`payment-milestone-${pm.id}`}>
+                            <DollarSign className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                <h4 className="font-medium" data-testid={`text-payment-name-${pm.id}`}>{pm.name}</h4>
+                                <Badge
+                                  variant={pm.invoiceStatus === "submitted" ? "default" : "outline"}
+                                  className={`no-default-hover-elevate no-default-active-elevate ${
+                                    pm.invoiceStatus === "submitted" ? "bg-green-100 text-green-800 border-green-300 dark:bg-green-900 dark:text-green-300 dark:border-green-700" :
+                                    pm.invoiceStatus === "pending" ? "bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900 dark:text-yellow-300 dark:border-yellow-700" :
+                                    ""
+                                  }`}
+                                >
+                                  {pm.invoiceStatus === "submitted" ? "Facturado" : pm.invoiceStatus === "pending" ? "Factura Pendiente" : milestoneStatusLabels[pm.status] || "Pendiente"}
+                                </Badge>
+                              </div>
+                              <div className="flex flex-wrap gap-4 mt-1 text-sm text-muted-foreground">
+                                {pm.paymentAmount && (
+                                  <span data-testid={`text-payment-amount-${pm.id}`}>Monto: {formatCurrency(pm.paymentAmount)}</span>
+                                )}
+                                {pm.paymentPercentage && (
+                                  <span>({pm.paymentPercentage}%)</span>
+                                )}
+                                {pm.invoiceVendorName && (
+                                  <span>Proveedor: {pm.invoiceVendorName}</span>
+                                )}
+                                {pm.dueDate && (
+                                  <span className="flex items-center gap-1">
+                                    <Calendar className="h-3 w-3" />
+                                    {formatDate(pm.dueDate)}
+                                  </span>
+                                )}
+                              </div>
+                              {pm.invoiceStatus === "submitted" && pm.invoiceNumber && (
+                                <p className="text-sm mt-1 text-muted-foreground">
+                                  Factura #{pm.invoiceNumber} - {formatCurrency(pm.invoiceAmount)}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              {pm.invoiceStatus !== "submitted" && isManager && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setSelectedPaymentMilestone(pm);
+                                    setInvoiceForm({
+                                      invoiceStatus: "submitted",
+                                      invoiceNumber: "",
+                                      invoiceAmount: pm.paymentAmount ? String(pm.paymentAmount) : "",
+                                      invoiceDocumentKey: "",
+                                      invoiceVendorName: pm.invoiceVendorName || "",
+                                    });
+                                    setInvoiceDialogOpen(true);
+                                  }}
+                                  data-testid={`button-register-invoice-${pm.id}`}
+                                >
+                                  <FileText className="h-4 w-4 mr-1" />
+                                  Registrar Factura
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            );
+          })()}
+        </TabsContent>
       </Tabs>
 
       <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
@@ -1169,6 +1474,365 @@ export default function ProjectDetail() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={vendorDialogOpen} onOpenChange={setVendorDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Agregar Proveedor</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="relative">
+              <label className="text-sm font-medium">Nombre del Proveedor</label>
+              <Input
+                value={vendorForm.vendorName}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setVendorForm({ ...vendorForm, vendorName: val });
+                  setVendorSearch(val);
+                  setVendorDropdownOpen(val.length > 0);
+                }}
+                onFocus={() => {
+                  if (vendorForm.vendorName.length > 0) setVendorDropdownOpen(true);
+                }}
+                onBlur={() => {
+                  setTimeout(() => setVendorDropdownOpen(false), 200);
+                }}
+                placeholder="Buscar o crear proveedor..."
+                data-testid="input-vendor-name"
+              />
+              {vendorDropdownOpen && allVendors && (() => {
+                const filtered = allVendors.filter(v => v.name.toLowerCase().includes(vendorSearch.toLowerCase()));
+                if (filtered.length === 0) return null;
+                return (
+                  <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-40 overflow-y-auto">
+                    {filtered.map((v) => (
+                      <div
+                        key={v.id}
+                        className="px-3 py-2 text-sm cursor-pointer hover-elevate"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setVendorForm({ ...vendorForm, vendorName: v.name });
+                          setVendorDropdownOpen(false);
+                        }}
+                        data-testid={`vendor-option-${v.id}`}
+                      >
+                        {v.name}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+            <div>
+              <label className="text-sm font-medium">Rol</label>
+              <Select
+                value={vendorForm.role}
+                onValueChange={(v) => setVendorForm({ ...vendorForm, role: v })}
+              >
+                <SelectTrigger data-testid="select-vendor-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="contratista">Contratista</SelectItem>
+                  <SelectItem value="ito">ITO</SelectItem>
+                  <SelectItem value="otro">Otro</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium">Monto Aprobado</label>
+              <Input
+                type="number"
+                value={vendorForm.approvedAmount}
+                onChange={(e) => setVendorForm({ ...vendorForm, approvedAmount: e.target.value })}
+                placeholder="0"
+                data-testid="input-vendor-amount"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Nombre de Contacto (opcional)</label>
+              <Input
+                value={vendorForm.contactName}
+                onChange={(e) => setVendorForm({ ...vendorForm, contactName: e.target.value })}
+                placeholder="Nombre del contacto"
+                data-testid="input-vendor-contact-name"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Teléfono de Contacto (opcional)</label>
+              <Input
+                value={vendorForm.contactPhone}
+                onChange={(e) => setVendorForm({ ...vendorForm, contactPhone: e.target.value })}
+                placeholder="Teléfono"
+                data-testid="input-vendor-contact-phone"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Email de Contacto (opcional)</label>
+              <Input
+                type="email"
+                value={vendorForm.contactEmail}
+                onChange={(e) => setVendorForm({ ...vendorForm, contactEmail: e.target.value })}
+                placeholder="Email"
+                data-testid="input-vendor-contact-email"
+              />
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" onClick={() => setVendorDialogOpen(false)} className="flex-1">
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => addVendorMutation.mutate(vendorForm)}
+                disabled={!vendorForm.vendorName || addVendorMutation.isPending}
+                className="flex-1"
+                data-testid="button-confirm-add-vendor"
+              >
+                {addVendorMutation.isPending ? "Agregando..." : "Agregar Proveedor"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteVendorId} onOpenChange={(open) => { if (!open) setDeleteVendorId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar Eliminación</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-muted-foreground">
+              ¿Está seguro de que desea eliminar este proveedor del proyecto?
+            </p>
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" onClick={() => setDeleteVendorId(null)} className="flex-1">
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  if (deleteVendorId) deleteVendorMutation.mutate(deleteVendorId);
+                }}
+                disabled={deleteVendorMutation.isPending}
+                className="flex-1"
+                data-testid="button-confirm-delete-vendor"
+              >
+                {deleteVendorMutation.isPending ? "Eliminando..." : "Eliminar"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={paymentMilestoneDialogOpen} onOpenChange={setPaymentMilestoneDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Agregar Hito de Pago</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Nombre</label>
+              <Input
+                value={paymentForm.name}
+                onChange={(e) => setPaymentForm({ ...paymentForm, name: e.target.value })}
+                placeholder='Ej: "Anticipo 30%", "Avance 40%"'
+                data-testid="input-payment-name"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Porcentaje (%)</label>
+              <Input
+                type="number"
+                value={paymentForm.paymentPercentage}
+                onChange={(e) => setPaymentForm({ ...paymentForm, paymentPercentage: e.target.value })}
+                placeholder="Opcional"
+                data-testid="input-payment-percentage"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Monto</label>
+              <Input
+                type="number"
+                value={paymentForm.paymentAmount}
+                onChange={(e) => setPaymentForm({ ...paymentForm, paymentAmount: e.target.value })}
+                placeholder="0"
+                data-testid="input-payment-amount"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Fecha de Vencimiento</label>
+              <Input
+                type="date"
+                value={paymentForm.dueDate}
+                onChange={(e) => setPaymentForm({ ...paymentForm, dueDate: e.target.value })}
+                data-testid="input-payment-due-date"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Proveedor</label>
+              <Select
+                value={paymentForm.invoiceVendorId || "_none"}
+                onValueChange={(v) => {
+                  if (v === "_none") {
+                    setPaymentForm({ ...paymentForm, invoiceVendorId: "", invoiceVendorName: "" });
+                  } else {
+                    const vendor = project.vendors?.find(pv => pv.id === v);
+                    setPaymentForm({ ...paymentForm, invoiceVendorId: v, invoiceVendorName: vendor?.vendorName || "" });
+                  }
+                }}
+              >
+                <SelectTrigger data-testid="select-payment-vendor">
+                  <SelectValue placeholder="Seleccionar proveedor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_none">Sin proveedor</SelectItem>
+                  {(project.vendors || []).map((v) => (
+                    <SelectItem key={v.id} value={v.id}>{v.vendorName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button variant="outline" onClick={() => setPaymentMilestoneDialogOpen(false)} className="flex-1">
+                Cancelar
+              </Button>
+              <Button
+                onClick={() => addPaymentMilestoneMutation.mutate(paymentForm)}
+                disabled={!paymentForm.name || addPaymentMilestoneMutation.isPending}
+                className="flex-1"
+                data-testid="button-confirm-add-payment"
+              >
+                {addPaymentMilestoneMutation.isPending ? "Agregando..." : "Agregar Hito"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={invoiceDialogOpen} onOpenChange={setInvoiceDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Registrar Factura</DialogTitle>
+          </DialogHeader>
+          {selectedPaymentMilestone && (
+            <div className="space-y-4">
+              <div className="p-3 rounded-md bg-muted/50">
+                <p className="text-sm font-medium">{selectedPaymentMilestone.name}</p>
+                {selectedPaymentMilestone.paymentAmount && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Monto esperado: {formatCurrency(selectedPaymentMilestone.paymentAmount)}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="text-sm font-medium">Estado de Factura</label>
+                <RadioGroup
+                  value={invoiceForm.invoiceStatus}
+                  onValueChange={(v) => setInvoiceForm({ ...invoiceForm, invoiceStatus: v })}
+                  className="mt-2"
+                  data-testid="radio-invoice-status"
+                >
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="submitted" id="invoice-submitted" />
+                    <Label htmlFor="invoice-submitted">Factura Emitida</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="pending" id="invoice-pending" />
+                    <Label htmlFor="invoice-pending">Factura Pendiente</Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="none" id="invoice-none" />
+                    <Label htmlFor="invoice-none">Sin Factura</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+              {invoiceForm.invoiceStatus === "submitted" && (
+                <>
+                  <div>
+                    <label className="text-sm font-medium">Número de Factura</label>
+                    <Input
+                      value={invoiceForm.invoiceNumber}
+                      onChange={(e) => setInvoiceForm({ ...invoiceForm, invoiceNumber: e.target.value })}
+                      placeholder="Ej: FAC-001"
+                      data-testid="input-invoice-number"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Monto Factura</label>
+                    <Input
+                      type="number"
+                      value={invoiceForm.invoiceAmount}
+                      onChange={(e) => setInvoiceForm({ ...invoiceForm, invoiceAmount: e.target.value })}
+                      placeholder="0"
+                      data-testid="input-invoice-amount"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Documento Factura</label>
+                    <ObjectUploader
+                      maxNumberOfFiles={1}
+                      maxFileSize={20 * 1024 * 1024}
+                      onGetUploadParameters={async (file) => {
+                        const res = await fetch("/api/uploads/request-url", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            name: file.name,
+                            size: file.size,
+                            contentType: file.type,
+                          }),
+                        });
+                        if (!res.ok) throw new Error("Failed to get upload URL");
+                        const { uploadURL, objectPath } = await res.json();
+                        (file.meta as Record<string, unknown>).objectPath = objectPath;
+                        return {
+                          method: "PUT" as const,
+                          url: uploadURL,
+                          headers: { "Content-Type": file.type || "application/octet-stream" },
+                        };
+                      }}
+                      onComplete={(result) => {
+                        const file = result.successful?.[0];
+                        if (file?.meta?.objectPath) {
+                          setInvoiceForm({ ...invoiceForm, invoiceDocumentKey: file.meta.objectPath as string });
+                        }
+                      }}
+                      buttonClassName=""
+                    >
+                      <Upload className="h-4 w-4 mr-2" />
+                      {invoiceForm.invoiceDocumentKey ? "Archivo Subido" : "Subir Factura"}
+                    </ObjectUploader>
+                    {invoiceForm.invoiceDocumentKey && (
+                      <p className="text-sm text-green-600 dark:text-green-400 mt-1">Archivo cargado correctamente</p>
+                    )}
+                  </div>
+                </>
+              )}
+              <div>
+                <label className="text-sm font-medium">Proveedor</label>
+                <Input
+                  value={invoiceForm.invoiceVendorName}
+                  onChange={(e) => setInvoiceForm({ ...invoiceForm, invoiceVendorName: e.target.value })}
+                  placeholder="Nombre del proveedor"
+                  data-testid="input-invoice-vendor-name"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button variant="outline" onClick={() => setInvoiceDialogOpen(false)} className="flex-1">
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={() => updateInvoiceMutation.mutate({ milestoneId: selectedPaymentMilestone.id, data: invoiceForm })}
+                  disabled={updateInvoiceMutation.isPending}
+                  className="flex-1"
+                  data-testid="button-confirm-invoice"
+                >
+                  {updateInvoiceMutation.isPending ? "Guardando..." : "Registrar Factura"}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

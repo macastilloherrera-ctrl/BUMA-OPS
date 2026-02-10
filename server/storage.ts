@@ -37,6 +37,7 @@ import {
   projectMilestones,
   projectDocuments,
   projectUpdates,
+  projectVendors,
   type User,
   type UserProfile,
   type InsertUserProfile,
@@ -100,6 +101,8 @@ import {
   type InsertProjectDocument,
   type ProjectUpdate,
   type InsertProjectUpdate,
+  type ProjectVendor,
+  type InsertProjectVendor,
   type Income,
   type InsertIncome,
   type Expense,
@@ -319,6 +322,12 @@ export interface IStorage {
   createProjectMilestone(milestone: InsertProjectMilestone): Promise<ProjectMilestone>;
   updateProjectMilestone(id: string, data: Partial<InsertProjectMilestone>): Promise<ProjectMilestone | undefined>;
   deleteProjectMilestone(id: string): Promise<boolean>;
+
+  // Project Vendors
+  getProjectVendors(projectId: string): Promise<ProjectVendor[]>;
+  createProjectVendor(vendor: InsertProjectVendor): Promise<ProjectVendor>;
+  updateProjectVendor(id: string, data: Partial<InsertProjectVendor>): Promise<ProjectVendor | undefined>;
+  deleteProjectVendor(id: string): Promise<boolean>;
 
   // Project Documents
   getProjectDocuments(projectId: string): Promise<ProjectDocument[]>;
@@ -1316,6 +1325,31 @@ export class DatabaseStorage implements IStorage {
 
   async deleteProjectMilestone(id: string): Promise<boolean> {
     await db.delete(projectMilestones).where(eq(projectMilestones.id, id));
+    return true;
+  }
+
+  // Project Vendors
+  async getProjectVendors(projectId: string): Promise<ProjectVendor[]> {
+    return db.select().from(projectVendors)
+      .where(eq(projectVendors.projectId, projectId))
+      .orderBy(projectVendors.createdAt);
+  }
+
+  async createProjectVendor(vendor: InsertProjectVendor): Promise<ProjectVendor> {
+    const [newVendor] = await db.insert(projectVendors).values(vendor).returning();
+    return newVendor;
+  }
+
+  async updateProjectVendor(id: string, data: Partial<InsertProjectVendor>): Promise<ProjectVendor | undefined> {
+    const [updated] = await db.update(projectVendors)
+      .set(data)
+      .where(eq(projectVendors.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteProjectVendor(id: string): Promise<boolean> {
+    await db.delete(projectVendors).where(eq(projectVendors.id, id));
     return true;
   }
 
