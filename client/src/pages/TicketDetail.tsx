@@ -1170,6 +1170,27 @@ Equipo BUMA Property Management
                               Indica el estado de la facturación para este trabajo.
                             </DialogDescription>
                           </DialogHeader>
+                          <div className="space-y-2 rounded-md bg-muted p-3">
+                            <div className="flex items-center gap-2">
+                              <Tag className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm text-muted-foreground">Ticket:</span>
+                              <span className="text-sm font-medium" data-testid="text-completion-ticket-id">{ticket.id.substring(0, 8).toUpperCase()}</span>
+                            </div>
+                            {(ticket.maintainerName || ticket.maintainerId) && (
+                              <div className="flex items-center gap-2">
+                                <Wrench className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-sm text-muted-foreground">Proveedor:</span>
+                                <span className="text-sm font-medium" data-testid="text-completion-vendor">
+                                  {ticket.maintainerName || maintainers?.find(m => m.id === ticket.maintainerId)?.companyName || "No identificado"}
+                                </span>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2">
+                              <Building2 className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm text-muted-foreground">Edificio:</span>
+                              <span className="text-sm font-medium" data-testid="text-completion-building">{ticket.building?.name || "—"}</span>
+                            </div>
+                          </div>
                           <Form {...workCompletionForm}>
                             <form
                               onSubmit={workCompletionForm.handleSubmit((data) => 

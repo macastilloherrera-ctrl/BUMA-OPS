@@ -1904,6 +1904,35 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Ticket no encontrado" });
       }
       
+      // Auto-create expense when work is completed with invoice data
+      if (patchBody.status === "trabajo_completado" && patchBody.invoiceStatus === "submitted") {
+        try {
+          let vendorName = "";
+          if (existingTicket.maintainerId) {
+            const maintainer = await storage.getMaintainer(existingTicket.maintainerId);
+            if (maintainer) vendorName = maintainer.companyName;
+          }
+          const invoiceAmt = patchBody.invoiceAmount ? String(patchBody.invoiceAmount) : "0";
+          await storage.createExpense({
+            buildingId: existingTicket.buildingId,
+            sourceType: "ticket",
+            sourceTicketId: existingTicket.id,
+            description: `Ticket ${existingTicket.id.substring(0, 8).toUpperCase()} - ${existingTicket.description?.substring(0, 100) || "Trabajo completado"}`,
+            amount: invoiceAmt,
+            vendorName: vendorName || null,
+            vendorId: existingTicket.maintainerId || null,
+            documentType: "factura",
+            documentNumber: patchBody.invoiceNumber || null,
+            documentKey: patchBody.invoiceDocumentKey || null,
+            paymentDate: new Date(),
+            validationStatus: "pendiente",
+            createdBy: req.user!.id,
+          });
+        } catch (expError) {
+          console.error("Error auto-creating expense from ticket:", expError);
+        }
+      }
+      
       // Create notification if assigned executive changed
       if (data.assignedExecutiveId && 
           data.assignedExecutiveId !== existingTicket.assignedExecutiveId &&
