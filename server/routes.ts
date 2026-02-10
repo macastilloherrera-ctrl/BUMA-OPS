@@ -34,6 +34,7 @@ import {
   insertIncomeSchema,
   insertExpenseSchema,
   insertRecurringExpenseTemplateSchema,
+  insertMonthlyClosingCycleSchema,
   userProfiles,
   type UserRole,
   type UserProfile,
@@ -77,7 +78,7 @@ function isConserjeriaRole(profile: UserProfile | null): boolean {
 }
 
 function canAccessFinancial(profile: UserProfile | null): boolean {
-  return !!profile && ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas"].includes(profile.role);
+  return !!profile && ["gerente_general", "gerente_comercial", "gerente_finanzas"].includes(profile.role);
 }
 
 function canExportFinancial(profile: UserProfile | null): boolean {
@@ -6571,6 +6572,259 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting payer directory entry:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ==========================================
+  // Monthly Closing Cycles CRUD
+  // ==========================================
+
+  app.get("/api/monthly-closing-cycles/dashboard", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { year } = req.query;
+      if (!year) {
+        return res.status(400).json({ error: "El parámetro year es requerido" });
+      }
+
+      const cycles = await storage.getMonthlyClosingCycles({ year: parseInt(year as string) });
+      const buildings = await storage.getBuildings();
+      const buildingMap = new Map(buildings.map(b => [b.id, b]));
+
+      const cyclesWithBuilding = cycles.map(cycle => ({
+        ...cycle,
+        building: buildingMap.get(cycle.buildingId) || null,
+      }));
+
+      res.json(cyclesWithBuilding);
+    } catch (error) {
+      console.error("Error getting closing cycles dashboard:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/monthly-closing-cycles", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const filters: { buildingId?: string; month?: number; year?: number; status?: string } = {};
+      if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
+      if (req.query.month) filters.month = parseInt(req.query.month as string);
+      if (req.query.year) filters.year = parseInt(req.query.year as string);
+      if (req.query.status) filters.status = req.query.status as string;
+
+      const cycles = await storage.getMonthlyClosingCycles(filters);
+      res.json(cycles);
+    } catch (error) {
+      console.error("Error getting closing cycles:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/monthly-closing-cycles/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const cycle = await storage.getMonthlyClosingCycle(req.params.id);
+      if (!cycle) {
+        return res.status(404).json({ error: "Ciclo no encontrado" });
+      }
+
+      const checklistItems = await storage.getMonthlyClosingChecklistItems(cycle.id);
+      res.json({ ...cycle, checklistItems });
+    } catch (error) {
+      console.error("Error getting closing cycle:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/monthly-closing-cycles", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!profile || !["gerente_general", "gerente_comercial"].includes(profile.role)) {
+        return res.status(403).json({ error: "Solo gerente general o comercial pueden crear ciclos" });
+      }
+
+      const data = insertMonthlyClosingCycleSchema.parse({
+        ...req.body,
+        createdBy: req.user!.id,
+      });
+
+      const existing = await storage.getMonthlyClosingCycleByBuildingAndPeriod(data.buildingId, data.month, data.year);
+      if (existing) {
+        return res.status(409).json({ error: "Ya existe un ciclo para este edificio y período" });
+      }
+
+      const cycle = await storage.createMonthlyClosingCycle(data);
+
+      const defaultItems = [
+        { label: "Egresos recibidos completos", sortOrder: 1 },
+        { label: "Egresos validados por comercial", sortOrder: 2 },
+        { label: "Ingresos conciliados completos", sortOrder: 3 },
+        { label: "Export listo", sortOrder: 4 },
+        { label: "Pre-gasto común enviado a comité", sortOrder: 5 },
+        { label: "Ajustes solicitados por comité", sortOrder: 6 },
+        { label: "Emisión final confirmada", sortOrder: 7 },
+      ];
+
+      for (const item of defaultItems) {
+        await storage.createMonthlyClosingChecklistItem({
+          cycleId: cycle.id,
+          label: item.label,
+          sortOrder: item.sortOrder,
+          completed: false,
+        });
+      }
+
+      const checklistItems = await storage.getMonthlyClosingChecklistItems(cycle.id);
+      res.status(201).json({ ...cycle, checklistItems });
+    } catch (error) {
+      console.error("Error creating closing cycle:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.patch("/api/monthly-closing-cycles/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!profile || !["gerente_general", "gerente_comercial"].includes(profile.role)) {
+        return res.status(403).json({ error: "Solo gerente general o comercial pueden modificar ciclos" });
+      }
+
+      const cycle = await storage.getMonthlyClosingCycle(req.params.id);
+      if (!cycle) {
+        return res.status(404).json({ error: "Ciclo no encontrado" });
+      }
+
+      const updated = await storage.updateMonthlyClosingCycle(req.params.id, req.body);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating closing cycle:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/monthly-closing-cycles/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!profile || !["gerente_general", "gerente_comercial"].includes(profile.role)) {
+        return res.status(403).json({ error: "Solo gerente general o comercial pueden eliminar ciclos" });
+      }
+
+      const cycle = await storage.getMonthlyClosingCycle(req.params.id);
+      if (!cycle) {
+        return res.status(404).json({ error: "Ciclo no encontrado" });
+      }
+
+      const checklistItems = await storage.getMonthlyClosingChecklistItems(cycle.id);
+      for (const item of checklistItems) {
+        await storage.deleteMonthlyClosingChecklistItem(item.id);
+      }
+
+      await storage.deleteMonthlyClosingCycle(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting closing cycle:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.patch("/api/monthly-closing-cycles/:id/checklist/:itemId", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const cycle = await storage.getMonthlyClosingCycle(req.params.id);
+      if (!cycle) {
+        return res.status(404).json({ error: "Ciclo no encontrado" });
+      }
+
+      const updated = await storage.updateMonthlyClosingChecklistItem(req.params.itemId, req.body);
+      if (!updated) {
+        return res.status(404).json({ error: "Item de checklist no encontrado" });
+      }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating checklist item:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ==========================================
+  // Consulta Operacional
+  // ==========================================
+
+  app.get("/api/consulta-operacional", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (isConserjeriaRole(profile)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { buildingId, month, year } = req.query;
+      if (!month || !year) {
+        return res.status(400).json({ error: "Los parámetros month y year son requeridos" });
+      }
+
+      const monthNum = parseInt(month as string);
+      const yearNum = parseInt(year as string);
+
+      let buildingsToProcess = await storage.getBuildings();
+      if (buildingId) {
+        buildingsToProcess = buildingsToProcess.filter(b => b.id === buildingId);
+      }
+
+      const results = await Promise.all(buildingsToProcess.map(async (building) => {
+        const cycle = await storage.getMonthlyClosingCycleByBuildingAndPeriod(building.id, monthNum, yearNum);
+
+        const identifiedTxns = await storage.getBankTransactions({ buildingId: building.id, status: "identified", month: monthNum, year: yearNum });
+        const pendingTxns = await storage.getBankTransactions({ buildingId: building.id, status: "pending", month: monthNum, year: yearNum });
+        const suggestedTxns = await storage.getBankTransactions({ buildingId: building.id, status: "suggested", month: monthNum, year: yearNum });
+
+        let lastReconciliationDate: string | null = null;
+        if (identifiedTxns.length > 0) {
+          const dates = identifiedTxns
+            .map(t => t.updatedAt)
+            .filter((d): d is Date => d !== null);
+          if (dates.length > 0) {
+            lastReconciliationDate = new Date(Math.max(...dates.map(d => d.getTime()))).toISOString();
+          }
+        }
+
+        const allExpenses = await storage.getExpenses({ buildingId: building.id, month: monthNum, year: yearNum });
+        const validatedExpenses = allExpenses.filter(e => e.operationallyValidated === true);
+        const postponedExpenses = await storage.getExpenses({ buildingId: building.id, month: monthNum, year: yearNum, inclusionStatus: "postponed" });
+
+        return {
+          buildingId: building.id,
+          buildingName: building.name,
+          closingCycleStatus: cycle?.status || null,
+          depositsReconciled: identifiedTxns.length,
+          depositsPending: pendingTxns.length + suggestedTxns.length,
+          lastReconciliationDate,
+          expensesReceived: allExpenses.length,
+          expensesValidated: validatedExpenses.length,
+          expensesPostponed: postponedExpenses.length,
+        };
+      }));
+
+      res.json(results);
+    } catch (error) {
+      console.error("Error getting consulta operacional:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });

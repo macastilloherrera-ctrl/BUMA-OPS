@@ -58,6 +58,8 @@ import Ingresos from "@/pages/Ingresos";
 import ConciliacionBancaria from "@/pages/ConciliacionBancaria";
 import Egresos from "@/pages/Egresos";
 import RecurringExpenses from "@/pages/RecurringExpenses";
+import CierreMensual from "@/pages/CierreMensual";
+import ConsultaOperacional from "@/pages/ConsultaOperacional";
 
 function LoadingScreen() {
   return (
@@ -112,6 +114,8 @@ function AuthenticatedApp() {
   const isGeneralManager = userRole === "gerente_general";
   const isFinance = isFinanceRole(userRole);
   const isManager = isManagerRole(userRole);
+  const canAccessFinancial = ["gerente_general", "gerente_comercial", "gerente_finanzas"].includes(userRole);
+  const isOperations = userRole === "gerente_operaciones" || userRole === "ejecutivo_operaciones";
   const roleHome = getRoleHome(userRole);
 
   const sidebarStyle = {
@@ -189,13 +193,18 @@ function AuthenticatedApp() {
                 <Route path="/proyectos/nuevo" component={NewProject} />
                 <Route path="/proyectos/:id" component={ProjectDetail} />
                 
-                {(isManager || isFinance) && (
+                {canAccessFinancial && (
                   <>
+                    <Route path="/cierre-mensual" component={CierreMensual} />
                     <Route path="/conciliacion-bancaria" component={ConciliacionBancaria} />
                     <Route path="/ingresos" component={Ingresos} />
                     <Route path="/egresos" component={Egresos} />
                     <Route path="/consumos-recurrentes" component={RecurringExpenses} />
                   </>
+                )}
+
+                {(isOperations || isManager) && (
+                  <Route path="/consulta-operacional" component={ConsultaOperacional} />
                 )}
 
                 {isManager && (

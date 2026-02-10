@@ -62,6 +62,7 @@ const managerNavItems = [
       { path: "/tickets", label: "Todos los Tickets", icon: Ticket },
       { path: "/tickets?mine=true", label: "Mis Tickets", icon: ClipboardList },
       { path: "/visitas", label: "Visitas", icon: Calendar },
+      { path: "/consulta-operacional", label: "Consulta Operacional", icon: BarChart3 },
     ]
   },
   {
@@ -70,15 +71,6 @@ const managerNavItems = [
       { path: "/proyectos/semaforo", label: "Proyectos Semáforo", icon: FolderKanban },
       { path: "/proyectos", label: "Panel Proyectos", icon: ClipboardList },
       { path: "/proyectos/calendario", label: "Calendario Proyectos", icon: CalendarDays },
-    ]
-  },
-  {
-    group: "Finanzas",
-    items: [
-      { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
-      { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
-      { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
-      { path: "/consumos-recurrentes", label: "Consumos Recurrentes", icon: Repeat },
     ]
   },
   {
@@ -95,7 +87,6 @@ const managerNavItems = [
     items: [
       { path: "/reportes/visitas", label: "Informe Visitas", icon: Calendar },
       { path: "/reportes/tickets", label: "Informe Tickets", icon: Ticket },
-      { path: "/reportes/financiero", label: "Informe Financiero", icon: DollarSign },
       { path: "/reportes/equipos", label: "Informe Equipos", icon: Wrench },
       { path: "/reportes/ejecutivos", label: "Informe Ejecutivos", icon: Users },
       { path: "/reportes/cumplimiento", label: "Estado Documental y Operativo", icon: FileCheck },
@@ -131,6 +122,7 @@ const managerWithReportsNavItems = [
   {
     group: "Finanzas",
     items: [
+      { path: "/cierre-mensual", label: "Cierre Mensual", icon: FileCheck },
       { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
       { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
       { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
@@ -167,6 +159,7 @@ const executiveNavItems = [
       { path: "/visitas", label: "Agenda de Visitas", icon: Calendar },
       { path: "/tickets", label: "Mis Tickets", icon: Ticket },
       { path: "/calendario", label: "Calendario", icon: CalendarDays },
+      { path: "/consulta-operacional", label: "Consulta Operacional", icon: BarChart3 },
     ]
   },
   {
@@ -221,6 +214,7 @@ const generalManagerNavItems = [
   {
     group: "Finanzas",
     items: [
+      { path: "/cierre-mensual", label: "Cierre Mensual", icon: FileCheck },
       { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
       { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
       { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
@@ -266,6 +260,7 @@ const financeNavItems = [
   {
     group: "Finanzas",
     items: [
+      { path: "/cierre-mensual", label: "Cierre Mensual", icon: FileCheck },
       { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
       { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
       { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },

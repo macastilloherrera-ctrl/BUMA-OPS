@@ -1,0 +1,80 @@
+Necesito ajustar permisos y completar el proceso real de emisión de gastos comunes en BUMA OPS.
+
+A) CAMBIO DE ACCESOS (RBAC) — NO NEGOCIABLE
+1) Módulo FINANZAS (Conciliación Bancaria, Ingresos, Egresos financieros, Consumos recurrentes, Exportaciones)
+   - SOLO accesible por:
+     - Gerente General
+     - Gerente Comercial (y/o rol Finanzas si existe, pero bajo Comercial)
+   - Bloquear (403 backend y ocultar UI) para:
+     - Gerente Operaciones
+     - Ejecutivos
+     - Conserjería
+
+2) Operaciones (Gerente Operaciones + Ejecutivos + Conserjería)
+   - Mantienen acceso para “captura en terreno”:
+     - subir documentos de facturas/boletas/fotos como evidencia
+     - asociar documento a: ticket, consumo esperado (recurrente), o “documento recibido”
+   - NO pueden:
+     - ver montos
+     - marcar pagado
+     - postergar
+     - exportar
+     - acceder conciliación bancaria
+
+3) Crear una vista “Consulta Operacional” (solo lectura) para Operaciones:
+   - Por edificio + mes:
+     - estado de cierre de mes: egresos completos? ingresos completos? (Sí/No)
+     - cantidad de depósitos conciliados vs pendientes (sin montos)
+     - fecha último depósito conciliado
+     - cantidad de egresos recibidos vs validados (sin montos)
+     - cantidad de egresos postergados (sin montos)
+   Objetivo: que Operaciones responda consultas de comité/residentes sin abrir finanzas.
+
+B) IMPLEMENTAR PROCESO CON FECHAS: “CICLO MENSUAL DE GASTOS COMUNES”
+Hoy no veo el módulo de fechas/hitos. Implementar:
+
+1) Entidad: MonthlyClosingCycle (por edificio, por mes)
+   - buildingId, month, year
+   - issueDay (configurable por edificio, ej día 10)
+   - cutoffExpensesDate (configurable)
+   - cutoffIncomesDate (configurable)
+   - preStatementDate (configurable)
+   - finalIssueDate (configurable)
+   - status: OPEN / PREPARATION / PENDING_INFO / PRE_READY / UNDER_REVIEW / APPROVED / ISSUED
+   - risk: LOW/MED/HIGH
+   - notes
+
+2) Checklist del ciclo (items con estado y responsable):
+   - egresos recibidos completos
+   - egresos validados por comercial
+   - ingresos conciliados completos
+   - export listo
+   - pre-gasto común enviado a comité
+   - ajustes solicitados por comité (si aplica)
+   - emisión final confirmada
+
+3) Dashboard Gerencias:
+   - lista de edificios con semáforo (verde/amarillo/rojo)
+   - días restantes para emisión
+   - bloqueos del ciclo
+
+4) Permisos del ciclo:
+   - Gerente Comercial/General: pueden cerrar/avanzar estados del ciclo
+   - Operaciones: solo lectura del estado + subir evidencia (no cambian estados)
+
+C) CONSERJERÍA (operativo real)
+- Confirmar rol Conserjería por edificio (usuario tipo “puesto”, no persona).
+- Conserjería debe poder:
+  - ver tickets asignados a Conserjería
+  - subir evidencia y documentos
+  - NO ver montos ni finanzas
+- Verificar en asignación de tickets que exista responsable=Conserjería y que quede trazado.
+
+D) ENTREGABLES
+- Confirmar rutas exactas (URLs) y dónde aparece en el sidebar.
+- Tests de autorización para confirmar 403 en backend.
+- Documentación para usuarios en /docs:
+  - manual-comercial-finanzas.md
+  - manual-operaciones-consulta.md
+  - manual-conserjeria.md
+  - guia-cierre-mensual-gc.md

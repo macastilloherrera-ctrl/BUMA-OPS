@@ -110,6 +110,12 @@ import {
   type InsertBankTransaction,
   type PayerDirectoryEntry,
   type InsertPayerDirectory,
+  monthlyClosingCycles,
+  monthlyClosingChecklistItems,
+  type MonthlyClosingCycle,
+  type InsertMonthlyClosingCycle,
+  type MonthlyClosingChecklistItem,
+  type InsertMonthlyClosingChecklistItem,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, gte, lte, lt, or, sql, ne } from "drizzle-orm";
@@ -353,6 +359,20 @@ export interface IStorage {
   createPayerDirectoryEntry(entry: InsertPayerDirectory): Promise<PayerDirectoryEntry>;
   updatePayerDirectoryEntry(id: string, data: Partial<InsertPayerDirectory>): Promise<PayerDirectoryEntry | undefined>;
   deletePayerDirectoryEntry(id: string): Promise<boolean>;
+
+  // Monthly Closing Cycles
+  getMonthlyClosingCycles(filters?: { buildingId?: string; month?: number; year?: number; status?: string }): Promise<MonthlyClosingCycle[]>;
+  getMonthlyClosingCycle(id: string): Promise<MonthlyClosingCycle | undefined>;
+  getMonthlyClosingCycleByBuildingAndPeriod(buildingId: string, month: number, year: number): Promise<MonthlyClosingCycle | undefined>;
+  createMonthlyClosingCycle(cycle: InsertMonthlyClosingCycle): Promise<MonthlyClosingCycle>;
+  updateMonthlyClosingCycle(id: string, data: Partial<InsertMonthlyClosingCycle>): Promise<MonthlyClosingCycle | undefined>;
+  deleteMonthlyClosingCycle(id: string): Promise<boolean>;
+
+  // Monthly Closing Checklist Items
+  getMonthlyClosingChecklistItems(cycleId: string): Promise<MonthlyClosingChecklistItem[]>;
+  createMonthlyClosingChecklistItem(item: InsertMonthlyClosingChecklistItem): Promise<MonthlyClosingChecklistItem>;
+  updateMonthlyClosingChecklistItem(id: string, data: Partial<InsertMonthlyClosingChecklistItem>): Promise<MonthlyClosingChecklistItem | undefined>;
+  deleteMonthlyClosingChecklistItem(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1505,6 +1525,78 @@ export class DatabaseStorage implements IStorage {
 
   async deletePayerDirectoryEntry(id: string): Promise<boolean> {
     await db.delete(payerDirectory).where(eq(payerDirectory.id, id));
+    return true;
+  }
+
+  // Monthly Closing Cycles
+  async getMonthlyClosingCycles(filters?: { buildingId?: string; month?: number; year?: number; status?: string }): Promise<MonthlyClosingCycle[]> {
+    const conditions: any[] = [];
+    if (filters?.buildingId) conditions.push(eq(monthlyClosingCycles.buildingId, filters.buildingId));
+    if (filters?.month) conditions.push(eq(monthlyClosingCycles.month, filters.month));
+    if (filters?.year) conditions.push(eq(monthlyClosingCycles.year, filters.year));
+    if (filters?.status) conditions.push(eq(monthlyClosingCycles.status, filters.status as any));
+    if (conditions.length > 0) {
+      return db.select().from(monthlyClosingCycles).where(and(...conditions)).orderBy(desc(monthlyClosingCycles.year), desc(monthlyClosingCycles.month));
+    }
+    return db.select().from(monthlyClosingCycles).orderBy(desc(monthlyClosingCycles.year), desc(monthlyClosingCycles.month));
+  }
+
+  async getMonthlyClosingCycle(id: string): Promise<MonthlyClosingCycle | undefined> {
+    const [cycle] = await db.select().from(monthlyClosingCycles).where(eq(monthlyClosingCycles.id, id));
+    return cycle || undefined;
+  }
+
+  async getMonthlyClosingCycleByBuildingAndPeriod(buildingId: string, month: number, year: number): Promise<MonthlyClosingCycle | undefined> {
+    const [cycle] = await db.select().from(monthlyClosingCycles)
+      .where(and(
+        eq(monthlyClosingCycles.buildingId, buildingId),
+        eq(monthlyClosingCycles.month, month),
+        eq(monthlyClosingCycles.year, year)
+      ));
+    return cycle || undefined;
+  }
+
+  async createMonthlyClosingCycle(cycle: InsertMonthlyClosingCycle): Promise<MonthlyClosingCycle> {
+    const [newCycle] = await db.insert(monthlyClosingCycles).values(cycle).returning();
+    return newCycle;
+  }
+
+  async updateMonthlyClosingCycle(id: string, data: Partial<InsertMonthlyClosingCycle>): Promise<MonthlyClosingCycle | undefined> {
+    const [updated] = await db.update(monthlyClosingCycles)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(monthlyClosingCycles.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteMonthlyClosingCycle(id: string): Promise<boolean> {
+    await db.delete(monthlyClosingChecklistItems).where(eq(monthlyClosingChecklistItems.cycleId, id));
+    await db.delete(monthlyClosingCycles).where(eq(monthlyClosingCycles.id, id));
+    return true;
+  }
+
+  // Monthly Closing Checklist Items
+  async getMonthlyClosingChecklistItems(cycleId: string): Promise<MonthlyClosingChecklistItem[]> {
+    return db.select().from(monthlyClosingChecklistItems)
+      .where(eq(monthlyClosingChecklistItems.cycleId, cycleId))
+      .orderBy(monthlyClosingChecklistItems.sortOrder);
+  }
+
+  async createMonthlyClosingChecklistItem(item: InsertMonthlyClosingChecklistItem): Promise<MonthlyClosingChecklistItem> {
+    const [newItem] = await db.insert(monthlyClosingChecklistItems).values(item).returning();
+    return newItem;
+  }
+
+  async updateMonthlyClosingChecklistItem(id: string, data: Partial<InsertMonthlyClosingChecklistItem>): Promise<MonthlyClosingChecklistItem | undefined> {
+    const [updated] = await db.update(monthlyClosingChecklistItems)
+      .set(data)
+      .where(eq(monthlyClosingChecklistItems.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deleteMonthlyClosingChecklistItem(id: string): Promise<boolean> {
+    await db.delete(monthlyClosingChecklistItems).where(eq(monthlyClosingChecklistItems.id, id));
     return true;
   }
 }

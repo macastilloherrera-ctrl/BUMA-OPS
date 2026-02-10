@@ -1446,3 +1446,62 @@ export type ProjectStatus = "planificado" | "en_ejecucion" | "pausado" | "comple
 export type ProjectAwardType = "asignacion_directa" | "licitacion";
 export type MilestoneStatus = "pendiente" | "en_curso" | "completado" | "retrasado";
 export type ProjectDocumentType = "cotizacion" | "adjudicacion" | "contrato" | "comunicado" | "fiscalizacion" | "acta" | "cierre" | "otro";
+
+// Monthly Closing Cycle enums
+export const closingCycleStatusEnum = pgEnum("closing_cycle_status", [
+  "open",
+  "preparation",
+  "pending_info",
+  "pre_ready",
+  "under_review",
+  "approved",
+  "issued"
+]);
+
+export const closingCycleRiskEnum = pgEnum("closing_cycle_risk", [
+  "low",
+  "medium",
+  "high"
+]);
+
+// Monthly Closing Cycles table
+export const monthlyClosingCycles = pgTable("monthly_closing_cycles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  buildingId: varchar("building_id").notNull(),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  issueDay: integer("issue_day").notNull().default(10),
+  cutoffExpensesDate: timestamp("cutoff_expenses_date"),
+  cutoffIncomesDate: timestamp("cutoff_incomes_date"),
+  preStatementDate: timestamp("pre_statement_date"),
+  finalIssueDate: timestamp("final_issue_date"),
+  status: closingCycleStatusEnum("status").notNull().default("open"),
+  risk: closingCycleRiskEnum("risk").notNull().default("low"),
+  notes: text("notes"),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Monthly Closing Checklist Items table
+export const monthlyClosingChecklistItems = pgTable("monthly_closing_checklist_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  cycleId: varchar("cycle_id").notNull(),
+  label: varchar("label", { length: 255 }).notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  completed: boolean("completed").notNull().default(false),
+  completedBy: varchar("completed_by"),
+  completedAt: timestamp("completed_at"),
+});
+
+// Monthly Closing Schemas
+export const insertMonthlyClosingCycleSchema = createInsertSchema(monthlyClosingCycles).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertMonthlyClosingChecklistItemSchema = createInsertSchema(monthlyClosingChecklistItems).omit({ id: true });
+
+// Monthly Closing Types
+export type InsertMonthlyClosingCycle = z.infer<typeof insertMonthlyClosingCycleSchema>;
+export type MonthlyClosingCycle = typeof monthlyClosingCycles.$inferSelect;
+export type InsertMonthlyClosingChecklistItem = z.infer<typeof insertMonthlyClosingChecklistItemSchema>;
+export type MonthlyClosingChecklistItem = typeof monthlyClosingChecklistItems.$inferSelect;
+export type ClosingCycleStatus = "open" | "preparation" | "pending_info" | "pre_ready" | "under_review" | "approved" | "issued";
+export type ClosingCycleRisk = "low" | "medium" | "high";

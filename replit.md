@@ -111,7 +111,8 @@ Modulo para gestionar obras y mejoras a largo plazo en edificios.
 Gestion de ingresos, egresos y consumos recurrentes con exportacion Edipro.
 
 **Permisos de acceso (backend 403):**
-- Solo gerentes (general, operaciones, comercial) y gerente_finanzas pueden acceder
+- Solo gerente_general, gerente_comercial y gerente_finanzas pueden acceder
+- gerente_operaciones NO tiene acceso a modulos financieros (usa Consulta Operacional en su lugar)
 - Ejecutivo y conserjeria reciben 403 en TODOS los endpoints financieros (GET/POST/PATCH/DELETE)
 - Export Edipro tambien protegido con canExportFinancial()
 
@@ -184,6 +185,57 @@ Importacion de cartolas bancarias, matching automatico y exportacion multi-forma
 - `POST /api/bank-transactions/:id/split` - Dividir deposito en N unidades
 - `GET /api/bank-transactions/export` - Exportar (formato: edipro/comunidadfeliz/kastor/generico)
 - `GET/POST/DELETE /api/payer-directory` - CRUD directorio de pagadores
+
+### Cierre Mensual de Gastos Comunes
+Gestion del ciclo mensual de emision de gastos comunes por edificio.
+
+**Permisos:**
+- Gerente General y Gerente Comercial: Crear, editar, eliminar ciclos y cambiar estados
+- Gerente Finanzas: Ver ciclos y marcar checklist (no puede cambiar estados)
+- Gerente Operaciones: Solo puede consultar estado via Consulta Operacional
+
+**Tablas de BD:**
+- `monthly_closing_cycles`: Ciclo de cierre (edificio, periodo, estado, fechas clave, riesgo)
+- `monthly_closing_checklist`: Items del checklist por ciclo (7 items default)
+
+**Estados del ciclo:** open, preparation, pending_info, pre_ready, under_review, approved, issued
+
+**Semaforo:**
+- Verde: approved/issued
+- Amarillo: preparation/pre_ready/under_review
+- Rojo: open/pending_info
+- Gris: sin ciclo
+
+**Checklist default (7 items):**
+1. Egresos recibidos completos
+2. Egresos validados por comercial
+3. Ingresos conciliados completos
+4. Export listo
+5. Pre-gasto comun enviado a comite
+6. Ajustes solicitados por comite
+7. Emision final confirmada
+
+**Rutas de API:**
+- `GET/POST /api/monthly-closing-cycles` - Listar/crear ciclos
+- `GET/PATCH/DELETE /api/monthly-closing-cycles/:id` - Ver/editar/eliminar ciclo
+- `PATCH /api/monthly-closing-cycles/:id/status` - Cambiar estado del ciclo
+- `GET /api/monthly-closing-cycles/:id/checklist` - Ver checklist
+- `PATCH /api/monthly-closing-cycles/:id/checklist/:itemId` - Marcar item del checklist
+
+### Consulta Operacional
+Vista de solo lectura para roles de Operaciones (gerente_operaciones, ejecutivo_operaciones).
+
+**Ruta:** `/consulta-operacional`
+
+**Muestra datos agregados sin montos:**
+- Estado del ciclo de cierre por edificio
+- Cantidad de depositos conciliados vs pendientes
+- Cantidad de egresos recibidos vs validados
+- Cantidad de egresos postergados
+- Fecha del ultimo deposito conciliado
+
+**Rutas de API:**
+- `GET /api/consulta-operacional` - Datos agregados por edificio y periodo
 
 ### Conserjeria
 - Solo ve tickets asignados a su edificio con receiverType="personal_edificio"
