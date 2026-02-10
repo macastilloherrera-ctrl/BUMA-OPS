@@ -53,8 +53,10 @@ El sistema usa autenticacion tradicional con email y contraseña diseñado para 
 1. **Super Admin**: Configuracion del sistema, branding, gestion avanzada de usuarios
 2. **Gerente General**: Acceso total, ve costos, aprueba equipos, administra usuarios
 3. **Gerente Operaciones**: Gestiona visitas/tickets, ve costos, aprueba equipos
-4. **Gerente Finanzas**: Solo lectura en dashboards
-5. **Ejecutivo Operaciones**: Trabajo de campo, no ve costos
+4. **Gerente Comercial**: Acceso similar a Gerente Operaciones con reportes de egresos
+5. **Gerente Finanzas**: Acceso a modulo financiero (ingresos/egresos/consumos), dashboards y reportes
+6. **Ejecutivo Operaciones**: Trabajo de campo, no ve costos ni finanzas
+7. **Conserjeria**: Solo ve tickets de su edificio (receiverType=personal_edificio), puede subir evidencia y notas, sin acceso a costos/reportes/finanzas
 
 ## Funcionalidades Principales
 
@@ -104,6 +106,60 @@ Modulo para gestionar obras y mejoras a largo plazo en edificios.
 - `POST/DELETE /api/projects/:id/documents/:id` - Gestion de documentos
 - `POST /api/projects/:id/updates` - Crear fiscalizacion
 - `PATCH /api/projects/:id/updates/:id/approve` - Aprobar fiscalizacion
+
+### Modulo Financiero (Fase 1)
+Gestion de ingresos, egresos y consumos recurrentes con exportacion Edipro.
+
+**Permisos de acceso (backend 403):**
+- Solo gerentes (general, operaciones, comercial) y gerente_finanzas pueden acceder
+- Ejecutivo y conserjeria reciben 403 en TODOS los endpoints financieros (GET/POST/PATCH/DELETE)
+- Export Edipro tambien protegido con canExportFinancial()
+
+**Tablas de BD:**
+- `incomes`: Ingresos por edificio (monto, unidad/depto, fecha, banco, estado)
+- `expenses`: Egresos con campos Edipro (fondo, subfondo, proveedor, forma de pago, validacion)
+- `recurring_expense_templates`: Templates mensuales (solo plantillas en Fase 1, sin instancias automaticas)
+
+**Campos especiales de expenses:**
+- `inclusionStatus`: "included" | "postponed" - los POSTPONED NO se exportan a Edipro
+- `postponementReason`: Motivo de postergacion (obligatorio si postponed)
+- `vendorEdipro`: Nombre estandarizado del proveedor para Edipro (si vacio, se usa vendorName)
+- `operationallyValidated` / `financiallyValidated`: Doble validacion operativa y financiera
+
+**Exportacion Edipro:**
+- Ingresos: 10 columnas [Numero, Monto, Unidad, Descripcion("abono"), Anulado("NO"), Fecha ingreso(dd-mm-yyyy), Fondo("Gasto comun"), Forma de pago("Transferencia"), Banco, Numero comprobante]
+- Egresos: 13 columnas [Numero, Fondo("Gasto comun"), Subfondo(category), Descripcion, Monto, Documento, Fecha egreso(dd-mm-yyyy), Fecha banco(""), Anulado("NO"), Proveedor(vendorEdipro||vendorName), Numero respaldo(""), Forma de pago, Fecha cheque("")]
+- Solo exporta ingresos con status="identified" y egresos con paymentStatus="paid" AND inclusionStatus!="postponed"
+- Formato: .xlsx UTF-8, fechas en formato es-CL (dd-mm-yyyy)
+
+**Division de depositos:**
+- POST /api/incomes/split: Divide 1 deposito en N departamentos
+- Valida que suma de partes == total del deposito (tolerancia 0.01)
+- UI con filas dinamicas y validacion en tiempo real
+
+**Consumos recurrentes (Fase 1):**
+- Solo templates/plantillas (no genera instancias automaticas por mes)
+- Categorias predefinidas: Agua, Luz, Gas, Internet, Aseo, Materiales, Seguridad, Jardines, Piscina, Administracion, Otro
+- Activacion/desactivacion de templates
+- Fase 2 prevista: Generacion automatica de instancias mensuales desde templates
+
+**Rutas de API:**
+- `GET/POST /api/incomes` - Listar/crear ingresos
+- `PATCH/DELETE /api/incomes/:id` - Editar/eliminar ingreso
+- `POST /api/incomes/split` - Dividir deposito en N departamentos
+- `GET /api/incomes/export/edipro` - Exportar ingresos formato Edipro
+- `GET/POST /api/expenses` - Listar/crear egresos
+- `PATCH/DELETE /api/expenses/:id` - Editar/eliminar egreso
+- `GET /api/expenses/export/edipro` - Exportar egresos formato Edipro
+- `GET/POST /api/recurring-expense-templates` - Listar/crear templates
+- `PATCH/DELETE /api/recurring-expense-templates/:id` - Editar/eliminar template
+
+### Conserjeria
+- Solo ve tickets asignados a su edificio con receiverType="personal_edificio"
+- Puede subir evidencia (documentKey) y agregar notas en tickets
+- Upload de fotos auditado con campo uploadedBy y timestamp
+- No puede cerrar tickets, cambiar estado, ni ver costos
+- Sin acceso a finanzas, reportes, edificios, equipos ni administracion
 
 ### Reportes (Todos los perfiles)
 - **Estado Documental y Operativo**: Informe por edificio con scoring binario (0-100%)

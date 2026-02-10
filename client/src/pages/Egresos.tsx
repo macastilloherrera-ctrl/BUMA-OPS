@@ -45,9 +45,15 @@ import {
   FormControl,
   FormField,
   FormItem,
+  FormDescription,
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   DollarSign,
   Plus,
@@ -120,13 +126,23 @@ const expenseFormSchema = z.object({
   amount: z.string().min(1, "Ingrese el monto").refine((v) => !isNaN(Number(v)) && Number(v) > 0, "Monto debe ser mayor a 0"),
   category: z.string().optional(),
   vendorName: z.string().optional(),
+  vendorEdipro: z.string().optional(),
   documentNumber: z.string().optional(),
   paymentDate: z.string().optional(),
   paymentMethod: z.enum(["transferencia", "pac", "pago_electronico", "cheque", ""]).optional(),
   paymentStatus: z.enum(["pending", "paid", "cancelled"]),
   inclusionStatus: z.enum(["included", "postponed"]),
+  postponementReason: z.string().optional(),
   sourceType: z.enum(["ticket", "recurrent"]),
   notes: z.string().optional(),
+}).refine((data) => {
+  if (data.inclusionStatus === "postponed" && (!data.postponementReason || data.postponementReason.trim() === "")) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Debe ingresar el motivo de postergación cuando el estado es Postergado",
+  path: ["postponementReason"],
 });
 
 type ExpenseFormValues = z.infer<typeof expenseFormSchema>;
@@ -171,11 +187,13 @@ export default function Egresos() {
       amount: "",
       category: "",
       vendorName: "",
+      vendorEdipro: "",
       documentNumber: "",
       paymentDate: "",
       paymentMethod: "",
       paymentStatus: "pending",
       inclusionStatus: "included",
+      postponementReason: "",
       sourceType: "ticket",
       notes: "",
     },
@@ -189,11 +207,13 @@ export default function Egresos() {
         amount: data.amount,
         category: data.category || null,
         vendorName: data.vendorName || null,
+        vendorEdipro: data.vendorEdipro || null,
         documentNumber: data.documentNumber || null,
         paymentDate: data.paymentDate ? new Date(data.paymentDate).toISOString() : null,
         paymentMethod: data.paymentMethod || null,
         paymentStatus: data.paymentStatus,
         inclusionStatus: data.inclusionStatus,
+        postponementReason: data.inclusionStatus === "postponed" ? (data.postponementReason || null) : null,
         sourceType: data.sourceType,
         notes: data.notes || null,
         createdBy: user?.id || "",
@@ -217,11 +237,13 @@ export default function Egresos() {
         amount: data.amount,
         category: data.category || null,
         vendorName: data.vendorName || null,
+        vendorEdipro: data.vendorEdipro || null,
         documentNumber: data.documentNumber || null,
         paymentDate: data.paymentDate ? new Date(data.paymentDate).toISOString() : null,
         paymentMethod: data.paymentMethod || null,
         paymentStatus: data.paymentStatus,
         inclusionStatus: data.inclusionStatus,
+        postponementReason: data.inclusionStatus === "postponed" ? (data.postponementReason || null) : null,
         sourceType: data.sourceType,
         notes: data.notes || null,
       });
@@ -256,11 +278,13 @@ export default function Egresos() {
     amount: "",
     category: "",
     vendorName: "",
+    vendorEdipro: "",
     documentNumber: "",
     paymentDate: "",
     paymentMethod: "",
     paymentStatus: "pending",
     inclusionStatus: "included",
+    postponementReason: "",
     sourceType: "ticket",
     notes: "",
   };
@@ -286,11 +310,13 @@ export default function Egresos() {
       amount: String(expense.amount),
       category: expense.category || "",
       vendorName: expense.vendorName || "",
+      vendorEdipro: expense.vendorEdipro || "",
       documentNumber: expense.documentNumber || "",
       paymentDate,
       paymentMethod: (expense.paymentMethod as ExpenseFormValues["paymentMethod"]) || "",
       paymentStatus: expense.paymentStatus as "pending" | "paid" | "cancelled",
       inclusionStatus: expense.inclusionStatus as "included" | "postponed",
+      postponementReason: expense.postponementReason || "",
       sourceType: expense.sourceType as "ticket" | "recurrent",
       notes: expense.notes || "",
     });
@@ -527,17 +553,36 @@ export default function Egresos() {
                               </Badge>
                             </TableCell>
                             <TableCell>
-                              <Badge
-                                variant="outline"
-                                className={
-                                  expense.inclusionStatus === "included"
-                                    ? "border-green-500 text-green-700 dark:text-green-400"
-                                    : "border-orange-500 text-orange-700 dark:text-orange-400"
-                                }
-                                data-testid={`badge-inclusion-status-${expense.id}`}
-                              >
-                                {inclusionStatusLabels[expense.inclusionStatus] || expense.inclusionStatus}
-                              </Badge>
+                              <div className="flex flex-col gap-1">
+                                {expense.inclusionStatus === "postponed" && expense.postponementReason ? (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge
+                                        variant="outline"
+                                        className="border-orange-500 text-orange-700 dark:text-orange-400 cursor-help"
+                                        data-testid={`badge-inclusion-status-${expense.id}`}
+                                      >
+                                        {inclusionStatusLabels[expense.inclusionStatus] || expense.inclusionStatus}
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" className="max-w-[300px]">
+                                      <p className="text-xs font-medium">Motivo: {expense.postponementReason}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                ) : (
+                                  <Badge
+                                    variant="outline"
+                                    className={
+                                      expense.inclusionStatus === "included"
+                                        ? "border-green-500 text-green-700 dark:text-green-400"
+                                        : "border-orange-500 text-orange-700 dark:text-orange-400"
+                                    }
+                                    data-testid={`badge-inclusion-status-${expense.id}`}
+                                  >
+                                    {inclusionStatusLabels[expense.inclusionStatus] || expense.inclusionStatus}
+                                  </Badge>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex items-center justify-end gap-1">
@@ -693,6 +738,27 @@ export default function Egresos() {
                 />
               </div>
 
+              <FormField
+                control={form.control}
+                name="vendorEdipro"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre Proveedor Edipro</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Nombre estandarizado Edipro"
+                        data-testid="input-vendor-edipro"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Nombre estandarizado para exportación Edipro. Si se deja vacío se usará el nombre del proveedor.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
@@ -825,6 +891,26 @@ export default function Egresos() {
                   )}
                 />
               </div>
+
+              {form.watch("inclusionStatus") === "postponed" && (
+                <FormField
+                  control={form.control}
+                  name="postponementReason"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Motivo de postergación</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Indique el motivo de la postergación"
+                          data-testid="input-postponement-reason"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <FormField
                 control={form.control}

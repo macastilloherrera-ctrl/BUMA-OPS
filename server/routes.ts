@@ -73,8 +73,12 @@ function isConserjeriaRole(profile: UserProfile | null): boolean {
   return !!profile && profile.role === "conserjeria";
 }
 
-function canExportFinancial(profile: UserProfile | null): boolean {
+function canAccessFinancial(profile: UserProfile | null): boolean {
   return !!profile && ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas"].includes(profile.role);
+}
+
+function canExportFinancial(profile: UserProfile | null): boolean {
+  return canAccessFinancial(profile);
 }
 
 // Helper to check if user can access a building (based on buildingScope)
@@ -5531,8 +5535,8 @@ export async function registerRoutes(
   app.get("/api/incomes", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (isConserjeriaRole(profile)) {
-        return res.status(403).json({ error: "No autorizado" });
+      if (!canAccessFinancial(profile)) {
+        return res.status(403).json({ error: "No autorizado para acceder a datos financieros" });
       }
       const filters: { buildingId?: string; status?: string; month?: number; year?: number } = {};
       if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
@@ -5603,6 +5607,59 @@ export async function registerRoutes(
     }
   });
 
+  // Split a deposit into multiple department incomes
+  app.post("/api/incomes/split", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden dividir depósitos" });
+      }
+      const { buildingId, totalAmount, paymentDate, bank, bankOperationId, status, notes, splits } = req.body;
+      if (!buildingId || !totalAmount || !paymentDate || !splits || !Array.isArray(splits) || splits.length === 0) {
+        return res.status(400).json({ error: "Se requiere buildingId, totalAmount, paymentDate y splits[]" });
+      }
+      const splitsSum = splits.reduce((sum: number, s: any) => sum + (parseFloat(s.amount) || 0), 0);
+      const totalNum = parseFloat(totalAmount);
+      if (Math.abs(splitsSum - totalNum) > 0.01) {
+        return res.status(400).json({ 
+          error: `La suma de las partes ($${splitsSum.toFixed(2)}) no coincide con el total ($${totalNum.toFixed(2)})` 
+        });
+      }
+      const createdIncomes = [];
+      for (const split of splits) {
+        if (!split.department || !split.amount) {
+          return res.status(400).json({ error: "Cada split requiere department y amount" });
+        }
+        const data = insertIncomeSchema.parse({
+          buildingId,
+          amount: split.amount.toString(),
+          department: split.department,
+          description: split.description || "abono",
+          paymentDate: new Date(paymentDate),
+          bank: bank || null,
+          bankOperationId: bankOperationId || null,
+          status: status || "pending",
+          notes: notes || null,
+          createdBy: req.user!.id,
+        });
+        const income = await storage.createIncome(data);
+        createdIncomes.push(income);
+      }
+      res.status(201).json({ 
+        success: true, 
+        totalAmount: totalNum,
+        splitsCreated: createdIncomes.length,
+        incomes: createdIncomes 
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
+      console.error("Error dividiendo depósito:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   // ==========================================
   // Financial Module: Expenses
   // ==========================================
@@ -5610,8 +5667,8 @@ export async function registerRoutes(
   app.get("/api/expenses", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (isConserjeriaRole(profile)) {
-        return res.status(403).json({ error: "No autorizado" });
+      if (!canAccessFinancial(profile)) {
+        return res.status(403).json({ error: "No autorizado para acceder a datos financieros" });
       }
       const filters: { buildingId?: string; sourceType?: string; paymentStatus?: string; inclusionStatus?: string; month?: number; year?: number } = {};
       if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
@@ -5656,8 +5713,8 @@ export async function registerRoutes(
         if (hasDisallowed) {
           return res.status(403).json({ error: "Conserjería solo puede subir documentos de respaldo" });
         }
-      } else if (!isManagerRole(profile)) {
-        return res.status(403).json({ error: "Solo gerentes pueden modificar egresos" });
+      } else if (!canAccessFinancial(profile)) {
+        return res.status(403).json({ error: "No autorizado para modificar egresos" });
       }
       const data = insertExpenseSchema.partial().parse(req.body);
       const expense = await storage.updateExpense(req.params.id, data);
@@ -5698,8 +5755,8 @@ export async function registerRoutes(
   app.get("/api/recurring-expense-templates", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (isConserjeriaRole(profile)) {
-        return res.status(403).json({ error: "No autorizado" });
+      if (!canAccessFinancial(profile)) {
+        return res.status(403).json({ error: "No autorizado para acceder a datos financieros" });
       }
       const filters: { buildingId?: string } = {};
       if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
@@ -5866,7 +5923,7 @@ export async function registerRoutes(
           dateStr,
           "",
           "NO",
-          exp.vendorName || "",
+          exp.vendorEdipro || exp.vendorName || "",
           "",
           paymentMethodMap[exp.paymentMethod || ""] || "",
           "",

@@ -56,6 +56,8 @@ import {
   Download,
   Building2,
   FileSpreadsheet,
+  Split,
+  X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -118,6 +120,17 @@ export default function Ingresos() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingIncome, setEditingIncome] = useState<Income | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [splitDialogOpen, setSplitDialogOpen] = useState(false);
+  const [splitBuildingId, setSplitBuildingId] = useState("");
+  const [splitTotalAmount, setSplitTotalAmount] = useState("");
+  const [splitPaymentDate, setSplitPaymentDate] = useState("");
+  const [splitBank, setSplitBank] = useState("");
+  const [splitBankOperationId, setSplitBankOperationId] = useState("");
+  const [splitStatus, setSplitStatus] = useState<"pending" | "identified" | "rejected">("pending");
+  const [splitNotes, setSplitNotes] = useState("");
+  const [splitRows, setSplitRows] = useState<Array<{ department: string; amount: string; description: string }>>([
+    { department: "", amount: "", description: "abono" },
+  ]);
 
   const { data: buildings, isLoading: buildingsLoading } = useQuery<Building[]>({
     queryKey: ["/api/buildings"],
@@ -208,6 +221,87 @@ export default function Ingresos() {
       toast({ title: "Error al eliminar ingreso", description: error.message, variant: "destructive" });
     },
   });
+
+  const splitMutation = useMutation({
+    mutationFn: async (data: {
+      buildingId: string;
+      totalAmount: number;
+      paymentDate: string;
+      bank: string | null;
+      bankOperationId: string | null;
+      status: string;
+      notes: string | null;
+      splits: Array<{ department: string; amount: number; description: string }>;
+    }) => {
+      await apiRequest("POST", "/api/incomes/split", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/incomes"] });
+      toast({ title: "Depósito dividido exitosamente" });
+      closeSplitDialog();
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error al dividir depósito", description: error.message, variant: "destructive" });
+    },
+  });
+
+  function openSplitDialog() {
+    setSplitBuildingId("");
+    setSplitTotalAmount("");
+    setSplitPaymentDate("");
+    setSplitBank("");
+    setSplitBankOperationId("");
+    setSplitStatus("pending");
+    setSplitNotes("");
+    setSplitRows([{ department: "", amount: "", description: "abono" }]);
+    setSplitDialogOpen(true);
+  }
+
+  function closeSplitDialog() {
+    setSplitDialogOpen(false);
+  }
+
+  function addSplitRow() {
+    setSplitRows([...splitRows, { department: "", amount: "", description: "abono" }]);
+  }
+
+  function removeSplitRow(index: number) {
+    setSplitRows(splitRows.filter((_, i) => i !== index));
+  }
+
+  function updateSplitRow(index: number, field: "department" | "amount" | "description", value: string) {
+    const updated = [...splitRows];
+    updated[index] = { ...updated[index], [field]: value };
+    setSplitRows(updated);
+  }
+
+  const splitSum = splitRows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+  const splitTotal = Number(splitTotalAmount) || 0;
+  const splitDifference = splitTotal - splitSum;
+  const splitCanSubmit =
+    splitBuildingId &&
+    splitTotal > 0 &&
+    splitPaymentDate &&
+    splitRows.every((r) => r.department && Number(r.amount) > 0) &&
+    splitDifference === 0;
+
+  function handleSplitSubmit() {
+    if (!splitCanSubmit) return;
+    splitMutation.mutate({
+      buildingId: splitBuildingId,
+      totalAmount: splitTotal,
+      paymentDate: splitPaymentDate,
+      bank: splitBank || null,
+      bankOperationId: splitBankOperationId || null,
+      status: splitStatus,
+      notes: splitNotes || null,
+      splits: splitRows.map((r) => ({
+        department: r.department,
+        amount: Number(r.amount),
+        description: r.description || "abono",
+      })),
+    });
+  }
 
   function closeDialog() {
     setDialogOpen(false);
@@ -307,6 +401,10 @@ export default function Ingresos() {
             >
               <Download className="h-4 w-4 mr-1" />
               Exportar Edipro
+            </Button>
+            <Button variant="outline" onClick={openSplitDialog} data-testid="button-split-deposit">
+              <Split className="h-4 w-4 mr-1" />
+              Dividir Depósito
             </Button>
             <Button onClick={openCreate} data-testid="button-create-income">
               <Plus className="h-4 w-4 mr-1" />
@@ -709,6 +807,191 @@ export default function Ingresos() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={splitDialogOpen} onOpenChange={(open) => { if (!open) closeSplitDialog(); }}>
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle data-testid="text-split-dialog-title">Dividir Depósito</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Edificio *</label>
+                <Select value={splitBuildingId} onValueChange={setSplitBuildingId}>
+                  <SelectTrigger data-testid="split-input-building">
+                    <SelectValue placeholder="Seleccionar edificio" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {buildings?.map((building) => (
+                      <SelectItem key={building.id} value={building.id}>
+                        {building.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Monto Total del Depósito *</label>
+                <Input
+                  type="number"
+                  step="1"
+                  placeholder="0"
+                  value={splitTotalAmount}
+                  onChange={(e) => setSplitTotalAmount(e.target.value)}
+                  data-testid="split-input-total-amount"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Fecha de pago *</label>
+                <Input
+                  type="date"
+                  value={splitPaymentDate}
+                  onChange={(e) => setSplitPaymentDate(e.target.value)}
+                  data-testid="split-input-payment-date"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Banco</label>
+                <Input
+                  placeholder="Nombre del banco"
+                  value={splitBank}
+                  onChange={(e) => setSplitBank(e.target.value)}
+                  data-testid="split-input-bank"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">N° Comprobante</label>
+                <Input
+                  placeholder="Número de operación"
+                  value={splitBankOperationId}
+                  onChange={(e) => setSplitBankOperationId(e.target.value)}
+                  data-testid="split-input-bank-operation"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Estado</label>
+                <Select value={splitStatus} onValueChange={(v) => setSplitStatus(v as "pending" | "identified" | "rejected")}>
+                  <SelectTrigger data-testid="split-input-status">
+                    <SelectValue placeholder="Seleccionar estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pendiente</SelectItem>
+                    <SelectItem value="identified">Identificado</SelectItem>
+                    <SelectItem value="rejected">Rechazado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Notas</label>
+              <Textarea
+                placeholder="Notas adicionales..."
+                value={splitNotes}
+                onChange={(e) => setSplitNotes(e.target.value)}
+                data-testid="split-input-notes"
+              />
+            </div>
+
+            <div className="border-t pt-4">
+              <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                <h3 className="text-sm font-semibold">Divisiones por Unidad</h3>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addSplitRow}
+                  data-testid="button-add-split-row"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Agregar Unidad
+                </Button>
+              </div>
+              <div className="space-y-3">
+                {splitRows.map((row, index) => (
+                  <div key={index} className="flex items-start gap-2 flex-wrap" data-testid={`split-row-${index}`}>
+                    <div className="flex-1 min-w-[120px] space-y-1">
+                      {index === 0 && <label className="text-xs text-muted-foreground">Unidad *</label>}
+                      <Input
+                        placeholder="Ej: 101"
+                        value={row.department}
+                        onChange={(e) => updateSplitRow(index, "department", e.target.value)}
+                        data-testid={`split-input-department-${index}`}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-[120px] space-y-1">
+                      {index === 0 && <label className="text-xs text-muted-foreground">Monto *</label>}
+                      <Input
+                        type="number"
+                        step="1"
+                        placeholder="0"
+                        value={row.amount}
+                        onChange={(e) => updateSplitRow(index, "amount", e.target.value)}
+                        data-testid={`split-input-amount-${index}`}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-[120px] space-y-1">
+                      {index === 0 && <label className="text-xs text-muted-foreground">Descripción</label>}
+                      <Input
+                        placeholder="abono"
+                        value={row.description}
+                        onChange={(e) => updateSplitRow(index, "description", e.target.value)}
+                        data-testid={`split-input-description-${index}`}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      {index === 0 && <label className="text-xs text-muted-foreground invisible">X</label>}
+                      {splitRows.length > 1 ? (
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => removeSplitRow(index)}
+                          data-testid={`button-remove-split-${index}`}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      ) : (
+                        <div className="w-9 h-9" />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 flex items-center justify-between gap-4 flex-wrap text-sm border-t pt-3">
+                <div className="flex items-center gap-4 flex-wrap">
+                  <span className="text-muted-foreground" data-testid="split-text-sum">
+                    Suma divisiones: <span className="font-semibold text-foreground">{formatCurrency(splitSum)}</span>
+                  </span>
+                  <span className="text-muted-foreground" data-testid="split-text-total">
+                    Total depósito: <span className="font-semibold text-foreground">{formatCurrency(splitTotal)}</span>
+                  </span>
+                </div>
+                <span
+                  className={`font-semibold ${splitDifference === 0 && splitTotal > 0 ? "text-green-600" : "text-red-600"}`}
+                  data-testid="split-text-difference"
+                >
+                  Diferencia: {formatCurrency(splitDifference)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={closeSplitDialog} data-testid="split-button-cancel">
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={!splitCanSubmit || splitMutation.isPending}
+                onClick={handleSplitSubmit}
+                data-testid="split-button-submit"
+              >
+                {splitMutation.isPending ? "Guardando..." : "Dividir Depósito"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

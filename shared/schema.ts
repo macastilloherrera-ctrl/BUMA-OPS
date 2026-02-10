@@ -1134,6 +1134,8 @@ export const expenses = pgTable("expenses", {
   paymentMethod: expensePaymentMethodEnum("payment_method").default("transferencia"),
   paymentStatus: expensePaymentStatusEnum("payment_status").notNull().default("pending"),
   inclusionStatus: expenseInclusionStatusEnum("inclusion_status").notNull().default("included"),
+  postponementReason: text("postponement_reason"),
+  vendorEdipro: varchar("vendor_edipro", { length: 255 }),
   operationallyValidated: boolean("operationally_validated").default(false),
   operationallyValidatedBy: varchar("operationally_validated_by"),
   operationallyValidatedAt: timestamp("operationally_validated_at"),
