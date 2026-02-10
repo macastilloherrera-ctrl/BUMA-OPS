@@ -39,6 +39,14 @@ Key architectural patterns include:
   - "Proveedores" section in ProjectDetail with vendor management and autocomplete
   - Expenses table extended with sourceType='project', sourceProjectId, sourceProjectMilestoneId for traceability
 
+- **Feb 2026 - Income Categories**: Added category classification to income records:
+  - New `income_category` enum: gasto_comun, multa, arriendo, interes_mora, fondo_reserva, otro
+  - Category selector in income creation form, edit form, and split deposit dialog
+  - Category column displayed in incomes table with Badge component
+  - Export formats updated: Edipro uses category in "Fondo" column; ComunidadFeliz, Kastor, and Generic formats include new "Categoría" column
+  - Default category is "gasto_comun" (Gasto Común) for backward compatibility
+  - Added payerRut and payerName fields to incomes table for future payer tracking
+
 ## External Dependencies
 - **PostgreSQL (Neon)**: Primary database for all application data.
 - **Replit Object Storage**: Used for storing image uploads, particularly from field visits.

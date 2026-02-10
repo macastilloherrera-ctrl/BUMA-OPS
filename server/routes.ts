@@ -5871,7 +5871,7 @@ export async function registerRoutes(
       if (!isManagerRole(profile)) {
         return res.status(403).json({ error: "Solo gerentes pueden dividir depósitos" });
       }
-      const { buildingId, totalAmount, paymentDate, bank, bankOperationId, status, notes, splits } = req.body;
+      const { buildingId, totalAmount, paymentDate, bank, bankOperationId, status, category, notes, splits } = req.body;
       if (!buildingId || !totalAmount || !paymentDate || !splits || !Array.isArray(splits) || splits.length === 0) {
         return res.status(400).json({ error: "Se requiere buildingId, totalAmount, paymentDate y splits[]" });
       }
@@ -5892,6 +5892,7 @@ export async function registerRoutes(
           amount: split.amount.toString(),
           department: split.department,
           description: split.description || "abono",
+          category: category || "gasto_comun",
           paymentDate: new Date(paymentDate),
           bank: bank || null,
           bankOperationId: bankOperationId || null,
@@ -6311,29 +6312,39 @@ export async function registerRoutes(
 
       let wsData: any[][] = [];
 
+      const categoryFondoLabel: Record<string, string> = {
+        gasto_comun: "Gasto común",
+        multa: "Multa",
+        arriendo: "Arriendo",
+        interes_mora: "Interés mora",
+        fondo_reserva: "Fondo de reserva",
+        otro: "Otro",
+      };
+      const getCategoryLabel = (cat: string | null) => categoryFondoLabel[cat || "gasto_comun"] || "Gasto común";
+
       if (format === "edipro") {
         wsData.push(["Número", "Monto", "Unidad", "Descripción", "Anulado", "Fecha ingreso", "Fondo", "Forma de pago", "Banco", "Número comprobante"]);
         allIncomes.forEach((inc, idx) => {
           const dateStr = inc.paymentDate ? formatDateCL(new Date(inc.paymentDate)) : "";
-          wsData.push([idx + 1, inc.amount ? parseFloat(inc.amount) : 0, inc.department || "", "abono", "NO", dateStr, "Gasto común", "Transferencia", inc.bank || "", inc.bankOperationId || ""]);
+          wsData.push([idx + 1, inc.amount ? parseFloat(inc.amount) : 0, inc.department || "", inc.description || "abono", "NO", dateStr, getCategoryLabel(inc.category), "Transferencia", inc.bank || "", inc.bankOperationId || ""]);
         });
       } else if (format === "comunidadfeliz") {
-        wsData.push(["Fecha", "Unidad", "Monto", "Descripcion", "Referencia"]);
+        wsData.push(["Fecha", "Unidad", "Monto", "Descripcion", "Categoría", "Referencia"]);
         allIncomes.forEach((inc) => {
           const dateStr = inc.paymentDate ? formatDateCL(new Date(inc.paymentDate)) : "";
-          wsData.push([dateStr, inc.department || "", inc.amount ? parseFloat(inc.amount) : 0, inc.description || "abono", inc.bankOperationId || ""]);
+          wsData.push([dateStr, inc.department || "", inc.amount ? parseFloat(inc.amount) : 0, inc.description || "abono", getCategoryLabel(inc.category), inc.bankOperationId || ""]);
         });
       } else if (format === "kastor") {
-        wsData.push(["Fecha", "Departamento", "Monto", "Glosa", "Comprobante"]);
+        wsData.push(["Fecha", "Departamento", "Monto", "Glosa", "Categoría", "Comprobante"]);
         allIncomes.forEach((inc) => {
           const dateStr = inc.paymentDate ? formatDateCL(new Date(inc.paymentDate)) : "";
-          wsData.push([dateStr, inc.department || "", inc.amount ? parseFloat(inc.amount) : 0, inc.description || "abono", inc.bankOperationId || ""]);
+          wsData.push([dateStr, inc.department || "", inc.amount ? parseFloat(inc.amount) : 0, inc.description || "abono", getCategoryLabel(inc.category), inc.bankOperationId || ""]);
         });
       } else {
-        wsData.push(["Fecha", "Unidad", "Monto", "Descripcion", "Banco", "Referencia"]);
+        wsData.push(["Fecha", "Unidad", "Monto", "Descripcion", "Categoría", "Banco", "Referencia"]);
         allIncomes.forEach((inc) => {
           const dateStr = inc.paymentDate ? formatDateCL(new Date(inc.paymentDate)) : "";
-          wsData.push([dateStr, inc.department || "", inc.amount ? parseFloat(inc.amount) : 0, inc.description || "abono", inc.bank || "", inc.bankOperationId || ""]);
+          wsData.push([dateStr, inc.department || "", inc.amount ? parseFloat(inc.amount) : 0, inc.description || "abono", getCategoryLabel(inc.category), inc.bank || "", inc.bankOperationId || ""]);
         });
       }
 

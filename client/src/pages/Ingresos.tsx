@@ -62,7 +62,25 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
-import type { Building, Income } from "@shared/schema";
+import type { Building, Income, IncomeCategory } from "@shared/schema";
+
+const incomeCategories: { value: IncomeCategory; label: string }[] = [
+  { value: "gasto_comun", label: "Gasto Común" },
+  { value: "multa", label: "Multa" },
+  { value: "arriendo", label: "Arriendo" },
+  { value: "interes_mora", label: "Interés Mora" },
+  { value: "fondo_reserva", label: "Fondo de Reserva" },
+  { value: "otro", label: "Otro" },
+];
+
+const categoryLabels: Record<string, string> = {
+  gasto_comun: "Gasto Común",
+  multa: "Multa",
+  arriendo: "Arriendo",
+  interes_mora: "Interés Mora",
+  fondo_reserva: "Fondo Reserva",
+  otro: "Otro",
+};
 
 const months = [
   { value: "1", label: "Enero" },
@@ -101,6 +119,7 @@ const incomeFormSchema = z.object({
   buildingId: z.string().min(1, "Seleccione un edificio"),
   amount: z.string().min(1, "Ingrese el monto").refine((v) => !isNaN(Number(v)) && Number(v) > 0, "Monto debe ser mayor a 0"),
   department: z.string().min(1, "Ingrese la unidad/departamento"),
+  category: z.enum(["gasto_comun", "multa", "arriendo", "interes_mora", "fondo_reserva", "otro"]),
   paymentDate: z.string().min(1, "Seleccione la fecha de pago"),
   bank: z.string().optional(),
   bankOperationId: z.string().optional(),
@@ -128,6 +147,7 @@ export default function Ingresos() {
   const [splitBank, setSplitBank] = useState("");
   const [splitBankOperationId, setSplitBankOperationId] = useState("");
   const [splitStatus, setSplitStatus] = useState<"pending" | "identified" | "rejected">("pending");
+  const [splitCategory, setSplitCategory] = useState<IncomeCategory>("gasto_comun");
   const [splitNotes, setSplitNotes] = useState("");
   const [splitRows, setSplitRows] = useState<Array<{ department: string; amount: string; description: string }>>([
     { department: "", amount: "", description: "abono" },
@@ -158,6 +178,7 @@ export default function Ingresos() {
       buildingId: "",
       amount: "",
       department: "",
+      category: "gasto_comun",
       paymentDate: "",
       bank: "",
       bankOperationId: "",
@@ -231,6 +252,7 @@ export default function Ingresos() {
       bank: string | null;
       bankOperationId: string | null;
       status: string;
+      category: string;
       notes: string | null;
       splits: Array<{ department: string; amount: number; description: string }>;
     }) => {
@@ -253,6 +275,7 @@ export default function Ingresos() {
     setSplitBank("");
     setSplitBankOperationId("");
     setSplitStatus("pending");
+    setSplitCategory("gasto_comun");
     setSplitNotes("");
     setSplitRows([{ department: "", amount: "", description: "abono" }]);
     setSplitDialogOpen(true);
@@ -295,6 +318,7 @@ export default function Ingresos() {
       bank: splitBank || null,
       bankOperationId: splitBankOperationId || null,
       status: splitStatus,
+      category: splitCategory,
       notes: splitNotes || null,
       splits: splitRows.map((r) => ({
         department: r.department,
@@ -311,6 +335,7 @@ export default function Ingresos() {
       buildingId: "",
       amount: "",
       department: "",
+      category: "gasto_comun",
       paymentDate: "",
       bank: "",
       bankOperationId: "",
@@ -325,6 +350,7 @@ export default function Ingresos() {
       buildingId: "",
       amount: "",
       department: "",
+      category: "gasto_comun",
       paymentDate: "",
       bank: "",
       bankOperationId: "",
@@ -341,6 +367,7 @@ export default function Ingresos() {
       buildingId: income.buildingId,
       amount: String(income.amount),
       department: income.department,
+      category: (income.category as IncomeCategory) || "gasto_comun",
       paymentDate,
       bank: income.bank || "",
       bankOperationId: income.bankOperationId || "",
@@ -544,6 +571,7 @@ export default function Ingresos() {
                           <TableHead className="w-[60px]">N</TableHead>
                           <TableHead>Edificio</TableHead>
                           <TableHead>Unidad</TableHead>
+                          <TableHead>Categoría</TableHead>
                           <TableHead className="text-right">Monto</TableHead>
                           <TableHead>Fecha</TableHead>
                           <TableHead>Banco</TableHead>
@@ -557,6 +585,11 @@ export default function Ingresos() {
                             <TableCell className="font-medium">{index + 1}</TableCell>
                             <TableCell>{getBuildingName(income.buildingId)}</TableCell>
                             <TableCell>{income.department}</TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" data-testid={`badge-category-${income.id}`}>
+                                {categoryLabels[income.category] || "Gasto Común"}
+                              </Badge>
+                            </TableCell>
                             <TableCell className="text-right font-medium">
                               {formatCurrency(income.amount)}
                             </TableCell>
@@ -688,6 +721,31 @@ export default function Ingresos() {
                         {...field}
                       />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="category"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Categoría</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="input-category">
+                          <SelectValue placeholder="Seleccionar categoría" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {incomeCategories.map((cat) => (
+                          <SelectItem key={cat.value} value={cat.value}>
+                            {cat.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -891,6 +949,21 @@ export default function Ingresos() {
                     <SelectItem value="pending">Pendiente</SelectItem>
                     <SelectItem value="identified">Identificado</SelectItem>
                     <SelectItem value="rejected">Rechazado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Categoría</label>
+                <Select value={splitCategory} onValueChange={(v) => setSplitCategory(v as IncomeCategory)}>
+                  <SelectTrigger data-testid="split-input-category">
+                    <SelectValue placeholder="Seleccionar categoría" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {incomeCategories.map((cat) => (
+                      <SelectItem key={cat.value} value={cat.value}>
+                        {cat.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

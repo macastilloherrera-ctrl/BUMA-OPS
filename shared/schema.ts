@@ -1122,15 +1122,27 @@ export const vendors = pgTable("vendors", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const incomeCategoryEnum = pgEnum("income_category", [
+  "gasto_comun",
+  "multa",
+  "arriendo",
+  "interes_mora",
+  "fondo_reserva",
+  "otro",
+]);
+
 export const incomes = pgTable("incomes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   buildingId: varchar("building_id").notNull(),
   amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
   department: varchar("department", { length: 255 }).notNull(),
   description: varchar("description", { length: 255 }).default("abono"),
+  category: incomeCategoryEnum("category").notNull().default("gasto_comun"),
   paymentDate: timestamp("payment_date").notNull(),
   bank: varchar("bank", { length: 255 }),
   bankOperationId: varchar("bank_operation_id", { length: 255 }),
+  payerRut: varchar("payer_rut", { length: 20 }),
+  payerName: varchar("payer_name", { length: 255 }),
   status: incomeStatusEnum("status").notNull().default("pending"),
   notes: text("notes"),
   createdBy: varchar("created_by").notNull(),
@@ -1249,6 +1261,7 @@ export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type Vendor = typeof vendors.$inferSelect;
 
 export type IncomeStatus = "pending" | "identified" | "rejected";
+export type IncomeCategory = "gasto_comun" | "multa" | "arriendo" | "interes_mora" | "fondo_reserva" | "otro";
 export type ExpenseSourceType = "ticket" | "recurrent";
 export type ExpensePaymentStatus = "pending" | "paid" | "cancelled";
 export type ExpenseInclusionStatus = "included" | "postponed";
