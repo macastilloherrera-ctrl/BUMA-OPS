@@ -10,6 +10,7 @@ import { storage } from "./storage";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { registerDevAuthRoutes, isDevMode } from "./devAuth";
+import { parseBankFile } from "./bankParsers";
 import { db } from "./db";
 import { eq, or } from "drizzle-orm";
 import { users as usersTable } from "@shared/schema";
@@ -6470,74 +6471,22 @@ export async function registerRoutes(
       const pMonth = parseInt(periodMonth);
       const pYear = parseInt(periodYear);
 
-      let workbook: XLSX.WorkBook;
-      const originalName = file.originalname.toLowerCase();
-      if (originalName.endsWith(".csv")) {
-        const csvText = file.buffer.toString("utf-8");
-        workbook = XLSX.read(csvText, { type: "string" });
-      } else {
-        workbook = XLSX.read(file.buffer, { type: "buffer" });
+      const parseResult = parseBankFile(file.buffer, file.originalname);
+
+      if (parseResult.transactions.length === 0) {
+        return res.json({ imported: 0, duplicates: 0, total: parseResult.totalRowsScanned, detectedBank: parseResult.detectedBank });
       }
-
-      const sheetName = workbook.SheetNames[0];
-      const sheet = workbook.Sheets[sheetName];
-      const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-
-      if (rows.length === 0) {
-        return res.json({ imported: 0, duplicates: 0, total: 0 });
-      }
-
-      const headers = Object.keys(rows[0]);
-      const findCol = (patterns: string[]) => headers.find(h => patterns.some(p => h.toLowerCase().includes(p.toLowerCase())));
-
-      const dateCol = findCol(["Fecha", "fecha", "Date", "date"]);
-      const descCol = findCol(["Descripción", "descripcion", "Descripcion", "Glosa", "glosa", "Description"]);
-      const abonoCol = findCol(["Abono", "abono"]);
-      const cargoCol = findCol(["Cargo", "cargo"]);
-      const montoCol = findCol(["Monto", "monto", "Amount", "amount"]);
-      const refCol = findCol(["N° Operación", "Nro Operación", "Operación", "Referencia", "referencia", "Reference", "Comprobante"]);
-      const rutCol = findCol(["RUT", "Rut", "rut"]);
-      const bankCol = findCol(["Banco", "banco", "Bank"]);
 
       let imported = 0;
       let duplicates = 0;
 
-      for (const row of rows) {
-        let amount = 0;
-        if (abonoCol && row[abonoCol]) {
-          const val = String(row[abonoCol]).replace(/[^0-9.,\-]/g, "").replace(/\./g, "").replace(",", ".");
-          amount = parseFloat(val) || 0;
-        } else if (montoCol && row[montoCol]) {
-          const val = String(row[montoCol]).replace(/[^0-9.,\-]/g, "").replace(/\./g, "").replace(",", ".");
-          amount = parseFloat(val) || 0;
-        }
-
-        if (amount <= 0) continue;
-
-        let txnDate: Date | null = null;
-        if (dateCol && row[dateCol]) {
-          const raw = String(row[dateCol]).trim();
-          const ddmmyyyy = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-          if (ddmmyyyy) {
-            txnDate = new Date(parseInt(ddmmyyyy[3]), parseInt(ddmmyyyy[2]) - 1, parseInt(ddmmyyyy[1]));
-          } else {
-            txnDate = new Date(raw);
-          }
-          if (isNaN(txnDate.getTime())) txnDate = new Date();
-        } else {
-          txnDate = new Date();
-        }
-
-        const description = descCol ? String(row[descCol] || "") : "";
-        const reference = refCol ? String(row[refCol] || "") : "";
-        const payerRut = rutCol ? String(row[rutCol] || "") : "";
-        const bankName = bankCol ? String(row[bankCol] || "") : "";
-
+      for (const txn of parseResult.transactions) {
         const rowHash = crypto.createHash("sha256").update(JSON.stringify({
-          date: txnDate.toISOString().slice(0, 10),
-          amount,
-          description,
-          reference,
+          date: txn.txnDate.toISOString().slice(0, 10),
+          amount: txn.amount,
+          description: txn.description,
+          reference: txn.reference,
+          payerRut: txn.payerRut,
         })).digest("hex");
 
         const existing = await storage.getBankTransactionByHash(rowHash, buildingId);
@@ -6548,13 +6497,15 @@ export async function registerRoutes(
 
         await storage.createBankTransaction({
           buildingId,
-          txnDate,
-          amount: String(amount),
-          description: description || null,
-          reference: reference || null,
-          payerRut: payerRut || null,
-          bankName: bankName || null,
-          rawRowJson: JSON.stringify(row),
+          txnDate: txn.txnDate,
+          amount: String(txn.amount),
+          description: txn.description || null,
+          reference: txn.reference || null,
+          payerRut: txn.payerRut || null,
+          payerName: txn.payerName || null,
+          sourceBank: txn.sourceBank || null,
+          bankName: txn.bankName || null,
+          rawRowJson: txn.rawRowJson,
           rowHash,
           periodMonth: pMonth,
           periodYear: pYear,
@@ -6565,7 +6516,7 @@ export async function registerRoutes(
         imported++;
       }
 
-      res.json({ imported, duplicates, total: rows.length });
+      res.json({ imported, duplicates, total: parseResult.totalRowsScanned, detectedBank: parseResult.detectedBank });
     } catch (error) {
       console.error("Error importing bank transactions:", error);
       res.status(500).json({ error: "Error interno del servidor" });
@@ -6613,6 +6564,23 @@ export async function registerRoutes(
               assignedUnit: rutEntry.unit,
               matchScore: rutEntry.confidence,
               matchReason: `RUT ${txn.payerRut} encontrado en directorio de pagadores`,
+            });
+            if (status === "identified") identified++;
+            else suggested++;
+            matched = true;
+            continue;
+          }
+        }
+
+        if (!matched && txn.payerName) {
+          const nameEntry = directory.find(d => d.pattern && txn.payerName && txn.payerName.toLowerCase().includes(d.pattern.toLowerCase()));
+          if (nameEntry) {
+            const status = nameEntry.confidence >= 80 ? "identified" : "suggested";
+            await storage.updateBankTransaction(txn.id, {
+              status,
+              assignedUnit: nameEntry.unit,
+              matchScore: nameEntry.confidence,
+              matchReason: `Patrón "${nameEntry.pattern}" encontrado en nombre pagador "${txn.payerName}"`,
             });
             if (status === "identified") identified++;
             else suggested++;
@@ -6712,12 +6680,12 @@ export async function registerRoutes(
         matchReason: "Asignación manual",
       });
 
-      if (txn.payerRut || txn.description) {
+      if (txn.payerRut || txn.payerName || txn.description) {
         try {
           await storage.createPayerDirectoryEntry({
             buildingId: txn.buildingId,
             rut: txn.payerRut || null,
-            pattern: txn.description ? txn.description.substring(0, 100) : null,
+            pattern: txn.payerName ? txn.payerName.substring(0, 100) : (txn.description ? txn.description.substring(0, 100) : null),
             unit,
             confidence: 90,
             notes: "Auto-creado desde asignación manual",

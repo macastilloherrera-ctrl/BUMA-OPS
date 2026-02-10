@@ -21,6 +21,15 @@ Key architectural patterns include:
 - **Mobile-First for Executives, Desktop-First for Managers**: UI/UX design adapts to the primary use case of each user role.
 
 ## Recent Changes
+- **Feb 2026 - Bank Reconciliation Multi-Bank Parsers**: Enhanced the bank reconciliation import system with:
+  - Bank-specific parsers for BCI, Banco de Chile, Santander, and Scotiabank (server/bankParsers.ts)
+  - Auto-detection of bank format by scanning file metadata rows for signature strings
+  - Generic fallback parser that auto-detects header rows and column mapping for unknown bank formats
+  - New schema fields: payerName (varchar 255) and sourceBank (varchar 100) on bank_transactions table
+  - Name-based matching in reconciliation engine (matches payerName against payer directory patterns)
+  - UI shows Pagador, RUT, Detalle, Banco columns in transaction table; displays detected bank after upload
+  - Each bank parser handles its specific format: metadata row skipping, amount normalization ($, thousands separators), date parsing (DD/MM/YYYY, DD-MM-YYYY HH:mm), and Santander-specific payer name extraction from description field
+
 - **Feb 2026 - Project Expense Management**: Added comprehensive project expense management with:
   - Payment milestones on projects (isPaymentMilestone flag, payment amounts, invoice data fields)
   - Multi-vendor support via project_vendors junction table (contratista/ito/otro roles)

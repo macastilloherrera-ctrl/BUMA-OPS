@@ -129,7 +129,7 @@ export default function ConciliacionBancaria() {
   const [activeTab, setActiveTab] = useState<TabFilter>("all");
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadResult, setUploadResult] = useState<{ imported: number; duplicates: number } | null>(null);
+  const [uploadResult, setUploadResult] = useState<{ imported: number; duplicates: number; detectedBank?: string } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -307,7 +307,7 @@ export default function ConciliacionBancaria() {
         throw new Error(text || "Error al importar");
       }
       const result = await res.json();
-      setUploadResult({ imported: result.imported || 0, duplicates: result.duplicates || 0 });
+      setUploadResult({ imported: result.imported || 0, duplicates: result.duplicates || 0, detectedBank: result.detectedBank || "" });
       queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions", buildingId, month, year] });
       toast({ title: `${result.imported || 0} transacciones importadas` });
     } catch (error: any) {
@@ -608,11 +608,17 @@ export default function ConciliacionBancaria() {
 
             {uploadResult && (
               <Card className="bg-muted/50">
-                <CardContent className="pt-4 pb-4">
+                <CardContent className="pt-4 pb-4 space-y-1">
                   <p className="text-sm" data-testid="text-upload-result">
                     <CheckCircle className="inline h-4 w-4 mr-1 text-green-600" />
                     <strong>{uploadResult.imported}</strong> importadas, <strong>{uploadResult.duplicates}</strong> duplicadas
                   </p>
+                  {uploadResult.detectedBank && (
+                    <p className="text-sm text-muted-foreground" data-testid="text-detected-bank">
+                      <Landmark className="inline h-4 w-4 mr-1" />
+                      Banco detectado: <strong>{uploadResult.detectedBank}</strong>
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -742,9 +748,10 @@ export default function ConciliacionBancaria() {
                     <TableRow>
                       <TableHead>Fecha</TableHead>
                       <TableHead className="text-right">Monto</TableHead>
-                      <TableHead>Glosa</TableHead>
-                      <TableHead>Referencia</TableHead>
+                      <TableHead>Pagador</TableHead>
                       <TableHead>RUT</TableHead>
+                      <TableHead>Detalle</TableHead>
+                      <TableHead>Banco</TableHead>
                       <TableHead>Unidad</TableHead>
                       <TableHead>Estado</TableHead>
                       <TableHead>Acciones</TableHead>
@@ -759,11 +766,16 @@ export default function ConciliacionBancaria() {
                         <TableCell className="text-right whitespace-nowrap font-mono" data-testid={`text-amount-${txn.id}`}>
                           {formatCurrency(txn.amount)}
                         </TableCell>
-                        <TableCell className="max-w-[200px] truncate" title={txn.description || ""} data-testid={`text-description-${txn.id}`}>
+                        <TableCell className="max-w-[180px] truncate" title={(txn as any).payerName || ""} data-testid={`text-payer-name-${txn.id}`}>
+                          {(txn as any).payerName || "-"}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap" data-testid={`text-rut-${txn.id}`}>{txn.payerRut || "-"}</TableCell>
+                        <TableCell className="max-w-[150px] truncate" title={txn.description || ""} data-testid={`text-description-${txn.id}`}>
                           {txn.description || "-"}
                         </TableCell>
-                        <TableCell data-testid={`text-reference-${txn.id}`}>{txn.reference || "-"}</TableCell>
-                        <TableCell data-testid={`text-rut-${txn.id}`}>{txn.payerRut || "-"}</TableCell>
+                        <TableCell className="whitespace-nowrap" data-testid={`text-source-bank-${txn.id}`}>
+                          {(txn as any).sourceBank || txn.bankName || "-"}
+                        </TableCell>
                         <TableCell data-testid={`text-unit-${txn.id}`}>{txn.assignedUnit || "-"}</TableCell>
                         <TableCell>
                           <StatusBadge status={txn.status} />

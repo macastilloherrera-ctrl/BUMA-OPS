@@ -1275,6 +1275,8 @@ export const bankTransactions = pgTable("bank_transactions", {
   description: text("description"),
   reference: varchar("reference", { length: 255 }),
   payerRut: varchar("payer_rut", { length: 50 }),
+  payerName: varchar("payer_name", { length: 255 }),
+  sourceBank: varchar("source_bank", { length: 100 }),
   bankName: varchar("bank_name", { length: 255 }),
   rawRowJson: text("raw_row_json"),
   rowHash: varchar("row_hash", { length: 64 }).notNull(),
