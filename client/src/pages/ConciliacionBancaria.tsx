@@ -81,7 +81,7 @@ const years = [
 
 const exportFormats = [
   { value: "edipro", label: "Edipro" },
-  { value: "comunidad_feliz", label: "Comunidad Feliz" },
+  { value: "comunidadfeliz", label: "Comunidad Feliz" },
   { value: "kastor", label: "Kastor" },
   { value: "generico", label: "Genérico" },
 ];
@@ -803,10 +803,13 @@ export default function ConciliacionBancaria() {
           </p>
 
           <Card className="bg-muted/50">
-            <CardContent className="pt-4 pb-4">
+            <CardContent className="pt-4 pb-4 space-y-1">
               <p className="text-sm" data-testid="text-export-summary">
                 <CheckCircle className="inline h-4 w-4 mr-1 text-green-600" />
-                <strong>{statusCounts.identified}</strong> transacciones identificadas listas para exportar
+                <strong>{statusCounts.identified}</strong> transacciones de cartola identificadas
+              </p>
+              <p className="text-sm text-muted-foreground" data-testid="text-export-note">
+                Los ingresos manuales del mismo período se incluyen automáticamente en la exportación.
               </p>
             </CardContent>
           </Card>

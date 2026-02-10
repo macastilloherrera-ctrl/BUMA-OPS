@@ -5830,10 +5830,10 @@ export async function registerRoutes(
   });
 
   // ==========================================
-  // Edipro Excel Export Endpoints
+  // Financial Export Endpoints (multi-format)
   // ==========================================
 
-  app.get("/api/incomes/export/edipro", isAuthenticated, async (req, res) => {
+  app.get("/api/incomes/export", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
       if (!canExportFinancial(profile)) {
@@ -5842,6 +5842,7 @@ export async function registerRoutes(
       const buildingId = req.query.buildingId as string;
       const month = parseInt(req.query.month as string);
       const year = parseInt(req.query.year as string);
+      const format = (req.query.format as string) || "generico";
       if (!buildingId || !month || !year) {
         return res.status(400).json({ error: "Se requiere buildingId, month y year" });
       }
@@ -5853,40 +5854,58 @@ export async function registerRoutes(
       const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
       const monthName = monthNames[month - 1] || "";
       const XLSX = await import("xlsx");
-      const wsData: any[][] = [
-        ["Número", "Monto", "Unidad", "Descripción", "Anulado", "Fecha ingreso", "Fondo", "Forma de pago", "Banco", "Número comprobante"],
-      ];
-      allIncomes.forEach((inc, idx) => {
-        const dateStr = inc.paymentDate ? new Date(inc.paymentDate).toLocaleDateString("es-CL") : "";
-        wsData.push([
-          idx + 1,
-          inc.amount ? parseFloat(inc.amount) : 0,
-          inc.department || "",
-          "abono",
-          "NO",
-          dateStr,
-          "Gasto común",
-          "Transferencia",
-          inc.bank || "",
-          inc.bankOperationId || "",
-        ]);
-      });
+
+      const formatDateCL = (d: Date) => `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+
+      let wsData: any[][] = [];
+
+      if (format === "edipro") {
+        wsData.push(["Número", "Monto", "Unidad", "Descripción", "Anulado", "Fecha ingreso", "Fondo", "Forma de pago", "Banco", "Número comprobante"]);
+        allIncomes.forEach((inc, idx) => {
+          const dateStr = inc.paymentDate ? formatDateCL(new Date(inc.paymentDate)) : "";
+          wsData.push([idx + 1, inc.amount ? parseFloat(inc.amount) : 0, inc.department || "", "abono", "NO", dateStr, "Gasto común", "Transferencia", inc.bank || "", inc.bankOperationId || ""]);
+        });
+      } else if (format === "comunidadfeliz") {
+        wsData.push(["Fecha", "Unidad", "Monto", "Descripcion", "Referencia"]);
+        allIncomes.forEach((inc) => {
+          const dateStr = inc.paymentDate ? formatDateCL(new Date(inc.paymentDate)) : "";
+          wsData.push([dateStr, inc.department || "", inc.amount ? parseFloat(inc.amount) : 0, inc.description || "abono", inc.bankOperationId || ""]);
+        });
+      } else if (format === "kastor") {
+        wsData.push(["Fecha", "Departamento", "Monto", "Glosa", "Comprobante"]);
+        allIncomes.forEach((inc) => {
+          const dateStr = inc.paymentDate ? formatDateCL(new Date(inc.paymentDate)) : "";
+          wsData.push([dateStr, inc.department || "", inc.amount ? parseFloat(inc.amount) : 0, inc.description || "abono", inc.bankOperationId || ""]);
+        });
+      } else {
+        wsData.push(["Fecha", "Unidad", "Monto", "Descripcion", "Banco", "Referencia"]);
+        allIncomes.forEach((inc) => {
+          const dateStr = inc.paymentDate ? formatDateCL(new Date(inc.paymentDate)) : "";
+          wsData.push([dateStr, inc.department || "", inc.amount ? parseFloat(inc.amount) : 0, inc.description || "abono", inc.bank || "", inc.bankOperationId || ""]);
+        });
+      }
+
       const ws = XLSX.utils.aoa_to_sheet(wsData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Ingresos");
       const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
       const buildingName = building.name.replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, "").replace(/\s+/g, "_");
-      const filename = `ingresos_${buildingName}_${monthName}_${year}.xlsx`;
+      const filename = `ingresos_${format}_${buildingName}_${monthName}_${year}.xlsx`;
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.send(buf);
     } catch (error) {
-      console.error("Error exportando ingresos Edipro:", error);
+      console.error("Error exportando ingresos:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
 
-  app.get("/api/expenses/export/edipro", isAuthenticated, async (req, res) => {
+  app.get("/api/incomes/export/edipro", isAuthenticated, async (req, res) => {
+    const newUrl = `/api/incomes/export?format=edipro&buildingId=${req.query.buildingId}&month=${req.query.month}&year=${req.query.year}`;
+    res.redirect(301, newUrl);
+  });
+
+  app.get("/api/expenses/export", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
       if (!canExportFinancial(profile)) {
@@ -5895,6 +5914,7 @@ export async function registerRoutes(
       const buildingId = req.query.buildingId as string;
       const month = parseInt(req.query.month as string);
       const year = parseInt(req.query.year as string);
+      const format = (req.query.format as string) || "generico";
       if (!buildingId || !month || !year) {
         return res.status(400).json({ error: "Se requiere buildingId, month y year" });
       }
@@ -5913,40 +5933,55 @@ export async function registerRoutes(
         cheque: "Cheque",
       };
       const XLSX = await import("xlsx");
-      const wsData: any[][] = [
-        ["Número", "Fondo", "Subfondo", "Descripción", "Monto", "Documento", "Fecha egreso", "Fecha banco", "Anulado", "Proveedor", "Número respaldo", "Forma de pago", "Fecha cheque"],
-      ];
-      filtered.forEach((exp, idx) => {
-        const dateStr = exp.paymentDate ? new Date(exp.paymentDate).toLocaleDateString("es-CL") : "";
-        wsData.push([
-          idx + 1,
-          "Gasto común",
-          exp.category || "",
-          exp.description || "",
-          exp.amount ? parseFloat(exp.amount) : 0,
-          exp.documentNumber || "",
-          dateStr,
-          "",
-          "NO",
-          exp.vendorEdipro || exp.vendorName || "",
-          "",
-          paymentMethodMap[exp.paymentMethod || ""] || "",
-          "",
-        ]);
-      });
+
+      const formatDateCL = (d: Date) => `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+
+      let wsData: any[][] = [];
+
+      if (format === "edipro") {
+        wsData.push(["Número", "Fondo", "Subfondo", "Descripción", "Monto", "Documento", "Fecha egreso", "Fecha banco", "Anulado", "Proveedor", "Número respaldo", "Forma de pago", "Fecha cheque"]);
+        filtered.forEach((exp, idx) => {
+          const dateStr = exp.paymentDate ? formatDateCL(new Date(exp.paymentDate)) : "";
+          wsData.push([idx + 1, "Gasto común", exp.category || "", exp.description || "", exp.amount ? parseFloat(exp.amount) : 0, exp.documentNumber || "", dateStr, "", "NO", exp.vendorEdipro || exp.vendorName || "", "", paymentMethodMap[exp.paymentMethod || ""] || "", ""]);
+        });
+      } else if (format === "comunidadfeliz") {
+        wsData.push(["Fecha", "Proveedor", "Monto", "Descripcion", "Categoría"]);
+        filtered.forEach((exp) => {
+          const dateStr = exp.paymentDate ? formatDateCL(new Date(exp.paymentDate)) : "";
+          wsData.push([dateStr, exp.vendorName || "", exp.amount ? parseFloat(exp.amount) : 0, exp.description || "", exp.category || ""]);
+        });
+      } else if (format === "kastor") {
+        wsData.push(["Fecha", "Proveedor", "Monto", "Glosa", "Documento"]);
+        filtered.forEach((exp) => {
+          const dateStr = exp.paymentDate ? formatDateCL(new Date(exp.paymentDate)) : "";
+          wsData.push([dateStr, exp.vendorName || "", exp.amount ? parseFloat(exp.amount) : 0, exp.description || "", exp.documentNumber || ""]);
+        });
+      } else {
+        wsData.push(["Fecha", "Proveedor", "Monto", "Descripcion", "Categoría", "Forma de pago", "Documento"]);
+        filtered.forEach((exp) => {
+          const dateStr = exp.paymentDate ? formatDateCL(new Date(exp.paymentDate)) : "";
+          wsData.push([dateStr, exp.vendorName || "", exp.amount ? parseFloat(exp.amount) : 0, exp.description || "", exp.category || "", paymentMethodMap[exp.paymentMethod || ""] || "", exp.documentNumber || ""]);
+        });
+      }
+
       const ws = XLSX.utils.aoa_to_sheet(wsData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Egresos");
       const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
       const buildingName = building.name.replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, "").replace(/\s+/g, "_");
-      const filename = `egresos_${buildingName}_${monthName}_${year}.xlsx`;
+      const filename = `egresos_${format}_${buildingName}_${monthName}_${year}.xlsx`;
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.send(buf);
     } catch (error) {
-      console.error("Error exportando egresos Edipro:", error);
+      console.error("Error exportando egresos:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
+  });
+
+  app.get("/api/expenses/export/edipro", isAuthenticated, async (req, res) => {
+    const newUrl = `/api/expenses/export?format=edipro&buildingId=${req.query.buildingId}&month=${req.query.month}&year=${req.query.year}`;
+    res.redirect(301, newUrl);
   });
 
   // ==========================================
@@ -6405,50 +6440,61 @@ export async function registerRoutes(
       }
 
       const transactions = await storage.getBankTransactions({ buildingId, status: "identified", month, year });
+      const manualIncomes = await storage.getIncomes({ buildingId, month, year, status: "identified" });
       const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
       const monthName = monthNames[month - 1] || "";
+
+      const formatDateCL = (d: Date) => `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+
+      interface UnifiedRow { date: Date; amount: number; unit: string; description: string; bank: string; reference: string; rut: string; source: string; }
+      const unified: UnifiedRow[] = [];
+      transactions.forEach((txn) => {
+        unified.push({
+          date: txn.txnDate ? new Date(txn.txnDate) : new Date(),
+          amount: txn.amount ? parseFloat(txn.amount) : 0,
+          unit: txn.assignedUnit || "",
+          description: txn.description || "",
+          bank: txn.bankName || "",
+          reference: txn.reference || "",
+          rut: txn.payerRut || "",
+          source: "cartola",
+        });
+      });
+      manualIncomes.forEach((inc) => {
+        unified.push({
+          date: inc.paymentDate ? new Date(inc.paymentDate) : new Date(),
+          amount: inc.amount ? parseFloat(inc.amount) : 0,
+          unit: inc.department || "",
+          description: inc.description || "abono",
+          bank: inc.bank || "",
+          reference: inc.bankOperationId || "",
+          rut: "",
+          source: "manual",
+        });
+      });
+      unified.sort((a, b) => a.date.getTime() - b.date.getTime());
 
       let wsData: any[][] = [];
 
       if (format === "edipro") {
         wsData.push(["Número", "Monto", "Unidad", "Descripción", "Anulado", "Fecha ingreso", "Fondo", "Forma de pago", "Banco", "Número comprobante"]);
-        transactions.forEach((txn, idx) => {
-          const d = txn.txnDate ? new Date(txn.txnDate) : new Date();
-          const dateStr = `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
-          const unit = txn.assignedUnit || "";
-          wsData.push([
-            idx + 1,
-            txn.amount ? parseFloat(txn.amount) : 0,
-            unit,
-            "abono",
-            "NO",
-            dateStr,
-            "Gasto común",
-            "Transferencia",
-            txn.bankName || "",
-            txn.reference || "",
-          ]);
+        unified.forEach((row, idx) => {
+          wsData.push([idx + 1, row.amount, row.unit, "abono", "NO", formatDateCL(row.date), "Gasto común", "Transferencia", row.bank, row.reference]);
         });
       } else if (format === "comunidadfeliz") {
         wsData.push(["Fecha", "Unidad", "Monto", "Descripcion", "Referencia"]);
-        transactions.forEach((txn) => {
-          const d = txn.txnDate ? new Date(txn.txnDate) : new Date();
-          const dateStr = `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
-          wsData.push([dateStr, txn.assignedUnit || "", txn.amount ? parseFloat(txn.amount) : 0, txn.description || "", txn.reference || ""]);
+        unified.forEach((row) => {
+          wsData.push([formatDateCL(row.date), row.unit, row.amount, row.description, row.reference]);
         });
       } else if (format === "kastor") {
         wsData.push(["Fecha", "Departamento", "Monto", "Glosa", "Comprobante"]);
-        transactions.forEach((txn) => {
-          const d = txn.txnDate ? new Date(txn.txnDate) : new Date();
-          const dateStr = `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
-          wsData.push([dateStr, txn.assignedUnit || "", txn.amount ? parseFloat(txn.amount) : 0, txn.description || "", txn.reference || ""]);
+        unified.forEach((row) => {
+          wsData.push([formatDateCL(row.date), row.unit, row.amount, row.description, row.reference]);
         });
       } else {
-        wsData.push(["Fecha", "Unidad", "Monto", "Descripcion", "Banco", "Referencia", "RUT Pagador"]);
-        transactions.forEach((txn) => {
-          const d = txn.txnDate ? new Date(txn.txnDate) : new Date();
-          const dateStr = `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
-          wsData.push([dateStr, txn.assignedUnit || "", txn.amount ? parseFloat(txn.amount) : 0, txn.description || "", txn.bankName || "", txn.reference || "", txn.payerRut || ""]);
+        wsData.push(["Fecha", "Unidad", "Monto", "Descripcion", "Banco", "Referencia", "RUT Pagador", "Origen"]);
+        unified.forEach((row) => {
+          wsData.push([formatDateCL(row.date), row.unit, row.amount, row.description, row.bank, row.reference, row.rut, row.source === "cartola" ? "Cartola" : "Manual"]);
         });
       }
 

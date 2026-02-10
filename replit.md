@@ -126,11 +126,12 @@ Gestion de ingresos, egresos y consumos recurrentes con exportacion Edipro.
 - `vendorEdipro`: Nombre estandarizado del proveedor para Edipro (si vacio, se usa vendorName)
 - `operationallyValidated` / `financiallyValidated`: Doble validacion operativa y financiera
 
-**Exportacion Edipro:**
-- Ingresos: 10 columnas [Numero, Monto, Unidad, Descripcion("abono"), Anulado("NO"), Fecha ingreso(dd-mm-yyyy), Fondo("Gasto comun"), Forma de pago("Transferencia"), Banco, Numero comprobante]
-- Egresos: 13 columnas [Numero, Fondo("Gasto comun"), Subfondo(category), Descripcion, Monto, Documento, Fecha egreso(dd-mm-yyyy), Fecha banco(""), Anulado("NO"), Proveedor(vendorEdipro||vendorName), Numero respaldo(""), Forma de pago, Fecha cheque("")]
+**Exportacion multi-formato (Edipro, Comunidad Feliz, Kastor, Generico):**
+- Ingresos formato Edipro: 10 columnas [Numero, Monto, Unidad, Descripcion("abono"), Anulado("NO"), Fecha ingreso(dd-mm-yyyy), Fondo("Gasto comun"), Forma de pago("Transferencia"), Banco, Numero comprobante]
+- Egresos formato Edipro: 13 columnas [Numero, Fondo("Gasto comun"), Subfondo(category), Descripcion, Monto, Documento, Fecha egreso(dd-mm-yyyy), Fecha banco(""), Anulado("NO"), Proveedor(vendorEdipro||vendorName), Numero respaldo(""), Forma de pago, Fecha cheque("")]
 - Solo exporta ingresos con status="identified" y egresos con paymentStatus="paid" AND inclusionStatus!="postponed"
 - Formato: .xlsx UTF-8, fechas en formato es-CL (dd-mm-yyyy)
+- La exportacion de conciliacion bancaria fusiona transacciones de cartola + ingresos manuales del mismo periodo
 
 **Division de depositos:**
 - POST /api/incomes/split: Divide 1 deposito en N departamentos
@@ -147,10 +148,10 @@ Gestion de ingresos, egresos y consumos recurrentes con exportacion Edipro.
 - `GET/POST /api/incomes` - Listar/crear ingresos
 - `PATCH/DELETE /api/incomes/:id` - Editar/eliminar ingreso
 - `POST /api/incomes/split` - Dividir deposito en N departamentos
-- `GET /api/incomes/export/edipro` - Exportar ingresos formato Edipro
+- `GET /api/incomes/export` - Exportar ingresos (formato: edipro/comunidadfeliz/kastor/generico)
 - `GET/POST /api/expenses` - Listar/crear egresos
 - `PATCH/DELETE /api/expenses/:id` - Editar/eliminar egreso
-- `GET /api/expenses/export/edipro` - Exportar egresos formato Edipro
+- `GET /api/expenses/export` - Exportar egresos (formato: edipro/comunidadfeliz/kastor/generico)
 - `GET/POST /api/recurring-expense-templates` - Listar/crear templates
 - `PATCH/DELETE /api/recurring-expense-templates/:id` - Editar/eliminar template
 

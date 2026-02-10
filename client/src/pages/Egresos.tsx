@@ -155,6 +155,7 @@ export default function Egresos() {
   const [selectedYear, setSelectedYear] = useState<string>(String(currentYear));
   const [selectedSourceType, setSelectedSourceType] = useState<string>("all");
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string>("all");
+  const [exportFormat, setExportFormat] = useState<string>("edipro");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -331,12 +332,13 @@ export default function Egresos() {
     }
   }
 
-  function handleExportEdipro() {
+  function handleExport(format: string) {
     const params = new URLSearchParams();
     if (selectedBuilding !== "all") params.set("buildingId", selectedBuilding);
     if (selectedMonth) params.set("month", selectedMonth);
     if (selectedYear) params.set("year", selectedYear);
-    window.open(`/api/expenses/export/edipro?${params.toString()}`, "_blank");
+    params.set("format", format);
+    window.open(`/api/expenses/export?${params.toString()}`, "_blank");
   }
 
   const formatCurrency = (amount: string | number) => {
@@ -370,14 +372,25 @@ export default function Egresos() {
             <h1 className="text-xl md:text-2xl font-semibold" data-testid="text-page-title">Egresos</h1>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <Select value={exportFormat} onValueChange={setExportFormat}>
+              <SelectTrigger className="w-[150px]" data-testid="select-export-format">
+                <SelectValue placeholder="Formato" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="edipro">Edipro</SelectItem>
+                <SelectItem value="comunidadfeliz">Comunidad Feliz</SelectItem>
+                <SelectItem value="kastor">Kastor</SelectItem>
+                <SelectItem value="generico">Genérico</SelectItem>
+              </SelectContent>
+            </Select>
             <Button
               variant="outline"
-              onClick={handleExportEdipro}
+              onClick={() => handleExport(exportFormat)}
               disabled={!expenses || expenses.length === 0}
-              data-testid="button-export-edipro"
+              data-testid="button-export"
             >
               <Download className="h-4 w-4 mr-1" />
-              Exportar Edipro
+              Exportar
             </Button>
             <Button onClick={openCreate} data-testid="button-create-expense">
               <Plus className="h-4 w-4 mr-1" />
