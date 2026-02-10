@@ -199,9 +199,20 @@ function parseSantander(rows: RawRow[]): ParsedTransaction[] {
 
     const rawDesc = colDesc >= 0 ? String(row[colDesc] || "") : "";
     let payerName = "";
-    const transfMatch = rawDesc.match(/Transf\.\s*(.+)/i);
-    if (transfMatch) {
-      payerName = transfMatch[1].trim();
+    let payerRut = "";
+
+    const descMatch = rawDesc.match(/^0*(\d{1,9}[0-9Kk])\s+Transf[\.\s]+(?:de\s+)?(.+)/i);
+    if (descMatch) {
+      const rawRut = descMatch[1];
+      payerName = descMatch[2].trim();
+      const dv = rawRut.slice(-1).toUpperCase();
+      const body = rawRut.slice(0, -1);
+      payerRut = body.replace(/\B(?=(\d{3})+(?!\d))/g, ".") + "-" + dv;
+    } else {
+      const transfMatch = rawDesc.match(/Transf[\.\s]+(?:de\s+)?(.+)/i);
+      if (transfMatch) {
+        payerName = transfMatch[1].trim();
+      }
     }
 
     results.push({
@@ -209,7 +220,7 @@ function parseSantander(rows: RawRow[]): ParsedTransaction[] {
       amount,
       description: rawDesc,
       reference: colDoc >= 0 ? String(row[colDoc] || "") : "",
-      payerRut: "",
+      payerRut,
       payerName,
       sourceBank: "Santander",
       bankName: "Santander",
