@@ -13,10 +13,10 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
-import type { Building, MonthlyClosingCycle, MonthlyClosingChecklistItem, UserProfile } from "@shared/schema";
+import type { Building, MonthlyClosingCycle, MonthlyClosingChecklistItem, MonthlyClosingStatusLog, UserProfile } from "@shared/schema";
 import {
   Building2, Plus, Calendar, AlertCircle, CheckCircle, Clock, Trash2,
-  ChevronRight, ArrowLeft, FileCheck, AlertTriangle, CircleDot, X
+  ChevronRight, ArrowLeft, FileCheck, AlertTriangle, CircleDot, X, History
 } from "lucide-react";
 
 const MONTHS = [
@@ -177,6 +177,11 @@ export default function CierreMensual() {
     enabled: !!selectedCycleId,
   });
 
+  const { data: statusLogs } = useQuery<MonthlyClosingStatusLog[]>({
+    queryKey: [`/api/monthly-closing-cycles/${selectedCycleId}/status-logs`],
+    enabled: !!selectedCycleId,
+  });
+
   const [createBuildingId, setCreateBuildingId] = useState("");
   const [createMonth, setCreateMonth] = useState(String(new Date().getMonth() + 1));
   const [createYear, setCreateYear] = useState(String(currentYear));
@@ -220,6 +225,7 @@ export default function CierreMensual() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/monthly-closing-cycles/dashboard"] });
       queryClient.invalidateQueries({ queryKey: ["/api/monthly-closing-cycles", selectedCycleId] });
+      queryClient.invalidateQueries({ queryKey: [`/api/monthly-closing-cycles/${selectedCycleId}/status-logs`] });
       toast({ title: "Estado actualizado" });
     },
     onError: (error: Error) => {
@@ -440,6 +446,14 @@ export default function CierreMensual() {
 
                       {cycle ? (
                         <div className="mt-2 space-y-1.5">
+                          {getDateStatus(cycle.finalIssueDate) === "overdue" && cycle.status !== "approved" && cycle.status !== "issued" && (
+                            <div className="flex items-center gap-1.5 text-xs text-red-600 dark:text-red-400 font-medium">
+                              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                              <span data-testid={`text-overdue-${building.id}`}>
+                                Emisión vencida hace {Math.abs(Math.ceil((new Date(cycle.finalIssueDate!).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)))} días
+                              </span>
+                            </div>
+                          )}
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
                             <DateIndicator label="Corte Eg." date={cycle.cutoffExpensesDate} />
                             <DateIndicator label="Corte Ing." date={cycle.cutoffIncomesDate} />
@@ -527,6 +541,14 @@ export default function CierreMensual() {
 
                     <div>
                       <h3 className="text-sm font-medium mb-2">Estado del Ciclo</h3>
+                      {statusLogs && statusLogs.length > 0 && (
+                        <p className="text-xs text-muted-foreground mb-2" data-testid="text-last-status-change">
+                          Último cambio por <span className="font-medium">{statusLogs[0].changedByName || "—"}</span>
+                          {statusLogs[0].changedAt && (
+                            <span> el {new Date(statusLogs[0].changedAt).toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" })}</span>
+                          )}
+                        </p>
+                      )}
                       <div className="flex flex-wrap items-center gap-2">
                         {STATUS_ORDER.map((s, i) => {
                           const currentIdx = STATUS_ORDER.indexOf(cycleDetail.status);
@@ -577,6 +599,38 @@ export default function CierreMensual() {
                         </div>
                       )}
                     </div>
+
+                    {statusLogs && statusLogs.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-medium mb-2 flex items-center gap-1.5">
+                          <History className="h-4 w-4 text-muted-foreground" />
+                          Historial de Cambios
+                        </h3>
+                        <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                          {statusLogs.map(log => (
+                            <div
+                              key={log.id}
+                              className="flex items-center gap-2 text-xs p-2 rounded-md bg-muted/30"
+                              data-testid={`status-log-${log.id}`}
+                            >
+                              <span className="text-muted-foreground whitespace-nowrap">
+                                {log.changedAt ? new Date(log.changedAt).toLocaleDateString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}
+                              </span>
+                              <span className="text-muted-foreground">
+                                {log.previousStatus ? STATUS_LABELS[log.previousStatus] || log.previousStatus : "—"}
+                              </span>
+                              <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                              <span className="font-medium">
+                                {STATUS_LABELS[log.newStatus] || log.newStatus}
+                              </span>
+                              <span className="ml-auto text-muted-foreground truncate max-w-[120px]" title={log.changedByName || ""}>
+                                {log.changedByName || "—"}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     <div>
                       <h3 className="text-sm font-medium mb-2 flex items-center gap-1.5">

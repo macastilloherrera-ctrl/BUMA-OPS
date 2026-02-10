@@ -1,0 +1,59 @@
+Replit: Hay un problema: NO existe/NO aparece el rol CONSERJERIA en la UI de Usuarios, y el combo de roles no se despliega al crear usuario. Necesito IMPLEMENTACIÓN REAL, NO descripción.
+
+A) ARREGLAR UI DE USUARIOS (bloqueante)
+1) En /usuarios (admin), debe listar todos los usuarios con su rol.
+2) En “Crear Usuario”, el combo de roles DEBE cargar y mostrar TODOS los roles disponibles (incluyendo CONSERJERIA).
+3) Si el combo no se carga, mostrar error visible en UI y log claro en consola.
+4) Verificar endpoints que alimentan el combo. Entregar ruta exacta + payload ejemplo.
+
+B) CREAR ROL CONSERJERIA EN EL MODELO (si no existe en BD)
+1) Agregar role=CONSERJERIA al enum / schema / migración.
+2) Back-end: asegurar que el rol sea aceptado en creación/edición de usuario.
+3) Tests: crear usuario con rol CONSERJERIA y verificar que persiste.
+
+C) AUTOCREACIÓN DE USUARIO CONSERJERIA POR EDIFICIO (obligatorio)
+Al crear un edificio:
+1) Crear automáticamente un usuario:
+   - displayName: "Conserjería - <buildingName>"
+   - role: CONSERJERIA
+   - buildingScope: assigned (solo ese edificio)
+   - assignedBuildingId: <buildingId>
+   - username/email interno estable (no depende de email real):
+     ejemplo: conserjeria+<buildingSlug>@ops.local o conserjeria_<buildingId>@ops.local
+   - password temporal generado y visible solo a gerencias/superadmin.
+2) En la ficha del edificio debe aparecer una sección:
+   “Acceso Conserjería”
+   - usuario
+   - botón “Reset password/PIN”
+   - botón “Copiar credenciales”
+   - (opcional) QR para abrir login
+
+D) PERMISOS Y UX CONSERJERIA (verificable)
+1) Conserjería solo ve:
+   - Tickets asignados a Conserjería de su edificio
+   - Puede subir evidencia (fotos/docs) y notas
+2) Conserjería NO ve:
+   - Finanzas/conciliación/export/reportes/costos/administración
+3) Backend 403 para endpoints financieros y administración.
+4) Pruebas: login como conserjería, verificar rutas accesibles.
+
+E) CICLO DE CIERRE MENSUAL: atraso + responsable de avanzar (hoy no se ve)
+Necesito en el dashboard del ciclo mensual:
+1) Mostrar si está ATRASADO:
+   - overdue = hoy > finalIssueDate y status != ISSUED
+   - mostrar “Días de atraso”
+2) Mostrar “Responsable de avanzar” según etapa:
+   - Solo Gerente Comercial y Gerente General pueden avanzar estados del ciclo.
+   - Operaciones solo lectura y subida de evidencia.
+3) En la vista del ciclo, agregar:
+   - botón “Avanzar estado” visible solo a roles autorizados
+   - log/audit de quién avanzó el estado y cuándo
+
+ENTREGABLES OBLIGATORIOS:
+- Indicar URLs exactas para:
+  /usuarios (lista)
+  /usuarios/nuevo (crear)
+  /buildings/:id (ficha con credenciales conserjería)
+  /monthly-closing (ciclo)
+- Confirmar con screenshots o descripción detallada de cada pantalla.
+- Confirmar migración aplicada y tests mínimos pasando.

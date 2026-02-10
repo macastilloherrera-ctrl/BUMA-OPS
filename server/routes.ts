@@ -406,7 +406,43 @@ export async function registerRoutes(
     try {
       const data = insertBuildingSchema.parse(req.body);
       const building = await storage.createBuilding(data);
-      res.status(201).json(building);
+
+      const buildingSlug = building.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+      const conserjeriaEmail = `conserjeria_${buildingSlug}_${building.id.slice(0, 8)}@ops.local`;
+      const tempPassword = `Buma${Math.random().toString(36).slice(2, 8)}!`;
+      const passwordHash = await bcrypt.hash(tempPassword, 10);
+      const conserjeriaUserId = `conserjeria-${building.id}`;
+
+      const conserjeriaUser = await storage.createUser({
+        id: conserjeriaUserId,
+        email: conserjeriaEmail,
+        firstName: "Conserjería",
+        lastName: building.name,
+        passwordHash,
+        mustChangePassword: true,
+      });
+
+      await storage.createUserProfile({
+        userId: conserjeriaUser.id,
+        role: "conserjeria",
+        buildingScope: "assigned",
+        isActive: true,
+      });
+
+      await storage.updateBuilding(building.id, {
+        conserjeriaUserId: conserjeriaUser.id,
+        assignedExecutiveId: building.assignedExecutiveId,
+      });
+
+      res.status(201).json({
+        ...building,
+        conserjeriaUserId: conserjeriaUser.id,
+        conserjeriaCredentials: {
+          email: conserjeriaEmail,
+          tempPassword,
+          userId: conserjeriaUser.id,
+        },
+      });
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Datos invalidos", details: error.errors });
@@ -429,6 +465,95 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Datos invalidos", details: error.errors });
       }
       console.error("Error updating building:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/buildings/:id/conserjeria", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const building = await storage.getBuilding(req.params.id);
+      if (!building) return res.status(404).json({ error: "Edificio no encontrado" });
+
+      if (!building.conserjeriaUserId) {
+        return res.json({ exists: false });
+      }
+
+      const users_all = await storage.getUsers();
+      const conserjeriaUser = users_all.find(u => u.id === building.conserjeriaUserId);
+      if (!conserjeriaUser) return res.json({ exists: false });
+
+      const profile = await storage.getUserProfile(conserjeriaUser.id);
+      return res.json({
+        exists: true,
+        userId: conserjeriaUser.id,
+        email: conserjeriaUser.email,
+        displayName: `${conserjeriaUser.firstName || ""} ${conserjeriaUser.lastName || ""}`.trim(),
+        isActive: profile?.isActive ?? false,
+      });
+    } catch (error) {
+      console.error("Error fetching conserjeria info:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/buildings/:id/conserjeria/reset-password", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const building = await storage.getBuilding(req.params.id);
+      if (!building) return res.status(404).json({ error: "Edificio no encontrado" });
+      if (!building.conserjeriaUserId) return res.status(404).json({ error: "No hay usuario conserjería para este edificio" });
+
+      const newPassword = `Buma${Math.random().toString(36).slice(2, 8)}!`;
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+
+      await storage.updateUser(building.conserjeriaUserId, {
+        passwordHash,
+        mustChangePassword: true,
+      });
+
+      res.json({ newPassword, userId: building.conserjeriaUserId });
+    } catch (error) {
+      console.error("Error resetting conserjeria password:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/buildings/:id/conserjeria/create", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const building = await storage.getBuilding(req.params.id);
+      if (!building) return res.status(404).json({ error: "Edificio no encontrado" });
+      if (building.conserjeriaUserId) return res.status(400).json({ error: "Ya existe un usuario conserjería para este edificio" });
+
+      const buildingSlug = building.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+      const conserjeriaEmail = `conserjeria_${buildingSlug}_${building.id.slice(0, 8)}@ops.local`;
+      const tempPassword = `Buma${Math.random().toString(36).slice(2, 8)}!`;
+      const passwordHash = await bcrypt.hash(tempPassword, 10);
+      const conserjeriaUserId = `conserjeria-${building.id}`;
+
+      const conserjeriaUser = await storage.createUser({
+        id: conserjeriaUserId,
+        email: conserjeriaEmail,
+        firstName: "Conserjería",
+        lastName: building.name,
+        passwordHash,
+        mustChangePassword: true,
+      });
+
+      await storage.createUserProfile({
+        userId: conserjeriaUser.id,
+        role: "conserjeria",
+        buildingScope: "assigned",
+        isActive: true,
+      });
+
+      await storage.updateBuilding(building.id, { conserjeriaUserId: conserjeriaUser.id });
+
+      res.status(201).json({
+        userId: conserjeriaUser.id,
+        email: conserjeriaEmail,
+        tempPassword,
+      });
+    } catch (error) {
+      console.error("Error creating conserjeria user:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
@@ -4379,30 +4504,37 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
-      const { email, firstName, lastName, role, buildingScope, phone, isActive } = req.body;
+      const { email, firstName, lastName, role, buildingScope, phone, isActive, password } = req.body;
       
       if (!email || !role) {
         return res.status(400).json({ error: "Email y rol son requeridos" });
       }
       
-      // Check if email already exists
       const existingUser = await storage.getUserByEmail(email);
       if (existingUser) {
         return res.status(400).json({ error: "Ya existe un usuario con este email" });
       }
+
+      let passwordHash = null;
+      if (password && password.trim() !== "") {
+        passwordHash = await bcrypt.hash(password, 10);
+      }
       
-      // Create user
+      const userId = `user-${Date.now()}`;
       const newUser = await storage.createUser({
+        id: userId,
         email,
         firstName: firstName || null,
         lastName: lastName || null,
+        passwordHash,
+        mustChangePassword: !!passwordHash,
       });
       
-      // Create profile
+      const scope = buildingScope || (["ejecutivo_operaciones", "conserjeria"].includes(role) ? "assigned" : "all");
       const newProfile = await storage.createUserProfile({
         userId: newUser.id,
         role,
-        buildingScope: buildingScope || (role === "ejecutivo_operaciones" ? "assigned" : "all"),
+        buildingScope: scope,
         phone: phone || null,
         isActive: isActive !== false,
       });
@@ -4593,12 +4725,13 @@ export async function registerRoutes(
       }
 
       const roles = [
-        { value: "super_admin", label: "Super Admin", description: "Configuración del sistema" },
-        { value: "gerente_general", label: "Gerente General", description: "Acceso total a la plataforma" },
-        { value: "gerente_operaciones", label: "Gerente de Operaciones", description: "Gestiona visitas, tickets y equipos" },
-        { value: "gerente_comercial", label: "Gerente Comercial", description: "Acceso a reportes financieros" },
-        { value: "gerente_finanzas", label: "Gerente de Finanzas", description: "Solo lectura en dashboards" },
-        { value: "ejecutivo_operaciones", label: "Ejecutivo de Operaciones", description: "Trabajo de campo, sin acceso a costos" },
+        { id: "super_admin", name: "Super Admin", description: "Configuración del sistema" },
+        { id: "gerente_general", name: "Gerente General", description: "Acceso total a la plataforma" },
+        { id: "gerente_operaciones", name: "Gerente de Operaciones", description: "Gestiona visitas, tickets y equipos" },
+        { id: "gerente_comercial", name: "Gerente Comercial", description: "Acceso a reportes financieros" },
+        { id: "gerente_finanzas", name: "Gerente de Finanzas", description: "Acceso al módulo financiero" },
+        { id: "ejecutivo_operaciones", name: "Ejecutivo de Operaciones", description: "Trabajo de campo, sin acceso a costos" },
+        { id: "conserjeria", name: "Conserjería", description: "Solo ve tickets de su edificio, sube evidencia" },
       ];
       
       res.json(roles);
@@ -6714,6 +6847,19 @@ export async function registerRoutes(
       for (const field of dateFields) {
         if (updateData[field] && typeof updateData[field] === "string") updateData[field] = new Date(updateData[field]);
       }
+
+      if (updateData.status && updateData.status !== cycle.status) {
+        await storage.createMonthlyClosingStatusLog({
+          cycleId: cycle.id,
+          previousStatus: cycle.status,
+          newStatus: updateData.status,
+          changedBy: req.user!.id,
+          changedByName: profile.firstName && profile.lastName
+            ? `${profile.firstName} ${profile.lastName}`
+            : profile.email || "Usuario",
+        });
+      }
+
       const updated = await storage.updateMonthlyClosingCycle(req.params.id, updateData);
       res.json(updated);
     } catch (error) {
@@ -6767,6 +6913,26 @@ export async function registerRoutes(
       res.json(updated);
     } catch (error) {
       console.error("Error updating checklist item:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/monthly-closing-cycles/:id/status-logs", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const cycle = await storage.getMonthlyClosingCycle(req.params.id);
+      if (!cycle) {
+        return res.status(404).json({ error: "Ciclo no encontrado" });
+      }
+
+      const logs = await storage.getMonthlyClosingStatusLogs(cycle.id);
+      res.json(logs);
+    } catch (error) {
+      console.error("Error getting status logs:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });

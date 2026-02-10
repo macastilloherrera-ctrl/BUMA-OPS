@@ -47,19 +47,23 @@ interface Building {
 }
 
 const roleLabels: Record<string, string> = {
+  super_admin: "Super Admin",
   gerente_general: "Gerente General",
   gerente_operaciones: "Gerente de Operaciones",
   gerente_comercial: "Gerente Comercial",
   gerente_finanzas: "Gerente de Finanzas",
   ejecutivo_operaciones: "Ejecutivo de Operaciones",
+  conserjeria: "Conserjería",
 };
 
 const roleColors: Record<string, string> = {
+  super_admin: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
   gerente_general: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
   gerente_operaciones: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   gerente_comercial: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
   gerente_finanzas: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
   ejecutivo_operaciones: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200",
+  conserjeria: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200",
 };
 
 export default function AdminUsers() {
@@ -79,6 +83,7 @@ export default function AdminUsers() {
     lastName: "",
     role: "ejecutivo_operaciones",
     phone: "",
+    password: "",
     isActive: true,
   });
 
@@ -167,6 +172,7 @@ export default function AdminUsers() {
       lastName: "",
       role: "ejecutivo_operaciones",
       phone: "",
+      password: "",
       isActive: true,
     });
   };
@@ -179,6 +185,7 @@ export default function AdminUsers() {
       lastName: user.lastName || "",
       role: user.profile?.role || "ejecutivo_operaciones",
       phone: user.profile?.phone || "",
+      password: "",
       isActive: user.profile?.isActive ?? true,
     });
     setShowEditDialog(true);
@@ -204,6 +211,7 @@ export default function AdminUsers() {
   const usersByRole = {
     managers: filteredUsers.filter(u => ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas"].includes(u.profile?.role || "")),
     executives: filteredUsers.filter(u => u.profile?.role === "ejecutivo_operaciones"),
+    conserjeria: filteredUsers.filter(u => u.profile?.role === "conserjeria"),
     noProfile: filteredUsers.filter(u => !u.profile),
   };
 
@@ -311,10 +319,11 @@ export default function AdminUsers() {
       </div>
 
       <Tabs defaultValue="all" className="space-y-4">
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="all">Todos ({filteredUsers.length})</TabsTrigger>
           <TabsTrigger value="managers">Gerentes ({usersByRole.managers.length})</TabsTrigger>
           <TabsTrigger value="executives">Ejecutivos ({usersByRole.executives.length})</TabsTrigger>
+          <TabsTrigger value="conserjeria">Conserjería ({usersByRole.conserjeria.length})</TabsTrigger>
           {usersByRole.noProfile.length > 0 && (
             <TabsTrigger value="no-profile">Sin Perfil ({usersByRole.noProfile.length})</TabsTrigger>
           )}
@@ -341,6 +350,15 @@ export default function AdminUsers() {
         <TabsContent value="executives">
           <UserTable 
             users={usersByRole.executives} 
+            onEdit={openEditDialog}
+            onDelete={(user) => { setSelectedUser(user); setShowDeleteDialog(true); }}
+            onToggleActive={(user) => toggleActiveMutation.mutate(user.id)}
+            onAssignBuildings={openBuildingsDialog}
+          />
+        </TabsContent>
+        <TabsContent value="conserjeria">
+          <UserTable 
+            users={usersByRole.conserjeria} 
             onEdit={openEditDialog}
             onDelete={(user) => { setSelectedUser(user); setShowDeleteDialog(true); }}
             onToggleActive={(user) => toggleActiveMutation.mutate(user.id)}
@@ -412,6 +430,18 @@ export default function AdminUsers() {
               </Select>
             </div>
             <div>
+              <Label htmlFor="password">Contraseña temporal *</Label>
+              <Input
+                id="password"
+                type="password"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                placeholder="Contraseña inicial del usuario"
+                data-testid="input-user-password"
+              />
+              <p className="text-xs text-muted-foreground mt-1">El usuario deberá cambiarla en su primer ingreso</p>
+            </div>
+            <div>
               <Label htmlFor="phone">Teléfono</Label>
               <Input
                 id="phone"
@@ -437,7 +467,7 @@ export default function AdminUsers() {
             </Button>
             <Button 
               onClick={() => createUserMutation.mutate(formData)}
-              disabled={createUserMutation.isPending || !formData.email}
+              disabled={createUserMutation.isPending || !formData.email || !formData.password}
               data-testid="button-submit-create-user"
             >
               {createUserMutation.isPending ? "Creando..." : "Crear Usuario"}
@@ -520,7 +550,11 @@ export default function AdminUsers() {
               Cancelar
             </Button>
             <Button 
-              onClick={() => selectedUser && updateUserMutation.mutate({ id: selectedUser.id, data: formData })}
+              onClick={() => {
+                if (!selectedUser) return;
+                const { password, ...editData } = formData;
+                updateUserMutation.mutate({ id: selectedUser.id, data: editData as typeof formData });
+              }}
               disabled={updateUserMutation.isPending}
               data-testid="button-submit-edit-user"
             >
@@ -677,7 +711,7 @@ function UserTable({
                     )}
                   </td>
                   <td className="p-4">
-                    {user.profile?.role === "ejecutivo_operaciones" ? (
+                    {["ejecutivo_operaciones", "conserjeria"].includes(user.profile?.role || "") ? (
                       <div className="flex items-center gap-2">
                         <span className="text-sm">{user.assignedBuildings.length} edificio(s)</span>
                         <Button 

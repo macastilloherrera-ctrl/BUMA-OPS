@@ -60,6 +60,10 @@ import {
   Upload,
   Download,
   FileText,
+  Key,
+  Copy,
+  RefreshCw,
+  ShieldCheck,
 } from "lucide-react";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import type { UppyFile, UploadResult } from "@uppy/core";
@@ -93,6 +97,7 @@ export default function BuildingDetail() {
   const [isFolderDialogOpen, setIsFolderDialogOpen] = useState(false);
   const [selectedFolder, setSelectedFolder] = useState<BuildingFolder | null>(null);
   const [isRegulationDialogOpen, setIsRegulationDialogOpen] = useState(false);
+  const [showConserjeriaPassword, setShowConserjeriaPassword] = useState<string | null>(null);
 
   const { data: userProfile } = useQuery<UserProfile>({
     queryKey: ["/api/user/profile"],
@@ -122,6 +127,46 @@ export default function BuildingDetail() {
   const { data: files, isLoading: filesLoading } = useQuery<BuildingFile[]>({
     queryKey: ["/api/building-folders", selectedFolder?.id, "files"],
     enabled: !!selectedFolder?.id && isManager,
+  });
+
+  const { data: conserjeriaInfo } = useQuery<{
+    exists: boolean;
+    userId?: string;
+    email?: string;
+    displayName?: string;
+    isActive?: boolean;
+  }>({
+    queryKey: ["/api/buildings", id, "conserjeria"],
+    enabled: !!id && !!isManager,
+  });
+
+  const resetConserjeriaPasswordMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/buildings/${id}/conserjeria/reset-password`);
+      return res.json();
+    },
+    onSuccess: (data: { newPassword: string }) => {
+      setShowConserjeriaPassword(data.newPassword);
+      toast({ title: "Contraseña restablecida" });
+    },
+    onError: () => {
+      toast({ title: "Error al restablecer contraseña", variant: "destructive" });
+    },
+  });
+
+  const createConserjeriaMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/buildings/${id}/conserjeria/create`);
+      return res.json();
+    },
+    onSuccess: (data: { email: string; tempPassword: string }) => {
+      setShowConserjeriaPassword(data.tempPassword);
+      queryClient.invalidateQueries({ queryKey: ["/api/buildings", id, "conserjeria"] });
+      toast({ title: "Usuario conserjería creado" });
+    },
+    onError: () => {
+      toast({ title: "Error al crear usuario conserjería", variant: "destructive" });
+    },
   });
 
   const staffForm = useForm<StaffFormData>({
@@ -396,6 +441,111 @@ export default function BuildingDetail() {
                   )}
                 </CardContent>
               </Card>
+
+              {isManager && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4" />
+                      Acceso Conserjería
+                    </CardTitle>
+                    <CardDescription>Credenciales de acceso para la conserjería del edificio</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {conserjeriaInfo?.exists ? (
+                      <>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-sm">
+                            <User className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-muted-foreground">Usuario:</span>
+                            <span className="font-medium" data-testid="text-conserjeria-email">{conserjeriaInfo.email}</span>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => {
+                                navigator.clipboard.writeText(conserjeriaInfo.email || "");
+                                toast({ title: "Email copiado" });
+                              }}
+                              data-testid="button-copy-conserjeria-email"
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm">
+                            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+                            <span className="text-muted-foreground">Estado:</span>
+                            <Badge className={conserjeriaInfo.isActive
+                              ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                              : "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+                            }>
+                              {conserjeriaInfo.isActive ? "Activo" : "Inactivo"}
+                            </Badge>
+                          </div>
+                        </div>
+                        {showConserjeriaPassword && (
+                          <div className="p-3 bg-yellow-50 dark:bg-yellow-950/30 rounded-md border border-yellow-200 dark:border-yellow-800">
+                            <p className="text-xs text-yellow-800 dark:text-yellow-200 mb-1 font-medium">Nueva contraseña temporal:</p>
+                            <div className="flex items-center gap-2">
+                              <code className="text-sm font-mono bg-yellow-100 dark:bg-yellow-900/50 px-2 py-1 rounded" data-testid="text-conserjeria-temp-password">
+                                {showConserjeriaPassword}
+                              </code>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(showConserjeriaPassword);
+                                  toast({ title: "Contraseña copiada" });
+                                }}
+                                data-testid="button-copy-conserjeria-password"
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <p className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">El usuario deberá cambiar la contraseña en su primer ingreso</p>
+                          </div>
+                        )}
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => resetConserjeriaPasswordMutation.mutate()}
+                            disabled={resetConserjeriaPasswordMutation.isPending}
+                            data-testid="button-reset-conserjeria-password"
+                          >
+                            <Key className="h-4 w-4 mr-1" />
+                            {resetConserjeriaPasswordMutation.isPending ? "Restableciendo..." : "Restablecer Contraseña"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const text = `Usuario: ${conserjeriaInfo.email}\nEdificio: ${building?.name}`;
+                              navigator.clipboard.writeText(text);
+                              toast({ title: "Credenciales copiadas" });
+                            }}
+                            data-testid="button-copy-conserjeria-credentials"
+                          >
+                            <Copy className="h-4 w-4 mr-1" />
+                            Copiar Credenciales
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-center py-4">
+                        <p className="text-sm text-muted-foreground mb-3">No hay usuario conserjería asignado a este edificio</p>
+                        <Button
+                          onClick={() => createConserjeriaMutation.mutate()}
+                          disabled={createConserjeriaMutation.isPending}
+                          data-testid="button-create-conserjeria"
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          {createConserjeriaMutation.isPending ? "Creando..." : "Crear Usuario Conserjería"}
+                        </Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
               <Card>
                 <CardHeader>

@@ -160,6 +160,7 @@ export const buildings = pgTable("buildings", {
   communityEmail: varchar("community_email", { length: 255 }),
   status: buildingStatusEnum("status").notNull().default("activo"),
   assignedExecutiveId: varchar("assigned_executive_id"),
+  conserjeriaUserId: varchar("conserjeria_user_id"),
   regulationDocumentUrl: text("regulation_document_url"),
   departmentCount: integer("department_count").default(0),
   elevatorCount: integer("elevator_count").default(0),
@@ -1495,14 +1496,28 @@ export const monthlyClosingChecklistItems = pgTable("monthly_closing_checklist_i
   completedAt: timestamp("completed_at"),
 });
 
+// Monthly Closing Status Log table (audit trail)
+export const monthlyClosingStatusLogs = pgTable("monthly_closing_status_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  cycleId: varchar("cycle_id").notNull(),
+  previousStatus: varchar("previous_status", { length: 50 }),
+  newStatus: varchar("new_status", { length: 50 }).notNull(),
+  changedBy: varchar("changed_by").notNull(),
+  changedByName: varchar("changed_by_name", { length: 255 }),
+  changedAt: timestamp("changed_at").defaultNow(),
+});
+
 // Monthly Closing Schemas
 export const insertMonthlyClosingCycleSchema = createInsertSchema(monthlyClosingCycles).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertMonthlyClosingChecklistItemSchema = createInsertSchema(monthlyClosingChecklistItems).omit({ id: true });
+export const insertMonthlyClosingStatusLogSchema = createInsertSchema(monthlyClosingStatusLogs).omit({ id: true, changedAt: true });
 
 // Monthly Closing Types
 export type InsertMonthlyClosingCycle = z.infer<typeof insertMonthlyClosingCycleSchema>;
 export type MonthlyClosingCycle = typeof monthlyClosingCycles.$inferSelect;
 export type InsertMonthlyClosingChecklistItem = z.infer<typeof insertMonthlyClosingChecklistItemSchema>;
 export type MonthlyClosingChecklistItem = typeof monthlyClosingChecklistItems.$inferSelect;
+export type InsertMonthlyClosingStatusLog = z.infer<typeof insertMonthlyClosingStatusLogSchema>;
+export type MonthlyClosingStatusLog = typeof monthlyClosingStatusLogs.$inferSelect;
 export type ClosingCycleStatus = "open" | "preparation" | "pending_info" | "pre_ready" | "under_review" | "approved" | "issued";
 export type ClosingCycleRisk = "low" | "medium" | "high";

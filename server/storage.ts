@@ -112,10 +112,13 @@ import {
   type InsertPayerDirectory,
   monthlyClosingCycles,
   monthlyClosingChecklistItems,
+  monthlyClosingStatusLogs,
   type MonthlyClosingCycle,
   type InsertMonthlyClosingCycle,
   type MonthlyClosingChecklistItem,
   type InsertMonthlyClosingChecklistItem,
+  type MonthlyClosingStatusLog,
+  type InsertMonthlyClosingStatusLog,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, gte, lte, lt, or, sql, ne } from "drizzle-orm";
@@ -1598,6 +1601,17 @@ export class DatabaseStorage implements IStorage {
   async deleteMonthlyClosingChecklistItem(id: string): Promise<boolean> {
     await db.delete(monthlyClosingChecklistItems).where(eq(monthlyClosingChecklistItems.id, id));
     return true;
+  }
+
+  async createMonthlyClosingStatusLog(log: InsertMonthlyClosingStatusLog): Promise<MonthlyClosingStatusLog> {
+    const [created] = await db.insert(monthlyClosingStatusLogs).values(log).returning();
+    return created;
+  }
+
+  async getMonthlyClosingStatusLogs(cycleId: string): Promise<MonthlyClosingStatusLog[]> {
+    return db.select().from(monthlyClosingStatusLogs)
+      .where(eq(monthlyClosingStatusLogs.cycleId, cycleId))
+      .orderBy(desc(monthlyClosingStatusLogs.changedAt));
   }
 }
 
