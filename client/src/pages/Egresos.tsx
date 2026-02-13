@@ -118,7 +118,7 @@ const paymentMethodLabels: Record<string, string> = {
 
 const sourceTypeLabels: Record<string, string> = {
   ticket: "Ticket",
-  recurrent: "Recurrente",
+  recurrent: "Gasto Común",
   project: "Proyecto",
   gasto_comun: "Gasto Común",
 };
@@ -359,7 +359,7 @@ export default function Egresos() {
     }
     form.reset({
       ...defaultFormValues,
-      sourceType: isConserjeria ? "recurrent" : "gasto_comun",
+      sourceType: "gasto_comun",
       buildingId: isConserjeria ? conserjeriaBuilding : "",
       paymentStatus: isConserjeria ? "pending" : "pending",
       inclusionStatus: "included",
@@ -543,7 +543,6 @@ export default function Egresos() {
                 <SelectItem value="gasto_comun">Gasto Común</SelectItem>
                 <SelectItem value="ticket">Ticket</SelectItem>
                 <SelectItem value="project">Proyecto</SelectItem>
-                <SelectItem value="recurrent">Recurrente</SelectItem>
               </SelectContent>
             </Select>
           )}
@@ -1109,7 +1108,6 @@ export default function Egresos() {
                             <SelectItem value="gasto_comun">Gasto Común</SelectItem>
                             <SelectItem value="ticket">Ticket</SelectItem>
                             <SelectItem value="project">Proyecto</SelectItem>
-                            <SelectItem value="recurrent">Recurrente</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
