@@ -6365,6 +6365,7 @@ export async function registerRoutes(
       const month = parseInt(req.query.month as string);
       const year = parseInt(req.query.year as string);
       const format = (req.query.format as string) || "generico";
+      const onlyNew = req.query.onlyNew === "true";
       if (!buildingId || !month || !year) {
         return res.status(400).json({ error: "Se requiere buildingId, month y year" });
       }
@@ -6372,7 +6373,14 @@ export async function registerRoutes(
       if (!building) {
         return res.status(404).json({ error: "Edificio no encontrado" });
       }
-      const allIncomes = await storage.getIncomes({ buildingId, month, year, status: "identified" });
+      let allIncomes = await storage.getIncomes({ buildingId, month, year, status: "identified" });
+      if (onlyNew) {
+        allIncomes = allIncomes.filter(i => !i.exportedAt);
+      }
+      if (allIncomes.length === 0) {
+        return res.status(400).json({ error: onlyNew ? "No hay ingresos nuevos sin exportar para este período" : "No hay ingresos identificados para este período" });
+      }
+      const incomeIds = allIncomes.map(i => i.id);
       const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
       const monthName = monthNames[month - 1] || "";
       const XLSX = await import("xlsx");
@@ -6422,10 +6430,13 @@ export async function registerRoutes(
       XLSX.utils.book_append_sheet(wb, ws, "Ingresos");
       const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
       const buildingName = building.name.replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, "").replace(/\s+/g, "_");
-      const filename = `ingresos_${format}_${buildingName}_${monthName}_${year}.xlsx`;
+      const suffix = onlyNew ? "_nuevos" : "";
+      const filename = `ingresos_${format}_${buildingName}_${monthName}_${year}${suffix}.xlsx`;
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.send(buf);
+
+      await storage.markIncomesExported(incomeIds);
     } catch (error) {
       console.error("Error exportando ingresos:", error);
       res.status(500).json({ error: "Error interno del servidor" });
@@ -7050,6 +7061,36 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/bank-transactions/export-stats", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile)) {
+        return res.status(403).json({ error: "No tiene permisos" });
+      }
+      const buildingId = req.query.buildingId as string;
+      const month = parseInt(req.query.month as string);
+      const year = parseInt(req.query.year as string);
+      if (!buildingId || !month || !year) {
+        return res.status(400).json({ error: "Se requiere buildingId, month y year" });
+      }
+      const transactions = await storage.getBankTransactions({ buildingId, status: "identified", month, year });
+      const manualIncomes = await storage.getIncomes({ buildingId, month, year, status: "identified" });
+      const newTxns = transactions.filter(t => !t.exportedAt).length;
+      const exportedTxns = transactions.filter(t => !!t.exportedAt).length;
+      const newIncomes = manualIncomes.filter(i => !i.exportedAt).length;
+      const exportedIncomes = manualIncomes.filter(i => !!i.exportedAt).length;
+      res.json({
+        total: transactions.length + manualIncomes.length,
+        new: newTxns + newIncomes,
+        exported: exportedTxns + exportedIncomes,
+        breakdown: { newTxns, exportedTxns, newIncomes, exportedIncomes }
+      });
+    } catch (error) {
+      console.error("Error getting export stats:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   app.get("/api/bank-transactions/export", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
@@ -7060,6 +7101,7 @@ export async function registerRoutes(
       const month = parseInt(req.query.month as string);
       const year = parseInt(req.query.year as string);
       const format = (req.query.format as string) || "generico";
+      const onlyNew = req.query.onlyNew === "true";
 
       if (!buildingId || !month || !year) {
         return res.status(400).json({ error: "Se requiere buildingId, month y year" });
@@ -7070,8 +7112,21 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Edificio no encontrado" });
       }
 
-      const transactions = await storage.getBankTransactions({ buildingId, status: "identified", month, year });
-      const manualIncomes = await storage.getIncomes({ buildingId, month, year, status: "identified" });
+      let transactions = await storage.getBankTransactions({ buildingId, status: "identified", month, year });
+      let manualIncomes = await storage.getIncomes({ buildingId, month, year, status: "identified" });
+
+      if (onlyNew) {
+        transactions = transactions.filter(t => !t.exportedAt);
+        manualIncomes = manualIncomes.filter(i => !i.exportedAt);
+      }
+
+      if (transactions.length === 0 && manualIncomes.length === 0) {
+        return res.status(400).json({ error: onlyNew ? "No hay transacciones nuevas sin exportar para este período" : "No hay transacciones identificadas para este período" });
+      }
+
+      const txnIds = transactions.map(t => t.id);
+      const incomeIds = manualIncomes.map(i => i.id);
+
       const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
       const monthName = monthNames[month - 1] || "";
 
@@ -7134,10 +7189,14 @@ export async function registerRoutes(
       XLSX.utils.book_append_sheet(wb, ws, "Transacciones");
       const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
       const buildingName = building.name.replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, "").replace(/\s+/g, "_");
-      const filename = `banco_${format}_${buildingName}_${monthName}_${year}.xlsx`;
+      const suffix = onlyNew ? "_nuevos" : "";
+      const filename = `banco_${format}_${buildingName}_${monthName}_${year}${suffix}.xlsx`;
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.send(buf);
+
+      await storage.markBankTransactionsExported(txnIds);
+      await storage.markIncomesExported(incomeIds);
     } catch (error) {
       console.error("Error exporting bank transactions:", error);
       res.status(500).json({ error: "Error interno del servidor" });

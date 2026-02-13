@@ -65,6 +65,16 @@ Key architectural patterns include:
   - Duplicate protection prevents generating the same template twice for the same period
   - Egresos form includes "Período de consumo y mes de cargo" section with consumption dates and charge month/year selectors
 
+- **Feb 2026 - Export Duplicate Prevention**: Added tracking system to prevent duplicate exports to administration software:
+  - Added `exportedAt` timestamp to both `bank_transactions` and `incomes` tables
+  - Export endpoints (bank-transactions/export, incomes/export) now support `onlyNew=true` parameter to export only unexported records
+  - After export, all included records are automatically marked with `exportedAt` timestamp
+  - ConciliacionBancaria export step shows "Solo nuevos" / "Todos" toggle with counts of new vs already-exported transactions
+  - Ingresos page has "Solo nuevos" / "Todos" toggle button for export mode
+  - Both pages show "Exp." badge next to status for already-exported records
+  - Export stats endpoint: GET /api/bank-transactions/export-stats returns new/exported/total counts
+  - Workflow: conciliar diario/semanal → exportar solo nuevos → subir al SW sin duplicar
+
 ## External Dependencies
 - **PostgreSQL (Neon)**: Primary database for all application data.
 - **Replit Object Storage**: Used for storing image uploads, particularly from field visits.

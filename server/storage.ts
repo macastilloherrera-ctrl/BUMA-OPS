@@ -1597,6 +1597,20 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
+  async markBankTransactionsExported(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await db.update(bankTransactions)
+      .set({ exportedAt: new Date() })
+      .where(sql`${bankTransactions.id} IN (${sql.join(ids.map(id => sql`${id}`), sql`, `)})`);
+  }
+
+  async markIncomesExported(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await db.update(incomes)
+      .set({ exportedAt: new Date() })
+      .where(sql`${incomes.id} IN (${sql.join(ids.map(id => sql`${id}`), sql`, `)})`);
+  }
+
   async getBankTransactionByHash(rowHash: string, buildingId: string): Promise<BankTransaction | undefined> {
     const [txn] = await db.select().from(bankTransactions)
       .where(and(eq(bankTransactions.rowHash, rowHash), eq(bankTransactions.buildingId, buildingId)));

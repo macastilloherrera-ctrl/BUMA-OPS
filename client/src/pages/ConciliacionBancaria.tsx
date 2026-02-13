@@ -147,6 +147,7 @@ export default function ConciliacionBancaria() {
   ]);
 
   const [exportFormat, setExportFormat] = useState("edipro");
+  const [exportOnlyNew, setExportOnlyNew] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
 
   const [newPayerRut, setNewPayerRut] = useState("");
@@ -178,6 +179,17 @@ export default function ConciliacionBancaria() {
       return res.json();
     },
     enabled: !!buildingId && payerDirDialogOpen,
+  });
+
+  const { data: exportStats } = useQuery<{ total: number; new: number; exported: number }>({
+    queryKey: ["/api/bank-transactions/export-stats", buildingId, month, year],
+    queryFn: async () => {
+      if (!buildingId) return { total: 0, new: 0, exported: 0 };
+      const res = await fetch(`/api/bank-transactions/export-stats?buildingId=${buildingId}&month=${month}&year=${year}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Error");
+      return res.json();
+    },
+    enabled: !!buildingId,
   });
 
   const filteredTransactions = transactions?.filter((t) =>
@@ -338,16 +350,23 @@ export default function ConciliacionBancaria() {
   async function handleExport() {
     setIsExporting(true);
     try {
-      const url = `/api/bank-transactions/export?buildingId=${buildingId}&month=${month}&year=${year}&format=${exportFormat}`;
+      const url = `/api/bank-transactions/export?buildingId=${buildingId}&month=${month}&year=${year}&format=${exportFormat}&onlyNew=${exportOnlyNew}`;
       const response = await fetch(url, { credentials: "include" });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: "Error al exportar" }));
+        throw new Error(err.error || "Error al exportar");
+      }
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = downloadUrl;
-      a.download = `conciliacion_${exportFormat}_${year}-${month}.xlsx`;
+      const suffix = exportOnlyNew ? "_nuevos" : "";
+      a.download = `conciliacion_${exportFormat}_${year}-${month}${suffix}.xlsx`;
       a.click();
       window.URL.revokeObjectURL(downloadUrl);
-      toast({ title: "Archivo exportado exitosamente" });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions/export-stats", buildingId, month, year] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions", buildingId, month, year] });
+      toast({ title: "Archivo exportado exitosamente", description: exportOnlyNew ? "Las transacciones exportadas fueron marcadas" : "Todas las transacciones fueron marcadas como exportadas" });
     } catch (error: any) {
       toast({ title: "Error al exportar", description: error.message, variant: "destructive" });
     } finally {
@@ -818,7 +837,14 @@ export default function ConciliacionBancaria() {
                         </TableCell>
                         <TableCell data-testid={`text-unit-${txn.id}`}>{txn.assignedUnit || "-"}</TableCell>
                         <TableCell>
-                          <StatusBadge status={txn.status} />
+                          <div className="flex items-center gap-1 flex-wrap">
+                            <StatusBadge status={txn.status} />
+                            {txn.exportedAt && (
+                              <Badge variant="outline" className="text-xs" data-testid={`badge-exported-${txn.id}`}>
+                                Exp.
+                              </Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <TransactionActions txn={txn} />
@@ -843,6 +869,10 @@ export default function ConciliacionBancaria() {
   }
 
   function Step4() {
+    const newCount = exportStats?.new || 0;
+    const exportedCount = exportStats?.exported || 0;
+    const totalCount = exportStats?.total || 0;
+
     return (
       <Card>
         <CardHeader>
@@ -855,16 +885,59 @@ export default function ConciliacionBancaria() {
           </p>
 
           <Card className="bg-muted/50">
-            <CardContent className="pt-4 pb-4 space-y-1">
+            <CardContent className="pt-4 pb-4 space-y-2">
               <p className="text-sm" data-testid="text-export-summary">
                 <CheckCircle className="inline h-4 w-4 mr-1 text-green-600" />
-                <strong>{statusCounts.identified}</strong> transacciones de cartola identificadas
+                <strong>{totalCount}</strong> transacciones identificadas en total
               </p>
+              {newCount > 0 && (
+                <p className="text-sm" data-testid="text-export-new-count">
+                  <FileSpreadsheet className="inline h-4 w-4 mr-1 text-blue-500" />
+                  <strong>{newCount}</strong> nuevas (sin exportar)
+                </p>
+              )}
+              {exportedCount > 0 && (
+                <p className="text-sm text-muted-foreground" data-testid="text-export-exported-count">
+                  <Check className="inline h-4 w-4 mr-1 text-muted-foreground" />
+                  <strong>{exportedCount}</strong> ya exportadas anteriormente
+                </p>
+              )}
               <p className="text-sm text-muted-foreground" data-testid="text-export-note">
-                Los ingresos manuales del mismo período se incluyen automáticamente en la exportación.
+                Los ingresos manuales identificados del mismo período se incluyen automáticamente.
               </p>
             </CardContent>
           </Card>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-muted-foreground">Modo de exportación</label>
+            <div className="flex gap-2 flex-wrap">
+              <Button
+                variant={exportOnlyNew ? "default" : "outline"}
+                size="sm"
+                onClick={() => setExportOnlyNew(true)}
+                data-testid="button-export-only-new"
+                className="toggle-elevate"
+              >
+                <FileSpreadsheet className="h-4 w-4 mr-1" />
+                Solo nuevos ({newCount})
+              </Button>
+              <Button
+                variant={!exportOnlyNew ? "default" : "outline"}
+                size="sm"
+                onClick={() => setExportOnlyNew(false)}
+                data-testid="button-export-all"
+                className="toggle-elevate"
+              >
+                <Download className="h-4 w-4 mr-1" />
+                Todos ({totalCount})
+              </Button>
+            </div>
+            {exportOnlyNew && newCount === 0 && (
+              <p className="text-sm text-amber-600 dark:text-amber-400">
+                No hay transacciones nuevas. Todas ya fueron exportadas. Puede usar "Todos" para re-exportar.
+              </p>
+            )}
+          </div>
 
           <div className="space-y-2">
             <label className="text-sm font-medium text-muted-foreground">Formato de exportación</label>
@@ -889,7 +962,7 @@ export default function ConciliacionBancaria() {
             </Button>
             <Button
               onClick={handleExport}
-              disabled={isExporting || statusCounts.identified === 0}
+              disabled={isExporting || (exportOnlyNew ? newCount === 0 : totalCount === 0)}
               data-testid="button-export"
             >
               {isExporting ? (
@@ -897,7 +970,7 @@ export default function ConciliacionBancaria() {
               ) : (
                 <Download className="h-4 w-4 mr-1" />
               )}
-              Exportar
+              Exportar {exportOnlyNew ? "nuevos" : "todos"}
             </Button>
           </div>
         </CardContent>

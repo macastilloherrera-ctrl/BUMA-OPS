@@ -58,6 +58,7 @@ import {
   FileSpreadsheet,
   Split,
   X,
+  RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -137,6 +138,8 @@ export default function Ingresos() {
   const [selectedYear, setSelectedYear] = useState<string>(String(currentYear));
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [exportFormat, setExportFormat] = useState<string>("edipro");
+  const [exportOnlyNew, setExportOnlyNew] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingIncome, setEditingIncome] = useState<Income | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -385,13 +388,39 @@ export default function Ingresos() {
     }
   }
 
-  function handleExport(format: string) {
-    const params = new URLSearchParams();
-    if (selectedBuilding !== "all") params.set("buildingId", selectedBuilding);
-    if (selectedMonth) params.set("month", selectedMonth);
-    if (selectedYear) params.set("year", selectedYear);
-    params.set("format", format);
-    window.open(`/api/incomes/export?${params.toString()}`, "_blank");
+  async function handleExport(format: string) {
+    if (selectedBuilding === "all") {
+      toast({ title: "Seleccione un edificio para exportar", variant: "destructive" });
+      return;
+    }
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("buildingId", selectedBuilding);
+      if (selectedMonth) params.set("month", selectedMonth);
+      if (selectedYear) params.set("year", selectedYear);
+      params.set("format", format);
+      params.set("onlyNew", String(exportOnlyNew));
+      const response = await fetch(`/api/incomes/export?${params.toString()}`, { credentials: "include" });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: "Error al exportar" }));
+        throw new Error(err.error || "Error al exportar");
+      }
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      const suffix = exportOnlyNew ? "_nuevos" : "";
+      a.download = `ingresos_${format}${suffix}.xlsx`;
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      queryClient.invalidateQueries({ queryKey: ["/api/incomes"] });
+      toast({ title: "Archivo exportado exitosamente", description: exportOnlyNew ? "Los ingresos exportados fueron marcados" : "Todos los ingresos fueron marcados como exportados" });
+    } catch (error: any) {
+      toast({ title: "Error al exportar", description: error.message, variant: "destructive" });
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   const formatCurrency = (amount: string | number) => {
@@ -434,12 +463,21 @@ export default function Ingresos() {
               </SelectContent>
             </Select>
             <Button
+              variant={exportOnlyNew ? "default" : "outline"}
+              size="sm"
+              onClick={() => setExportOnlyNew(!exportOnlyNew)}
+              data-testid="button-toggle-export-mode"
+              className="toggle-elevate"
+            >
+              {exportOnlyNew ? "Solo nuevos" : "Todos"}
+            </Button>
+            <Button
               variant="outline"
               onClick={() => handleExport(exportFormat)}
-              disabled={!incomes || incomes.length === 0}
+              disabled={isExporting || !incomes || incomes.length === 0 || selectedBuilding === "all"}
               data-testid="button-export"
             >
-              <Download className="h-4 w-4 mr-1" />
+              {isExporting ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
               Exportar
             </Button>
             <Button variant="outline" onClick={openSplitDialog} data-testid="button-split-deposit">
@@ -596,19 +634,26 @@ export default function Ingresos() {
                             <TableCell>{formatDate(income.paymentDate)}</TableCell>
                             <TableCell>{income.bank || "-"}</TableCell>
                             <TableCell>
-                              <Badge
-                                variant={statusVariants[income.status]}
-                                className={
-                                  income.status === "pending"
-                                    ? "border-yellow-500 text-yellow-700 dark:text-yellow-400"
-                                    : income.status === "identified"
-                                      ? "bg-green-600 text-white border-green-600"
-                                      : ""
-                                }
-                                data-testid={`badge-status-${income.id}`}
-                              >
-                                {statusLabels[income.status] || income.status}
-                              </Badge>
+                              <div className="flex items-center gap-1 flex-wrap">
+                                <Badge
+                                  variant={statusVariants[income.status]}
+                                  className={
+                                    income.status === "pending"
+                                      ? "border-yellow-500 text-yellow-700 dark:text-yellow-400"
+                                      : income.status === "identified"
+                                        ? "bg-green-600 text-white border-green-600"
+                                        : ""
+                                  }
+                                  data-testid={`badge-status-${income.id}`}
+                                >
+                                  {statusLabels[income.status] || income.status}
+                                </Badge>
+                                {income.exportedAt && (
+                                  <Badge variant="outline" className="text-xs" data-testid={`badge-exported-${income.id}`}>
+                                    Exp.
+                                  </Badge>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex items-center justify-end gap-1">
