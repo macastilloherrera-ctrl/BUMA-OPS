@@ -1146,6 +1146,7 @@ export const incomes = pgTable("incomes", {
   status: incomeStatusEnum("status").notNull().default("pending"),
   notes: text("notes"),
   createdBy: varchar("created_by").notNull(),
+  exportedAt: timestamp("exported_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -1311,6 +1312,7 @@ export const bankTransactions = pgTable("bank_transactions", {
   sourceFileName: varchar("source_file_name", { length: 255 }),
   importedBy: varchar("imported_by").notNull(),
   importedAt: timestamp("imported_at").defaultNow(),
+  exportedAt: timestamp("exported_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
