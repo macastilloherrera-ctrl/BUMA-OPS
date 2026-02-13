@@ -11,6 +11,27 @@ import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { registerDevAuthRoutes, isDevMode } from "./devAuth";
 import { parseBankFile } from "./bankParsers";
+
+function generateConserjeriaUsername(buildingName: string): string {
+  const prefixes = [
+    "condominio edificio",
+    "comunidad edificio",
+    "condominio",
+    "comunidad",
+    "edificio",
+  ];
+  let name = buildingName.toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  for (const prefix of prefixes) {
+    const normalized = prefix.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (name.startsWith(normalized)) {
+      name = name.slice(normalized.length);
+      break;
+    }
+  }
+  const slug = name.trim().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  return `conserjeria_${slug}`;
+}
 import { db } from "./db";
 import { eq, or } from "drizzle-orm";
 import { users as usersTable } from "@shared/schema";
@@ -427,11 +448,7 @@ export async function registerRoutes(
       const data = insertBuildingSchema.parse(req.body);
       const building = await storage.createBuilding(data);
 
-      const buildingSlug = building.name.toLowerCase()
-        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-      const shortId = building.id.slice(0, 4);
-      const conserjeriaUsername = `conserjeria_${buildingSlug}_${shortId}`;
+      const conserjeriaUsername = generateConserjeriaUsername(building.name);
       const tempPassword = String(Math.floor(1000 + Math.random() * 9000));
       const passwordHash = await bcrypt.hash(tempPassword, 10);
       const conserjeriaUserId = `conserjeria-${building.id}`;
@@ -548,11 +565,7 @@ export async function registerRoutes(
       if (!building) return res.status(404).json({ error: "Edificio no encontrado" });
       if (building.conserjeriaUserId) return res.status(400).json({ error: "Ya existe un usuario conserjería para este edificio" });
 
-      const buildingSlug = building.name.toLowerCase()
-        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-        .replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-      const shortId = building.id.slice(0, 4);
-      const conserjeriaUsername = `conserjeria_${buildingSlug}_${shortId}`;
+      const conserjeriaUsername = generateConserjeriaUsername(building.name);
       const tempPassword = String(Math.floor(1000 + Math.random() * 9000));
       const passwordHash = await bcrypt.hash(tempPassword, 10);
       const conserjeriaUserId = `conserjeria-${building.id}`;
