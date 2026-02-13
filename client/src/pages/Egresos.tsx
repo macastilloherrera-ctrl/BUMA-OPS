@@ -119,6 +119,8 @@ const paymentMethodLabels: Record<string, string> = {
 const sourceTypeLabels: Record<string, string> = {
   ticket: "Ticket",
   recurrent: "Recurrente",
+  project: "Proyecto",
+  gasto_comun: "Gasto Común",
 };
 
 const expenseFormSchema = z.object({
@@ -127,7 +129,6 @@ const expenseFormSchema = z.object({
   amount: z.string().min(1, "Ingrese el monto").refine((v) => !isNaN(Number(v)) && Number(v) > 0, "Monto debe ser mayor a 0"),
   category: z.string().optional(),
   vendorName: z.string().optional(),
-  vendorEdipro: z.string().optional(),
   documentType: z.enum(["factura", "boleta", "otro", ""]).optional(),
   documentNumber: z.string().optional(),
   paymentDate: z.string().optional(),
@@ -135,7 +136,7 @@ const expenseFormSchema = z.object({
   paymentStatus: z.enum(["pending", "paid", "cancelled"]),
   inclusionStatus: z.enum(["included", "postponed"]),
   postponementReason: z.string().optional(),
-  sourceType: z.enum(["ticket", "recurrent"]),
+  sourceType: z.enum(["ticket", "recurrent", "project", "gasto_comun"]),
   consumptionPeriodFrom: z.string().optional(),
   consumptionPeriodTo: z.string().optional(),
   chargeMonth: z.string().optional(),
@@ -199,7 +200,6 @@ export default function Egresos() {
       amount: "",
       category: "",
       vendorName: "",
-      vendorEdipro: "",
       documentType: "",
       documentNumber: "",
       paymentDate: "",
@@ -223,7 +223,6 @@ export default function Egresos() {
       amount: data.amount,
       category: data.category || null,
       vendorName: data.vendorName || null,
-      vendorEdipro: data.vendorEdipro || null,
       documentType: data.documentType || null,
       documentNumber: data.documentNumber || null,
       paymentDate: data.paymentDate ? new Date(data.paymentDate).toISOString() : null,
@@ -323,7 +322,6 @@ export default function Egresos() {
     amount: "",
     category: "",
     vendorName: "",
-    vendorEdipro: "",
     documentType: "",
     documentNumber: "",
     paymentDate: "",
@@ -361,7 +359,7 @@ export default function Egresos() {
     }
     form.reset({
       ...defaultFormValues,
-      sourceType: isConserjeria ? "recurrent" : "ticket",
+      sourceType: isConserjeria ? "recurrent" : "gasto_comun",
       buildingId: isConserjeria ? conserjeriaBuilding : "",
       paymentStatus: isConserjeria ? "pending" : "pending",
       inclusionStatus: "included",
@@ -380,7 +378,6 @@ export default function Egresos() {
       amount: String(expense.amount),
       category: expense.category || "",
       vendorName: expense.vendorName || "",
-      vendorEdipro: expense.vendorEdipro || "",
       documentType: (expense as any).documentType || "",
       documentNumber: expense.documentNumber || "",
       paymentDate,
@@ -388,7 +385,7 @@ export default function Egresos() {
       paymentStatus: expense.paymentStatus as "pending" | "paid" | "cancelled",
       inclusionStatus: expense.inclusionStatus as "included" | "postponed",
       postponementReason: expense.postponementReason || "",
-      sourceType: expense.sourceType as "ticket" | "recurrent",
+      sourceType: expense.sourceType as "ticket" | "recurrent" | "project" | "gasto_comun",
       consumptionPeriodFrom: consumptionFrom,
       consumptionPeriodTo: consumptionTo,
       chargeMonth: (expense as any).chargeMonth ? String((expense as any).chargeMonth) : "",
@@ -543,7 +540,9 @@ export default function Egresos() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todos los tipos</SelectItem>
+                <SelectItem value="gasto_comun">Gasto Común</SelectItem>
                 <SelectItem value="ticket">Ticket</SelectItem>
+                <SelectItem value="project">Proyecto</SelectItem>
                 <SelectItem value="recurrent">Recurrente</SelectItem>
               </SelectContent>
             </Select>
@@ -927,27 +926,6 @@ export default function Egresos() {
                 />
               </div>
 
-              <FormField
-                control={form.control}
-                name="vendorEdipro"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nombre Proveedor Edipro</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="Nombre estandarizado Edipro"
-                        data-testid="input-vendor-edipro"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      Nombre estandarizado para exportación Edipro. Si se deja vacío se usará el nombre del proveedor.
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
               <div className="grid grid-cols-3 gap-4">
                 <FormField
                   control={form.control}
@@ -1128,7 +1106,9 @@ export default function Egresos() {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
+                            <SelectItem value="gasto_comun">Gasto Común</SelectItem>
                             <SelectItem value="ticket">Ticket</SelectItem>
+                            <SelectItem value="project">Proyecto</SelectItem>
                             <SelectItem value="recurrent">Recurrente</SelectItem>
                           </SelectContent>
                         </Select>

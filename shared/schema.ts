@@ -1079,7 +1079,8 @@ export const incomeStatusEnum = pgEnum("income_status", [
 export const expenseSourceTypeEnum = pgEnum("expense_source_type", [
   "ticket",
   "recurrent",
-  "project"
+  "project",
+  "gasto_comun"
 ]);
 
 export const expensePaymentStatusEnum = pgEnum("expense_payment_status", [
