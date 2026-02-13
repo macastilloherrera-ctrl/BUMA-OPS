@@ -1444,8 +1444,19 @@ export class DatabaseStorage implements IStorage {
     if (filters?.year && filters?.month) {
       const startDate = new Date(filters.year, filters.month - 1, 1);
       const endDate = new Date(filters.year, filters.month, 1);
-      conditions.push(gte(expenses.paymentDate, startDate));
-      conditions.push(lt(expenses.paymentDate, endDate));
+      conditions.push(
+        or(
+          and(
+            eq(expenses.chargeMonth, filters.month),
+            eq(expenses.chargeYear, filters.year)
+          ),
+          and(
+            sql`${expenses.chargeMonth} IS NULL AND ${expenses.chargeYear} IS NULL`,
+            gte(expenses.paymentDate, startDate),
+            lt(expenses.paymentDate, endDate)
+          )
+        )
+      );
     }
     return db.select().from(expenses)
       .where(conditions.length > 0 ? and(...conditions) : undefined)

@@ -6297,6 +6297,60 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/expenses/generate-from-templates", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden generar gastos desde plantillas" });
+      }
+      const { buildingId, chargeMonth, chargeYear } = req.body;
+      if (!buildingId || !chargeMonth || !chargeYear) {
+        return res.status(400).json({ error: "Se requiere buildingId, chargeMonth y chargeYear" });
+      }
+      const month = parseInt(chargeMonth);
+      const year = parseInt(chargeYear);
+      if (month < 1 || month > 12 || year < 2020) {
+        return res.status(400).json({ error: "Mes o año inválido" });
+      }
+      const templates = await storage.getRecurringExpenseTemplates({ buildingId, isActive: true });
+      if (templates.length === 0) {
+        return res.status(400).json({ error: "No hay plantillas recurrentes activas para este edificio" });
+      }
+      const existingExpenses = await storage.getExpenses({ buildingId, month, year });
+      const alreadyGenerated = existingExpenses.filter(e =>
+        e.recurringTemplateId != null
+      );
+      const alreadyGeneratedTemplateIds = new Set(alreadyGenerated.map(e => e.recurringTemplateId));
+      const toGenerate = templates.filter(t => !alreadyGeneratedTemplateIds.has(t.id));
+      if (toGenerate.length === 0) {
+        return res.status(400).json({ error: "Todos los gastos recurrentes ya fueron generados para este período" });
+      }
+      const created = [];
+      for (const template of toGenerate) {
+        const expense = await storage.createExpense({
+          buildingId: template.buildingId,
+          sourceType: "recurrent",
+          recurringTemplateId: template.id,
+          description: template.description || template.category,
+          amount: template.estimatedAmount || "0",
+          category: template.category,
+          vendorName: template.vendorName,
+          vendorId: template.vendorId,
+          paymentStatus: "pending",
+          inclusionStatus: "included",
+          chargeMonth: month,
+          chargeYear: year,
+          createdBy: req.user!.id,
+        });
+        created.push(expense);
+      }
+      res.status(201).json({ created: created.length, skipped: alreadyGeneratedTemplateIds.size, expenses: created });
+    } catch (error) {
+      console.error("Error generando gastos desde plantillas:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   // ==========================================
   // Financial Export Endpoints (multi-format)
   // ==========================================

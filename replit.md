@@ -57,6 +57,14 @@ Key architectural patterns include:
   - AdminUsers displays username fallback when email is null
   - Password reset for conserjeria generates new 4-digit PIN
 
+- **Feb 2026 - Expense Consumption Period & Recurring Generation**: Enhanced expense management with:
+  - Added consumption period fields to expenses: consumptionPeriodFrom, consumptionPeriodTo (date range of actual consumption)
+  - Added chargeMonth/chargeYear fields to determine which month's gasto común an expense belongs to (independent of payment date)
+  - Expense listing and export now filter by chargeMonth/chargeYear when set, falling back to paymentDate for legacy expenses
+  - "Generar Recurrentes" button in Egresos page: materializes active recurring expense templates into actual expense records for the selected building+month
+  - Duplicate protection prevents generating the same template twice for the same period
+  - Egresos form includes "Período de consumo y mes de cargo" section with consumption dates and charge month/year selectors
+
 ## External Dependencies
 - **PostgreSQL (Neon)**: Primary database for all application data.
 - **Replit Object Storage**: Used for storing image uploads, particularly from field visits.

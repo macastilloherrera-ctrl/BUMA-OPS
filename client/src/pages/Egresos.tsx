@@ -64,6 +64,7 @@ import {
   FileSpreadsheet,
   CheckCircle,
   Clock,
+  Repeat,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -135,6 +136,10 @@ const expenseFormSchema = z.object({
   inclusionStatus: z.enum(["included", "postponed"]),
   postponementReason: z.string().optional(),
   sourceType: z.enum(["ticket", "recurrent"]),
+  consumptionPeriodFrom: z.string().optional(),
+  consumptionPeriodTo: z.string().optional(),
+  chargeMonth: z.string().optional(),
+  chargeYear: z.string().optional(),
   notes: z.string().optional(),
 }).refine((data) => {
   if (data.inclusionStatus === "postponed" && (!data.postponementReason || data.postponementReason.trim() === "")) {
@@ -203,6 +208,10 @@ export default function Egresos() {
       inclusionStatus: "included",
       postponementReason: "",
       sourceType: "ticket",
+      consumptionPeriodFrom: "",
+      consumptionPeriodTo: "",
+      chargeMonth: "",
+      chargeYear: "",
       notes: "",
     },
   });
@@ -223,6 +232,10 @@ export default function Egresos() {
       inclusionStatus: data.inclusionStatus,
       postponementReason: data.inclusionStatus === "postponed" ? (data.postponementReason || null) : null,
       sourceType: data.sourceType,
+      consumptionPeriodFrom: data.consumptionPeriodFrom ? new Date(data.consumptionPeriodFrom).toISOString() : null,
+      consumptionPeriodTo: data.consumptionPeriodTo ? new Date(data.consumptionPeriodTo).toISOString() : null,
+      chargeMonth: data.chargeMonth ? parseInt(data.chargeMonth) : null,
+      chargeYear: data.chargeYear ? parseInt(data.chargeYear) : null,
       notes: data.notes || null,
     };
   }
@@ -273,6 +286,26 @@ export default function Egresos() {
     },
   });
 
+  const generateFromTemplatesMutation = useMutation({
+    mutationFn: async () => {
+      const buildingId = selectedBuilding === "all" ? null : selectedBuilding;
+      if (!buildingId) throw new Error("Seleccione un edificio específico");
+      const res = await apiRequest("POST", "/api/expenses/generate-from-templates", {
+        buildingId,
+        chargeMonth: parseInt(selectedMonth),
+        chargeYear: parseInt(selectedYear),
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      toast({ title: `${data.created} gasto(s) recurrente(s) generado(s)`, description: data.skipped > 0 ? `${data.skipped} ya existían para este período` : undefined });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error al generar gastos", description: error.message, variant: "destructive" });
+    },
+  });
+
   const { data: vendorList } = useQuery<{ id: string; name: string; rut: string | null }[]>({
     queryKey: ["/api/vendors"],
   });
@@ -299,6 +332,10 @@ export default function Egresos() {
     inclusionStatus: "included",
     postponementReason: "",
     sourceType: "ticket",
+    consumptionPeriodFrom: "",
+    consumptionPeriodTo: "",
+    chargeMonth: "",
+    chargeYear: "",
     notes: "",
   };
 
@@ -335,6 +372,8 @@ export default function Egresos() {
   function openEdit(expense: Expense) {
     setEditingExpense(expense);
     const paymentDate = expense.paymentDate ? new Date(expense.paymentDate).toISOString().split("T")[0] : "";
+    const consumptionFrom = (expense as any).consumptionPeriodFrom ? new Date((expense as any).consumptionPeriodFrom).toISOString().split("T")[0] : "";
+    const consumptionTo = (expense as any).consumptionPeriodTo ? new Date((expense as any).consumptionPeriodTo).toISOString().split("T")[0] : "";
     form.reset({
       buildingId: expense.buildingId,
       description: expense.description,
@@ -350,6 +389,10 @@ export default function Egresos() {
       inclusionStatus: expense.inclusionStatus as "included" | "postponed",
       postponementReason: expense.postponementReason || "",
       sourceType: expense.sourceType as "ticket" | "recurrent",
+      consumptionPeriodFrom: consumptionFrom,
+      consumptionPeriodTo: consumptionTo,
+      chargeMonth: (expense as any).chargeMonth ? String((expense as any).chargeMonth) : "",
+      chargeYear: (expense as any).chargeYear ? String((expense as any).chargeYear) : "",
       notes: expense.notes || "",
     });
     setDialogOpen(true);
@@ -428,6 +471,17 @@ export default function Egresos() {
                   Exportar
                 </Button>
               </>
+            )}
+            {!isConserjeria && selectedBuilding !== "all" && (
+              <Button
+                variant="outline"
+                onClick={() => generateFromTemplatesMutation.mutate()}
+                disabled={generateFromTemplatesMutation.isPending}
+                data-testid="button-generate-recurring"
+              >
+                <Repeat className="h-4 w-4 mr-1" />
+                {generateFromTemplatesMutation.isPending ? "Generando..." : "Generar Recurrentes"}
+              </Button>
             )}
             <Button onClick={openCreate} data-testid="button-create-expense">
               <Plus className="h-4 w-4 mr-1" />
@@ -954,6 +1008,86 @@ export default function Egresos() {
                   )}
                 />
               </div>
+
+              {!isConserjeria && (
+                <div className="border rounded-md p-4 space-y-4">
+                  <p className="text-sm font-medium text-muted-foreground">Período de consumo y mes de cargo</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="consumptionPeriodFrom"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Consumo desde</FormLabel>
+                          <FormControl>
+                            <Input type="date" data-testid="input-consumption-from" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="consumptionPeriodTo"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Consumo hasta</FormLabel>
+                          <FormControl>
+                            <Input type="date" data-testid="input-consumption-to" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="chargeMonth"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Mes de GC a pagar</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-charge-month">
+                                <SelectValue placeholder="Mes" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {months.map((m) => (
+                                <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="chargeYear"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Año de GC a pagar</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-charge-year">
+                                <SelectValue placeholder="Año" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {years.map((y) => (
+                                <SelectItem key={y.value} value={y.value}>{y.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+              )}
 
               {!isConserjeria && (
                 <div className="grid grid-cols-2 gap-4">
