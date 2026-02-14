@@ -1258,6 +1258,7 @@ export default function ConciliacionBancaria() {
               <div className="space-y-2">
                 <label className="text-sm font-medium">Motivo (requerido)</label>
                 <Textarea
+                  dir="ltr"
                   value={ignoreReason}
                   onChange={(e) => setIgnoreReason(e.target.value)}
                   placeholder="Ingrese el motivo para ignorar esta transacción..."
