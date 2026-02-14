@@ -6366,7 +6366,7 @@ export async function registerRoutes(
           sourceType: "recurrent",
           recurringTemplateId: template.id,
           description: template.description || template.category,
-          amount: template.estimatedAmount || "0",
+          amount: "0",
           category: template.category,
           vendorName: template.vendorName,
           vendorId: template.vendorId,

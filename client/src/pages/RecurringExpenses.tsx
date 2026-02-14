@@ -69,7 +69,6 @@ interface RecurringExpenseTemplate {
   description: string | null;
   vendorId: string | null;
   vendorName: string | null;
-  estimatedAmount: string | null;
   frequency: "monthly";
   isActive: boolean;
   createdBy: string;
@@ -100,13 +99,6 @@ const templateFormSchema = z.object({
   category: z.string().min(1, "Seleccione una categoría"),
   description: z.string().optional(),
   vendorName: z.string().optional(),
-  estimatedAmount: z
-    .string()
-    .optional()
-    .refine(
-      (v) => !v || (!isNaN(Number(v)) && Number(v) >= 0),
-      "Monto debe ser un número válido"
-    ),
 });
 
 type TemplateFormValues = z.infer<typeof templateFormSchema>;
@@ -151,7 +143,6 @@ export default function RecurringExpenses() {
       category: "",
       description: "",
       vendorName: "",
-      estimatedAmount: "",
     },
   });
 
@@ -161,7 +152,6 @@ export default function RecurringExpenses() {
         ...data,
         description: data.description || null,
         vendorName: data.vendorName || null,
-        estimatedAmount: data.estimatedAmount || null,
         createdBy: user?.id || "",
       });
     },
@@ -239,7 +229,6 @@ export default function RecurringExpenses() {
       category: "",
       description: "",
       vendorName: "",
-      estimatedAmount: "",
     });
   }
 
@@ -250,7 +239,6 @@ export default function RecurringExpenses() {
       category: "",
       description: "",
       vendorName: "",
-      estimatedAmount: "",
     });
     setDialogOpen(true);
   }
@@ -262,7 +250,6 @@ export default function RecurringExpenses() {
       category: template.category,
       description: template.description || "",
       vendorName: template.vendorName || "",
-      estimatedAmount: template.estimatedAmount || "",
     });
     setDialogOpen(true);
   }
@@ -275,7 +262,6 @@ export default function RecurringExpenses() {
           ...values,
           description: values.description || null,
           vendorName: values.vendorName || null,
-          estimatedAmount: values.estimatedAmount || null,
         } as any,
       });
     } else {
@@ -290,25 +276,12 @@ export default function RecurringExpenses() {
     });
   }
 
-  const formatCurrency = (amount: string | number | null) => {
-    if (amount === null || amount === undefined || amount === "") return "-";
-    return new Intl.NumberFormat("es-CL", {
-      style: "currency",
-      currency: "CLP",
-      minimumFractionDigits: 0,
-    }).format(Number(amount));
-  };
-
   const getBuildingName = (buildingId: string) => {
     return buildings?.find((b) => b.id === buildingId)?.name || buildingId;
   };
 
   const activeTemplates =
     templates?.filter((t) => t.isActive) || [];
-  const totalEstimatedMonthly = activeTemplates.reduce(
-    (sum, t) => sum + (t.estimatedAmount ? Number(t.estimatedAmount) : 0),
-    0
-  );
   const isMutating = createMutation.isPending || updateMutation.isPending;
 
   return (
@@ -366,7 +339,7 @@ export default function RecurringExpenses() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               <Card>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -379,21 +352,6 @@ export default function RecurringExpenses() {
                     data-testid="text-active-count"
                   >
                     {activeTemplates.length}
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    Costo Mensual Estimado
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div
-                    className="text-2xl font-bold"
-                    data-testid="text-total-estimated"
-                  >
-                    {formatCurrency(totalEstimatedMonthly)}
                   </div>
                 </CardContent>
               </Card>
@@ -430,9 +388,6 @@ export default function RecurringExpenses() {
                           <TableHead>Categoría</TableHead>
                           <TableHead>Descripción</TableHead>
                           <TableHead>Proveedor</TableHead>
-                          <TableHead className="text-right">
-                            Monto Estimado
-                          </TableHead>
                           <TableHead>Estado</TableHead>
                           <TableHead className="text-right">
                             Acciones
@@ -459,9 +414,6 @@ export default function RecurringExpenses() {
                             </TableCell>
                             <TableCell>
                               {template.vendorName || "-"}
-                            </TableCell>
-                            <TableCell className="text-right font-medium">
-                              {formatCurrency(template.estimatedAmount)}
                             </TableCell>
                             <TableCell>
                               <Badge
@@ -643,25 +595,6 @@ export default function RecurringExpenses() {
                       <Input
                         placeholder="Nombre del proveedor"
                         data-testid="input-vendor-name"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="estimatedAmount"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Monto Estimado Mensual (CLP)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        placeholder="0"
-                        data-testid="input-estimated-amount"
                         {...field}
                       />
                     </FormControl>
