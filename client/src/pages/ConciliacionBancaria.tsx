@@ -487,9 +487,102 @@ export default function ConciliacionBancaria() {
         </div>
       </div>
 
-      <AssignDialog />
+      {assignDialogOpen && selectedTxn && (
+        <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto" data-testid="dialog-assign">
+            <DialogHeader>
+              <DialogTitle>Asignar Unidad</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Card className="bg-muted/50">
+                <CardContent className="pt-4 pb-4 space-y-1">
+                  <p className="text-sm"><strong>Fecha:</strong> {formatDate(selectedTxn.txnDate)}</p>
+                  <p className="text-sm"><strong>Monto:</strong> {formatCurrency(selectedTxn.amount)}</p>
+                  <p className="text-sm"><strong>Glosa:</strong> {selectedTxn.description || "-"}</p>
+                  {selectedTxn.payerName && <p className="text-sm"><strong>Pagador:</strong> {selectedTxn.payerName}</p>}
+                  {selectedTxn.payerRut && <p className="text-sm"><strong>RUT:</strong> {selectedTxn.payerRut}</p>}
+                </CardContent>
+              </Card>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Unidad / Departamento</label>
+                <Input
+                  value={assignUnit}
+                  onChange={(e) => setAssignUnit(e.target.value)}
+                  placeholder="Ej: 301, 1806, Local 1..."
+                  data-testid="input-assign-unit"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Notas (opcional)</label>
+                <Textarea
+                  value={assignNotes}
+                  onChange={(e) => setAssignNotes(e.target.value)}
+                  placeholder="Notas adicionales..."
+                  data-testid="input-assign-notes"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={closeAssignDialog} data-testid="button-cancel-assign">
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={() => assignMutation.mutate({ id: selectedTxn.id, unit: assignUnit, notes: assignNotes })}
+                  disabled={!assignUnit.trim() || assignMutation.isPending}
+                  data-testid="button-submit-assign"
+                >
+                  {assignMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : null}
+                  Asignar
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       <SplitDialog />
-      <IgnoreDialog />
+
+      {ignoreDialogOpen && selectedTxn && (
+        <Dialog open={ignoreDialogOpen} onOpenChange={setIgnoreDialogOpen}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto" data-testid="dialog-ignore">
+            <DialogHeader>
+              <DialogTitle>Ignorar Transacción</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Card className="bg-muted/50">
+                <CardContent className="pt-4 pb-4 space-y-1">
+                  <p className="text-sm"><strong>Fecha:</strong> {formatDate(selectedTxn.txnDate)}</p>
+                  <p className="text-sm"><strong>Monto:</strong> {formatCurrency(selectedTxn.amount)}</p>
+                  <p className="text-sm"><strong>Glosa:</strong> {selectedTxn.description || "-"}</p>
+                </CardContent>
+              </Card>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Motivo (requerido)</label>
+                <Textarea
+                  value={ignoreReason}
+                  onChange={(e) => setIgnoreReason(e.target.value)}
+                  placeholder="Ingrese el motivo para ignorar esta transacción..."
+                  data-testid="input-ignore-reason"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={closeIgnoreDialog} data-testid="button-cancel-ignore">
+                  Cancelar
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => ignoreMutation.mutate({ id: selectedTxn.id, reason: ignoreReason })}
+                  disabled={!ignoreReason.trim() || ignoreMutation.isPending}
+                  data-testid="button-submit-ignore"
+                >
+                  {ignoreMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : null}
+                  Ignorar
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       <PayerDirectoryDialog />
     </div>
   );
@@ -1062,59 +1155,6 @@ export default function ConciliacionBancaria() {
     }
   }
 
-  function AssignDialog() {
-    return (
-      <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto" data-testid="dialog-assign">
-          <DialogHeader>
-            <DialogTitle>Asignar Transacción</DialogTitle>
-          </DialogHeader>
-          {selectedTxn && (
-            <div className="space-y-4">
-              <Card className="bg-muted/50">
-                <CardContent className="pt-4 pb-4 space-y-1">
-                  <p className="text-sm"><strong>Fecha:</strong> {formatDate(selectedTxn.txnDate)}</p>
-                  <p className="text-sm"><strong>Monto:</strong> {formatCurrency(selectedTxn.amount)}</p>
-                  <p className="text-sm"><strong>Glosa:</strong> {selectedTxn.description || "-"}</p>
-                </CardContent>
-              </Card>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Unidad/Departamento</label>
-                <Input
-                  value={assignUnit}
-                  onChange={(e) => setAssignUnit(e.target.value)}
-                  placeholder="Ej: 101, Oficina A"
-                  data-testid="input-assign-unit"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Notas (opcional)</label>
-                <Textarea
-                  value={assignNotes}
-                  onChange={(e) => setAssignNotes(e.target.value)}
-                  placeholder="Notas adicionales..."
-                  data-testid="input-assign-notes"
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={closeAssignDialog} data-testid="button-cancel-assign">
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={() => assignMutation.mutate({ id: selectedTxn.id, unit: assignUnit, notes: assignNotes })}
-                  disabled={!assignUnit || assignMutation.isPending}
-                  data-testid="button-submit-assign"
-                >
-                  {assignMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : null}
-                  Asignar
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    );
-  }
 
   function SplitDialog() {
     return (
@@ -1239,52 +1279,6 @@ export default function ConciliacionBancaria() {
     );
   }
 
-  function IgnoreDialog() {
-    return (
-      <Dialog open={ignoreDialogOpen} onOpenChange={setIgnoreDialogOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto" data-testid="dialog-ignore">
-          <DialogHeader>
-            <DialogTitle>Ignorar Transacción</DialogTitle>
-          </DialogHeader>
-          {selectedTxn && (
-            <div className="space-y-4">
-              <Card className="bg-muted/50">
-                <CardContent className="pt-4 pb-4 space-y-1">
-                  <p className="text-sm"><strong>Fecha:</strong> {formatDate(selectedTxn.txnDate)}</p>
-                  <p className="text-sm"><strong>Monto:</strong> {formatCurrency(selectedTxn.amount)}</p>
-                  <p className="text-sm"><strong>Glosa:</strong> {selectedTxn.description || "-"}</p>
-                </CardContent>
-              </Card>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Motivo (requerido)</label>
-                <Textarea
-                  dir="ltr"
-                  value={ignoreReason}
-                  onChange={(e) => setIgnoreReason(e.target.value)}
-                  placeholder="Ingrese el motivo para ignorar esta transacción..."
-                  data-testid="input-ignore-reason"
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={closeIgnoreDialog} data-testid="button-cancel-ignore">
-                  Cancelar
-                </Button>
-                <Button
-                  variant="destructive"
-                  onClick={() => ignoreMutation.mutate({ id: selectedTxn.id, reason: ignoreReason })}
-                  disabled={!ignoreReason.trim() || ignoreMutation.isPending}
-                  data-testid="button-submit-ignore"
-                >
-                  {ignoreMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : null}
-                  Ignorar
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    );
-  }
 
   function PayerDirectoryDialog() {
     return (
