@@ -6202,6 +6202,27 @@ export async function registerRoutes(
         }
       }
 
+      if (updates.inclusionStatus === "postponed") {
+        if (!updates.postponementReason || !String(updates.postponementReason).trim()) {
+          return res.status(400).json({ error: "Debe ingresar el motivo de aplazamiento" });
+        }
+        const currentChargeMonth = (existingExpense as any).chargeMonth ?? new Date().getMonth() + 1;
+        const currentChargeYear = (existingExpense as any).chargeYear ?? new Date().getFullYear();
+        if (!(existingExpense as any).deferredFromMonth) {
+          updates.deferredFromMonth = currentChargeMonth;
+          updates.deferredFromYear = currentChargeYear;
+        }
+        let nextMonth = currentChargeMonth + 1;
+        let nextYear = currentChargeYear;
+        if (nextMonth > 12) {
+          nextMonth = 1;
+          nextYear += 1;
+        }
+        updates.chargeMonth = nextMonth;
+        updates.chargeYear = nextYear;
+        updates.inclusionStatus = "included";
+      }
+
       const data = insertExpenseSchema.partial().parse(updates);
       const expense = await storage.updateExpense(req.params.id, data);
       if (!expense) {

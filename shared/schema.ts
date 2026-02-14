@@ -1184,6 +1184,8 @@ export const expenses = pgTable("expenses", {
   consumptionPeriodTo: timestamp("consumption_period_to"),
   chargeMonth: integer("charge_month"),
   chargeYear: integer("charge_year"),
+  deferredFromMonth: integer("deferred_from_month"),
+  deferredFromYear: integer("deferred_from_year"),
   notes: text("notes"),
   createdBy: varchar("created_by").notNull(),
   createdAt: timestamp("created_at").defaultNow(),

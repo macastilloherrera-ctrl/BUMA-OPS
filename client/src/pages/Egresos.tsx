@@ -65,6 +65,8 @@ import {
   CheckCircle,
   Clock,
   Repeat,
+  ArrowRightLeft,
+  AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -349,8 +351,8 @@ export default function Egresos() {
     setEditingExpense(null);
     let conserjeriaBuilding = "";
     if (isConserjeria) {
-      if (userProfile?.assignedBuildings?.length) {
-        conserjeriaBuilding = userProfile.assignedBuildings[0];
+      if ((userProfile as any)?.assignedBuildings?.length) {
+        conserjeriaBuilding = (userProfile as any).assignedBuildings[0];
       } else if (buildings?.length) {
         const myBuilding = buildings.find((b: any) => b.conserjeriaUserId === user?.id);
         if (myBuilding) conserjeriaBuilding = myBuilding.id;
@@ -433,6 +435,31 @@ export default function Egresos() {
   const paidAmount = expenses?.filter((e) => e.paymentStatus === "paid").reduce((sum, e) => sum + Number(e.amount), 0) || 0;
   const pendingAmount = expenses?.filter((e) => e.paymentStatus === "pending").reduce((sum, e) => sum + Number(e.amount), 0) || 0;
   const isMutating = createMutation.isPending || updateMutation.isPending;
+
+  const deferredExpenses = expenses?.filter((e: any) => e.deferredFromMonth && e.deferredFromYear) || [];
+  const deferredCount = deferredExpenses.length;
+  const deferredTotal = deferredExpenses.reduce((sum: number, e: any) => sum + Number(e.amount), 0);
+
+  const getMonthLabel = (month: number) => months.find(m => m.value === String(month))?.label || String(month);
+
+  const deferMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      await apiRequest("PATCH", `/api/expenses/${id}`, {
+        inclusionStatus: "postponed",
+        postponementReason: reason,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      toast({ title: "Gasto aplazado al mes siguiente" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error al aplazar gasto", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const [deferDialogId, setDeferDialogId] = useState<string | null>(null);
+  const [deferReason, setDeferReason] = useState("");
 
   return (
     <div className="flex flex-col h-full">
@@ -615,6 +642,20 @@ export default function Egresos() {
               </div>
             )}
 
+            {!isConserjeria && deferredCount > 0 && (
+              <div className="flex items-center gap-3 p-3 mb-4 rounded-md border border-orange-300 bg-orange-50 dark:bg-orange-950/30 dark:border-orange-800" data-testid="alert-deferred-expenses">
+                <AlertTriangle className="h-5 w-5 text-orange-600 dark:text-orange-400 shrink-0" />
+                <div className="flex-1 text-sm">
+                  <span className="font-medium text-orange-800 dark:text-orange-300">
+                    {deferredCount} {deferredCount === 1 ? "gasto aplazado" : "gastos aplazados"} de meses anteriores
+                  </span>
+                  <span className="text-orange-700 dark:text-orange-400 ml-1">
+                    por {formatCurrency(deferredTotal)}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {expenses && expenses.length > 0 ? (
               <Card>
                 <CardHeader>
@@ -680,32 +721,33 @@ export default function Egresos() {
                             {!isConserjeria && (
                               <TableCell>
                                 <div className="flex flex-col gap-1">
-                                  {expense.inclusionStatus === "postponed" && expense.postponementReason ? (
+                                  {(expense as any).deferredFromMonth && (expense as any).deferredFromYear ? (
                                     <Tooltip>
                                       <TooltipTrigger asChild>
                                         <Badge
                                           variant="outline"
                                           className="border-orange-500 text-orange-700 dark:text-orange-400 cursor-help"
-                                          data-testid={`badge-inclusion-status-${expense.id}`}
+                                          data-testid={`badge-deferred-${expense.id}`}
                                         >
-                                          {inclusionStatusLabels[expense.inclusionStatus] || expense.inclusionStatus}
+                                          Aplazado
                                         </Badge>
                                       </TooltipTrigger>
                                       <TooltipContent side="top" className="max-w-[300px]">
-                                        <p className="text-xs font-medium">Motivo: {expense.postponementReason}</p>
+                                        <p className="text-xs font-medium">
+                                          Viene de {getMonthLabel((expense as any).deferredFromMonth)} {(expense as any).deferredFromYear}
+                                        </p>
+                                        {expense.postponementReason && (
+                                          <p className="text-xs mt-1">Motivo: {expense.postponementReason}</p>
+                                        )}
                                       </TooltipContent>
                                     </Tooltip>
                                   ) : (
                                     <Badge
                                       variant="outline"
-                                      className={
-                                        expense.inclusionStatus === "included"
-                                          ? "border-green-500 text-green-700 dark:text-green-400"
-                                          : "border-orange-500 text-orange-700 dark:text-orange-400"
-                                      }
+                                      className="border-green-500 text-green-700 dark:text-green-400"
                                       data-testid={`badge-inclusion-status-${expense.id}`}
                                     >
-                                      {inclusionStatusLabels[expense.inclusionStatus] || expense.inclusionStatus}
+                                      Incluido
                                     </Badge>
                                   )}
                                 </div>
@@ -718,6 +760,19 @@ export default function Egresos() {
                                 </Badge>
                               ) : (
                                 <div className="flex items-center justify-end gap-1">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        onClick={() => { setDeferDialogId(expense.id); setDeferReason(""); }}
+                                        data-testid={`button-defer-${expense.id}`}
+                                      >
+                                        <ArrowRightLeft className="h-4 w-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Aplazar al mes siguiente</TooltipContent>
+                                  </Tooltip>
                                   <Button
                                     size="icon"
                                     variant="ghost"
@@ -1142,48 +1197,7 @@ export default function Egresos() {
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name="inclusionStatus"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Inclusión</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger data-testid="input-inclusion-status">
-                              <SelectValue placeholder="Seleccionar" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="included">Incluido</SelectItem>
-                            <SelectItem value="postponed">Postergado</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
                 </div>
-              )}
-
-              {!isConserjeria && form.watch("inclusionStatus") === "postponed" && (
-                <FormField
-                  control={form.control}
-                  name="postponementReason"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Motivo de postergación</FormLabel>
-                      <FormControl>
-                        <Textarea
-                          placeholder="Indique el motivo de la postergación"
-                          data-testid="input-postponement-reason"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
               )}
 
               <FormField
@@ -1225,6 +1239,39 @@ export default function Egresos() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deferDialogId} onOpenChange={(open) => { if (!open) setDeferDialogId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle data-testid="text-defer-title">Aplazar gasto al mes siguiente</AlertDialogTitle>
+            <AlertDialogDescription>
+              Este gasto se moverá al mes siguiente y quedará marcado como aplazado.
+              Indique el motivo del aplazamiento.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Textarea
+            placeholder="Motivo del aplazamiento (ej: factura aún no recibida)"
+            value={deferReason}
+            onChange={(e) => setDeferReason(e.target.value)}
+            data-testid="input-defer-reason"
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-defer">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (deferDialogId && deferReason.trim()) {
+                  deferMutation.mutate({ id: deferDialogId, reason: deferReason.trim() });
+                  setDeferDialogId(null);
+                }
+              }}
+              disabled={!deferReason.trim() || deferMutation.isPending}
+              data-testid="button-confirm-defer"
+            >
+              {deferMutation.isPending ? "Aplazando..." : "Aplazar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteId} onOpenChange={(open) => { if (!open) setDeleteId(null); }}>
         <AlertDialogContent>

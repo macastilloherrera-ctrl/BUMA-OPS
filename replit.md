@@ -21,6 +21,22 @@ Key architectural patterns include:
 - **Mobile-First for Executives, Desktop-First for Managers**: UI/UX design adapts to the primary use case of each user role.
 
 ## Recent Changes
+- **Feb 2026 - Expense Deferral (Aplazamiento)**: Added ability to defer expenses to the next month:
+  - "Aplazar" action button on each expense row in Egresos page (ArrowRightLeft icon)
+  - Dialog requires a reason before confirming deferral
+  - Backend auto-moves expense to next month (increments chargeMonth/chargeYear, handles Dec→Jan rollover)
+  - Preserves original month in deferredFromMonth/deferredFromYear fields for traceability
+  - Orange "Aplazado" badge on deferred expenses with tooltip showing origin month and reason
+  - Alert banner at top of Egresos when deferred expenses from previous months exist, showing count and total
+  - Re-deferral preserves original origin month (doesn't overwrite deferredFromMonth/Year)
+  - Server-side validation requires postponementReason
+
+- **Feb 2026 - Conserjería Username Simplification**: Shortened concierge usernames:
+  - Helper function `generateConserjeriaUsername()` strips common prefixes ("Condominio Edificio", "Comunidad Edificio", etc.)
+  - Format: `conserjeria_{short_name}` (e.g., `conserjeria_ottawa`, `conserjeria_kandinsky`)
+  - All 9 production buildings created with simplified usernames
+
+
 - **Feb 2026 - Bank Reconciliation Multi-Bank Parsers**: Enhanced the bank reconciliation import system with:
   - Bank-specific parsers for BCI, Banco de Chile, Santander, and Scotiabank (server/bankParsers.ts)
   - Auto-detection of bank format by scanning file metadata rows for signature strings
