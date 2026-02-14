@@ -51,6 +51,7 @@ import {
   Users,
   X,
   AlertCircle,
+  Split,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -1122,6 +1123,9 @@ export default function ConciliacionBancaria() {
             <Button size="sm" variant="outline" onClick={() => openAssignDialog(txn)} data-testid={`button-change-${txn.id}`}>
               Cambiar
             </Button>
+            <Button size="sm" variant="outline" onClick={() => openSplitDialog(txn)} data-testid={`button-split-${txn.id}`}>
+              Dividir
+            </Button>
             <Button size="sm" variant="outline" onClick={() => openIgnoreDialog(txn)} data-testid={`button-ignore-${txn.id}`}>
               Ignorar
             </Button>
@@ -1144,6 +1148,9 @@ export default function ConciliacionBancaria() {
             <span className="text-sm text-muted-foreground">{txn.assignedUnit}</span>
             <Button size="icon" variant="ghost" onClick={() => openAssignDialog(txn)} data-testid={`button-edit-${txn.id}`}>
               <Pencil className="h-3 w-3" />
+            </Button>
+            <Button size="icon" variant="ghost" onClick={() => openSplitDialog(txn)} data-testid={`button-split-${txn.id}`}>
+              <Split className="h-3 w-3" />
             </Button>
           </div>
         );
