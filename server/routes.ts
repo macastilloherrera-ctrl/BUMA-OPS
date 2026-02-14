@@ -7042,6 +7042,36 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/bank-transactions/:id/reactivate", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
+        return res.status(403).json({ error: "No tiene permisos" });
+      }
+      const { id } = req.params;
+      const txn = await storage.getBankTransaction(id);
+      if (!txn) {
+        return res.status(404).json({ error: "Transacción no encontrada" });
+      }
+
+      const updated = await storage.updateBankTransaction(id, {
+        status: "pending",
+        assignedUnit: null,
+        ignoreReason: null,
+        matchScore: null,
+        matchReason: null,
+        identifiedBy: null,
+        identifiedAt: null,
+        exportedAt: null,
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error reactivating bank transaction:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   app.post("/api/bank-transactions/:id/split", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);

@@ -245,6 +245,19 @@ export default function ConciliacionBancaria() {
     },
   });
 
+  const reactivateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("PATCH", `/api/bank-transactions/${id}/reactivate`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions", buildingId, month, year] });
+      toast({ title: "Transacción reactivada" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error al reactivar", description: error.message, variant: "destructive" });
+    },
+  });
+
   const splitMutation = useMutation({
     mutationFn: async ({ id, splits }: { id: string; splits: Array<{ unit: string; amount: number; description: string }> }) => {
       await apiRequest("POST", `/api/bank-transactions/${id}/split`, { splits });
@@ -421,7 +434,7 @@ export default function ConciliacionBancaria() {
   }
 
   function handleReactivate(txn: BankTransaction) {
-    assignMutation.mutate({ id: txn.id, unit: "" });
+    reactivateMutation.mutate(txn.id);
   }
 
   const splitSum = splitRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
@@ -1149,7 +1162,8 @@ export default function ConciliacionBancaria() {
                 </TooltipContent>
               </Tooltip>
             )}
-            <Button size="sm" variant="outline" onClick={() => handleReactivate(txn)} data-testid={`button-reactivate-${txn.id}`}>
+            <Button size="sm" variant="outline" onClick={() => handleReactivate(txn)} disabled={reactivateMutation.isPending} data-testid={`button-reactivate-${txn.id}`}>
+              {reactivateMutation.isPending ? <RefreshCw className="h-3 w-3 mr-1 animate-spin" /> : null}
               Reactivar
             </Button>
           </div>
