@@ -856,7 +856,7 @@ export default function BuildingDetail() {
                                     {s.birthDate && (
                                       <span className="flex items-center gap-1">
                                         <Calendar className="h-3 w-3" />
-                                        {new Date(s.birthDate).toLocaleDateString()}
+                                        {(() => { const mt = String(s.birthDate).match(/(\d{4})-(\d{2})-(\d{2})/); return mt ? `${mt[3]}-${mt[2]}-${mt[1]}` : new Date(s.birthDate).toLocaleDateString(); })()}
                                       </span>
                                     )}
                                   </div>
@@ -900,7 +900,7 @@ export default function BuildingDetail() {
                                   </div>
                                   {s.deactivatedAt && (
                                     <div className="text-xs text-muted-foreground">
-                                      Desactivado: {new Date(s.deactivatedAt).toLocaleDateString()}
+                                      Desactivado: {(() => { const mt = String(s.deactivatedAt).match(/(\d{4})-(\d{2})-(\d{2})/); return mt ? `${mt[3]}-${mt[2]}-${mt[1]}` : new Date(s.deactivatedAt!).toLocaleDateString(); })()}
                                     </div>
                                   )}
                                 </div>
@@ -1125,7 +1125,7 @@ export default function BuildingDetail() {
                                     <File className="h-4 w-4 shrink-0" />
                                     <span className="text-sm truncate">{file.fileName}</span>
                                     <span className="text-xs text-muted-foreground shrink-0">
-                                      {file.createdAt && new Date(file.createdAt).toLocaleDateString("es-CL")}
+                                      {file.createdAt && (() => { const mt = String(file.createdAt).match(/(\d{4})-(\d{2})-(\d{2})/); return mt ? `${mt[3]}-${mt[2]}-${mt[1]}` : new Date(file.createdAt).toLocaleDateString("es-CL"); })()}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-1">

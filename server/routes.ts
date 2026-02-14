@@ -3220,7 +3220,7 @@ export async function registerRoutes(
         filteredTickets = filteredTickets.filter(t => {
           if (!t.closedAt) return false;
           const closedDate = new Date(t.closedAt);
-          return closedDate.getMonth() + 1 === monthNum && closedDate.getFullYear() === yearNum;
+          return closedDate.getUTCMonth() + 1 === monthNum && closedDate.getUTCFullYear() === yearNum;
         });
       }
 
@@ -3286,7 +3286,7 @@ export async function registerRoutes(
         filteredTickets = filteredTickets.filter(t => {
           if (!t.closedAt) return false;
           const closedDate = new Date(t.closedAt);
-          return closedDate.getMonth() + 1 === monthNum && closedDate.getFullYear() === yearNum;
+          return closedDate.getUTCMonth() + 1 === monthNum && closedDate.getUTCFullYear() === yearNum;
         });
       }
 
@@ -3874,7 +3874,7 @@ export async function registerRoutes(
       data.forEach(item => {
         if (item.fechaEgreso) {
           const date = new Date(item.fechaEgreso);
-          const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          const monthKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
           if (!byMonth[monthKey]) {
             byMonth[monthKey] = { total: 0, count: 0 };
           }
@@ -6419,7 +6419,7 @@ export async function registerRoutes(
       const monthName = monthNames[month - 1] || "";
       const XLSX = await import("xlsx");
 
-      const formatDateCL = (d: Date) => `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+      const formatDateCL = (d: Date) => `${String(d.getUTCDate()).padStart(2, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${d.getUTCFullYear()}`;
 
       let wsData: any[][] = [];
 
@@ -6511,7 +6511,7 @@ export async function registerRoutes(
       };
       const XLSX = await import("xlsx");
 
-      const formatDateCL = (d: Date) => `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+      const formatDateCL = (d: Date) => `${String(d.getUTCDate()).padStart(2, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${d.getUTCFullYear()}`;
 
       let wsData: any[][] = [];
 
@@ -6929,8 +6929,8 @@ export async function registerRoutes(
             if (!unitMap[s.unit]) unitMap[s.unit] = [];
             const d = txn.txnDate ? new Date(txn.txnDate) : new Date();
             unitMap[s.unit].push({
-              month: d.getMonth() + 1,
-              year: d.getFullYear(),
+              month: d.getUTCMonth() + 1,
+              year: d.getUTCFullYear(),
               amount: s.amount || 0,
               date: d.toISOString(),
               payerName: (txn as any).payerName || "",
@@ -6943,8 +6943,8 @@ export async function registerRoutes(
           if (!unitMap[unit]) unitMap[unit] = [];
           const d = txn.txnDate ? new Date(txn.txnDate) : new Date();
           unitMap[unit].push({
-            month: d.getMonth() + 1,
-            year: d.getFullYear(),
+            month: d.getUTCMonth() + 1,
+            year: d.getUTCFullYear(),
             amount: parseFloat(txn.amount) || 0,
             date: d.toISOString(),
             payerName: (txn as any).payerName || "",
@@ -7164,7 +7164,7 @@ export async function registerRoutes(
       const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
       const monthName = monthNames[month - 1] || "";
 
-      const formatDateCL = (d: Date) => `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+      const formatDateCL = (d: Date) => `${String(d.getUTCDate()).padStart(2, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${d.getUTCFullYear()}`;
 
       interface UnifiedRow { date: Date; amount: number; unit: string; description: string; bank: string; reference: string; rut: string; source: string; }
       const unified: UnifiedRow[] = [];

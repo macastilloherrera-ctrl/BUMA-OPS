@@ -115,8 +115,12 @@ const stepLabels = [
 const formatCurrency = (amount: string | number) =>
   new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", minimumFractionDigits: 0 }).format(Number(amount));
 
-const formatDate = (date: string | Date) =>
-  new Date(date).toLocaleDateString("es-CL");
+const formatDate = (date: string | Date) => {
+  const s = typeof date === "string" ? date : date.toISOString();
+  const m = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return new Date(date).toLocaleDateString("es-CL");
+};
 
 export default function ConciliacionBancaria() {
   const { user } = useAuth();

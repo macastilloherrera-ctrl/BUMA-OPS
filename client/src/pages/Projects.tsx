@@ -72,6 +72,12 @@ function TrafficLightBadge({ color }: { color: "verde" | "amarillo" | "rojo" }) 
 
 function formatDate(date: Date | string | null | undefined): string {
   if (!date) return "-";
+  const s = typeof date === "string" ? date : date.toISOString();
+  const mt = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (mt) {
+    const months = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic"];
+    return `${mt[3]} ${months[parseInt(mt[2]) - 1]} ${mt[1]}`;
+  }
   const d = new Date(date);
   if (isNaN(d.getTime())) return "-";
   return d.toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" });

@@ -43,8 +43,11 @@ import type { Building } from "@shared/schema";
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", minimumFractionDigits: 0 }).format(amount);
 
-const formatDate = (date: string) =>
-  new Date(date).toLocaleDateString("es-CL");
+const formatDate = (date: string) => {
+  const m = date.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return new Date(date).toLocaleDateString("es-CL");
+};
 
 interface PaymentRecord {
   month: number;

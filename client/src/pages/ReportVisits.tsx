@@ -102,6 +102,8 @@ export default function ReportVisits() {
 
   const formatDate = (date: string | null) => {
     if (!date) return "-";
+    const mt = date.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (mt) return `${mt[3]}-${mt[2]}-${mt[1]}`;
     return new Date(date).toLocaleDateString("es-CL");
   };
 

@@ -109,6 +109,9 @@ function getDaysText(date: string | Date | null | undefined): string {
 
 function formatDate(d: string | Date | null | undefined): string {
   if (!d) return "—";
+  const s = typeof d === "string" ? d : d.toISOString();
+  const mt = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (mt) return `${mt[3]}-${mt[2]}-${mt[1]}`;
   return new Date(d).toLocaleDateString("es-CL");
 }
 
@@ -545,7 +548,7 @@ export default function CierreMensual() {
                         <p className="text-xs text-muted-foreground mb-2" data-testid="text-last-status-change">
                           Último cambio por <span className="font-medium">{statusLogs[0].changedByName || "—"}</span>
                           {statusLogs[0].changedAt && (
-                            <span> el {new Date(statusLogs[0].changedAt).toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" })}</span>
+                            <span> el {(() => { const mt = String(statusLogs[0].changedAt).match(/(\d{4})-(\d{2})-(\d{2})/); return mt ? `${parseInt(mt[3])}-${["ene","feb","mar","abr","may","jun","jul","ago","sept","oct","nov","dic"][parseInt(mt[2])-1]}-${mt[1]}` : new Date(statusLogs[0].changedAt).toLocaleDateString("es-CL", { day: "2-digit", month: "short", year: "numeric" }); })()}</span>
                           )}
                         </p>
                       )}
@@ -614,7 +617,7 @@ export default function CierreMensual() {
                               data-testid={`status-log-${log.id}`}
                             >
                               <span className="text-muted-foreground whitespace-nowrap">
-                                {log.changedAt ? new Date(log.changedAt).toLocaleDateString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}
+                                {log.changedAt ? (() => { const mt = String(log.changedAt).match(/(\d{4})-(\d{2})-(\d{2})T?(\d{2})?:?(\d{2})?/); return mt ? `${parseInt(mt[3])}-${["ene","feb","mar","abr","may","jun","jul","ago","sept","oct","nov","dic"][parseInt(mt[2])-1]}${mt[4] ? ` ${mt[4]}:${mt[5]}` : ""}` : new Date(log.changedAt).toLocaleDateString("es-CL", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }); })() : ""}
                               </span>
                               <span className="text-muted-foreground">
                                 {log.previousStatus ? STATUS_LABELS[log.previousStatus] || log.previousStatus : "—"}
