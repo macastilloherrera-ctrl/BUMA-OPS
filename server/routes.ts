@@ -7053,6 +7053,9 @@ export async function registerRoutes(
       if (!txn) {
         return res.status(404).json({ error: "Transacción no encontrada" });
       }
+      if (txn.status !== "ignored") {
+        return res.status(400).json({ error: "Solo se pueden reactivar transacciones ignoradas" });
+      }
 
       const updated = await storage.updateBankTransaction(id, {
         status: "pending",
