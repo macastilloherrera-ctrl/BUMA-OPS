@@ -209,6 +209,7 @@ const generalManagerNavItems = [
       { path: "/tickets", label: "Todos los Tickets", icon: Ticket },
       { path: "/tickets?mine=true", label: "Mis Tickets", icon: ClipboardList },
       { path: "/visitas", label: "Visitas", icon: Calendar },
+      { path: "/consulta-operacional", label: "Consulta Operacional", icon: BarChart3 },
     ]
   },
   {

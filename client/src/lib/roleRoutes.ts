@@ -58,6 +58,7 @@ export const rolePermissions: Record<UserRole, {
       "/ingresos",
       "/egresos",
       "/consumos-recurrentes",
+      "/consulta-operacional",
       "/reportes/egresos",
       "/reportes/cumplimiento",
       "/reportes/visitas",

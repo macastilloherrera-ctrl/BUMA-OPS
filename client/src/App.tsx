@@ -207,7 +207,7 @@ function AuthenticatedApp() {
                   </>
                 )}
 
-                {(isOperations || isManager) && (
+                {(isOperations || isManager || isGeneralManager) && (
                   <Route path="/consulta-operacional" component={ConsultaOperacional} />
                 )}
 
