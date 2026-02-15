@@ -52,6 +52,7 @@ import {
   X,
   AlertCircle,
   Split,
+  History,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -111,6 +112,7 @@ const stepLabels = [
   "Carga",
   "Conciliación",
   "Exportación",
+  "Historial",
 ];
 
 const formatCurrency = (amount: string | number) =>
@@ -197,6 +199,32 @@ export default function ConciliacionBancaria() {
     enabled: !!buildingId,
   });
 
+  type ReconciliationHistoryEntry = {
+    periodMonth: number;
+    periodYear: number;
+    dateFrom: string | null;
+    dateTo: string | null;
+    total: number;
+    identified: number;
+    suggested: number;
+    pending: number;
+    ignored: number;
+    multi: number;
+    totalAmount: number;
+    lastImport: string | null;
+  };
+
+  const { data: reconciliationHistory, isLoading: historyLoading } = useQuery<ReconciliationHistoryEntry[]>({
+    queryKey: ["/api/bank-transactions/reconciliation-history", buildingId],
+    queryFn: async () => {
+      if (!buildingId) return [];
+      const res = await fetch(`/api/bank-transactions/reconciliation-history?buildingId=${buildingId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Error al cargar historial");
+      return res.json();
+    },
+    enabled: !!buildingId && step === 5,
+  });
+
   const filteredTransactions = transactions?.filter((t) =>
     activeTab === "all" ? true : t.status === activeTab
   ) || [];
@@ -216,15 +244,37 @@ export default function ConciliacionBancaria() {
 
   const reconcileMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("POST", "/api/bank-transactions/reconcile", {
+      const res = await apiRequest("POST", "/api/bank-transactions/reconcile", {
         buildingId,
         periodMonth: Number(month),
         periodYear: Number(year),
       });
+      return res.json() as Promise<{ identified: number; suggested: number; pending: number; multi: number; totalProcessed: number; directorySize: number }>;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions", buildingId, month, year] });
-      toast({ title: "Conciliación ejecutada" });
+      const total = data.identified + data.suggested + data.pending + data.multi;
+      if (total === 0) {
+        toast({
+          title: "Sin transacciones pendientes",
+          description: "No hay transacciones pendientes para conciliar en este período. Verifique que la cartola fue cargada para este edificio y mes.",
+          variant: "destructive",
+        });
+      } else if (data.identified === 0 && data.suggested === 0) {
+        const reasons: string[] = [];
+        if (data.directorySize === 0) reasons.push("El directorio de pagadores está vacío. Agregue pagadores con RUT y unidad para mejorar la conciliación.");
+        else reasons.push(`Se buscó en ${data.directorySize} registros del directorio sin coincidencias.`);
+        reasons.push(`${data.pending} transacciones quedaron pendientes de asignación manual.`);
+        toast({
+          title: "Conciliación sin coincidencias automáticas",
+          description: reasons.join(" "),
+        });
+      } else {
+        toast({
+          title: "Conciliación ejecutada",
+          description: `${data.identified} identificadas, ${data.suggested} sugeridas, ${data.pending} pendientes`,
+        });
+      }
       setStep(3);
     },
     onError: (error: Error) => {
@@ -470,16 +520,18 @@ export default function ConciliacionBancaria() {
               <button
                 key={stepNum}
                 onClick={() => {
-                  if (stepNum < step) setStep(stepNum);
+                  if (stepNum < step || (stepNum === 5 && buildingId)) setStep(stepNum);
                 }}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                   isActive
                     ? "bg-primary text-primary-foreground"
                     : isCompleted
                     ? "bg-muted text-foreground cursor-pointer"
+                    : stepNum === 5 && buildingId
+                    ? "bg-muted text-foreground cursor-pointer"
                     : "bg-muted/50 text-muted-foreground cursor-default"
                 }`}
-                disabled={stepNum > step}
+                disabled={stepNum > step && !(stepNum === 5 && buildingId)}
                 data-testid={`step-indicator-${stepNum}`}
               >
                 {isCompleted ? (
@@ -502,6 +554,7 @@ export default function ConciliacionBancaria() {
           {step === 2 && <Step2 />}
           {step === 3 && <Step3 />}
           {step === 4 && <Step4 />}
+          {step === 5 && <Step5 />}
         </div>
       </div>
 
@@ -610,7 +663,7 @@ export default function ConciliacionBancaria() {
       <>
         <Card>
           <CardHeader>
-            <CardTitle data-testid="text-step1-title">Seleccionar Edificio y Período</CardTitle>
+            <CardTitle data-testid="text-step1-title">Selección de Edificio y Periodo de Conciliación</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -634,10 +687,10 @@ export default function ConciliacionBancaria() {
                 )}
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">Mes</label>
+                <label className="text-sm font-medium text-muted-foreground">Mes de Gasto Común</label>
                 <Select value={month} onValueChange={setMonth}>
                   <SelectTrigger data-testid="select-month">
-                    <SelectValue placeholder="Mes" />
+                    <SelectValue placeholder="Mes de Gasto Común" />
                   </SelectTrigger>
                   <SelectContent>
                     {months.map((m) => (
@@ -712,7 +765,7 @@ export default function ConciliacionBancaria() {
             <div className="border-2 border-dashed rounded-md p-6 text-center space-y-3">
               <Upload className="h-10 w-10 text-muted-foreground mx-auto" />
               <p className="text-sm text-muted-foreground">
-                Seleccione un archivo .csv, .xlsx o .xls
+                Cargar Archivo .csv, .xlsx o .xls
               </p>
               <input
                 ref={fileInputRef}
@@ -1071,17 +1124,131 @@ export default function ConciliacionBancaria() {
               <ChevronLeft className="h-4 w-4 mr-1" />
               Volver a conciliación
             </Button>
-            <Button
-              onClick={handleExport}
-              disabled={isExporting || (exportOnlyNew ? newCount === 0 : totalCount === 0)}
-              data-testid="button-export"
-            >
-              {isExporting ? (
-                <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4 mr-1" />
-              )}
-              Exportar {exportOnlyNew ? "nuevos" : "todos"}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                onClick={handleExport}
+                disabled={isExporting || (exportOnlyNew ? newCount === 0 : totalCount === 0)}
+                data-testid="button-export"
+              >
+                {isExporting ? (
+                  <RefreshCw className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-1" />
+                )}
+                Exportar {exportOnlyNew ? "nuevos" : "todos"}
+              </Button>
+              <Button variant="outline" onClick={() => setStep(5)} data-testid="button-go-history">
+                Historial
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  function Step5() {
+    const buildingName = getBuildingName(buildingId);
+
+    const openReconciliation = (entry: ReconciliationHistoryEntry) => {
+      setMonth(String(entry.periodMonth));
+      setYear(String(entry.periodYear));
+      setStep(3);
+    };
+
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle data-testid="text-step5-title">Conciliaciones Realizadas</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Edificio: <strong>{buildingName}</strong>
+          </p>
+
+          {historyLoading ? (
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : !reconciliationHistory || reconciliationHistory.length === 0 ? (
+            <Card className="bg-muted/50">
+              <CardContent className="pt-4 pb-4 text-center">
+                <p className="text-sm text-muted-foreground" data-testid="text-no-history">
+                  No hay conciliaciones registradas para este edificio.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Período</TableHead>
+                    <TableHead>Rango de Fechas</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="text-right">Identificadas</TableHead>
+                    <TableHead className="text-right">Pendientes</TableHead>
+                    <TableHead className="text-right">Monto Total</TableHead>
+                    <TableHead>Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {reconciliationHistory.map((entry) => {
+                    const monthLabel = months.find((m) => m.value === String(entry.periodMonth))?.label || "";
+                    const dateFrom = entry.dateFrom ? formatDate(entry.dateFrom) : "-";
+                    const dateTo = entry.dateTo ? formatDate(entry.dateTo) : "-";
+                    const completionPct = entry.total > 0 ? Math.round((entry.identified / entry.total) * 100) : 0;
+                    const hasPending = entry.pending > 0 || entry.suggested > 0;
+                    return (
+                      <TableRow key={`${entry.periodYear}-${entry.periodMonth}`} data-testid={`row-history-${entry.periodYear}-${entry.periodMonth}`}>
+                        <TableCell>
+                          <span className="font-medium">{monthLabel} {entry.periodYear}</span>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {dateFrom} — {dateTo}
+                        </TableCell>
+                        <TableCell className="text-right">{entry.total}</TableCell>
+                        <TableCell className="text-right">
+                          <span className="text-green-600 dark:text-green-400">{entry.identified}</span>
+                          <span className="text-muted-foreground text-xs ml-1">({completionPct}%)</span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {hasPending ? (
+                            <span className="text-amber-600 dark:text-amber-400">{entry.pending + entry.suggested}</span>
+                          ) : (
+                            <span className="text-muted-foreground">0</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">{formatCurrency(entry.totalAmount)}</TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => openReconciliation(entry)}
+                            data-testid={`button-open-history-${entry.periodYear}-${entry.periodMonth}`}
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            {hasPending ? "Trabajar" : "Revisar"}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="outline" onClick={() => setStep(4)} data-testid="button-back-step5">
+              <ChevronLeft className="h-4 w-4 mr-1" />
+              Volver a exportación
+            </Button>
+            <Button variant="outline" onClick={() => setStep(1)} data-testid="button-new-reconciliation">
+              Nueva conciliación
             </Button>
           </div>
         </CardContent>

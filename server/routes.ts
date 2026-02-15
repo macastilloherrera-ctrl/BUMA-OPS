@@ -6783,7 +6783,7 @@ export async function registerRoutes(
         }
       }
 
-      res.json({ identified, suggested, pending, multi });
+      res.json({ identified, suggested, pending, multi, totalProcessed: transactions.length, directorySize: directory.length });
     } catch (error) {
       console.error("Error reconciling bank transactions:", error);
       res.status(500).json({ error: "Error interno del servidor" });
@@ -7154,6 +7154,63 @@ export async function registerRoutes(
       });
     } catch (error) {
       console.error("Error getting export stats:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/bank-transactions/reconciliation-history", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile)) {
+        return res.status(403).json({ error: "No tiene permisos" });
+      }
+      const buildingId = req.query.buildingId as string;
+      if (!buildingId) {
+        return res.status(400).json({ error: "Se requiere buildingId" });
+      }
+      const allTxns = await storage.getBankTransactions({ buildingId });
+      if (!allTxns || allTxns.length === 0) {
+        return res.json([]);
+      }
+      const grouped: Record<string, typeof allTxns> = {};
+      for (const txn of allTxns) {
+        const key = `${txn.periodYear}-${txn.periodMonth}`;
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(txn);
+      }
+      const history = Object.entries(grouped).map(([key, txns]) => {
+        const [yr, mo] = key.split("-").map(Number);
+        const dates = txns.map(t => t.transactionDate ? new Date(t.transactionDate).getTime() : 0).filter(d => d > 0);
+        const minDate = dates.length > 0 ? new Date(Math.min(...dates)).toISOString() : null;
+        const maxDate = dates.length > 0 ? new Date(Math.max(...dates)).toISOString() : null;
+        const identified = txns.filter(t => t.status === "identified").length;
+        const suggested = txns.filter(t => t.status === "suggested").length;
+        const pending = txns.filter(t => t.status === "pending").length;
+        const ignored = txns.filter(t => t.status === "ignored").length;
+        const multi = txns.filter(t => t.status === "multi").length;
+        const total = txns.length;
+        const totalAmount = txns.reduce((s, t) => s + Number(t.amount), 0);
+        const importedAt = txns.map(t => t.importedAt ? new Date(t.importedAt).getTime() : 0).filter(d => d > 0);
+        const lastImport = importedAt.length > 0 ? new Date(Math.max(...importedAt)).toISOString() : null;
+        return {
+          periodMonth: mo,
+          periodYear: yr,
+          dateFrom: minDate,
+          dateTo: maxDate,
+          total,
+          identified,
+          suggested,
+          pending,
+          ignored,
+          multi,
+          totalAmount,
+          lastImport,
+        };
+      });
+      history.sort((a, b) => (b.periodYear * 100 + b.periodMonth) - (a.periodYear * 100 + a.periodMonth));
+      res.json(history);
+    } catch (error) {
+      console.error("Error getting reconciliation history:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
