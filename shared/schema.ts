@@ -1608,3 +1608,26 @@ export type InsertMonthlyClosingStatusLog = z.infer<typeof insertMonthlyClosingS
 export type MonthlyClosingStatusLog = typeof monthlyClosingStatusLogs.$inferSelect;
 export type ClosingCycleStatus = "open" | "preparation" | "pending_info" | "pre_ready" | "under_review" | "approved" | "issued";
 export type ClosingCycleRisk = "low" | "medium" | "high";
+
+// Audit Logs table
+export const auditLogs = pgTable("audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"),
+  userName: varchar("user_name", { length: 255 }),
+  userRole: varchar("user_role", { length: 50 }),
+  action: varchar("action", { length: 100 }).notNull(),
+  entityType: varchar("entity_type", { length: 100 }),
+  entityId: varchar("entity_id"),
+  buildingId: varchar("building_id"),
+  buildingName: varchar("building_name", { length: 255 }),
+  metadata: text("metadata"),
+  ipAddress: varchar("ip_address", { length: 45 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Audit Log Schemas
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({ id: true, createdAt: true });
+
+// Audit Log Types
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+export type AuditLog = typeof auditLogs.$inferSelect;

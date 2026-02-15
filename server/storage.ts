@@ -125,9 +125,12 @@ import {
   type InsertMonthlyClosingChecklistItem,
   type MonthlyClosingStatusLog,
   type InsertMonthlyClosingStatusLog,
+  auditLogs,
+  type AuditLog,
+  type InsertAuditLog,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, gte, lte, lt, or, sql, ne } from "drizzle-orm";
+import { eq, and, desc, gte, lte, lt, or, sql, ne, count } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -395,6 +398,13 @@ export interface IStorage {
   createMonthlyClosingChecklistItem(item: InsertMonthlyClosingChecklistItem): Promise<MonthlyClosingChecklistItem>;
   updateMonthlyClosingChecklistItem(id: string, data: Partial<InsertMonthlyClosingChecklistItem>): Promise<MonthlyClosingChecklistItem | undefined>;
   deleteMonthlyClosingChecklistItem(id: string): Promise<boolean>;
+
+  // Audit Logs
+  createAuditLog(data: InsertAuditLog): Promise<AuditLog>;
+  listAuditLogs(filters: { buildingId?: string; userId?: string; action?: string; entityType?: string; limit?: number; offset?: number }): Promise<{ logs: AuditLog[]; total: number }>;
+  getDiagnosticStats(buildingId?: string): Promise<any>;
+  bulkDeleteBankTransactions(buildingId: string, periodMonth: number, periodYear: number): Promise<number>;
+  clearExportFlags(buildingId: string, periodMonth: number, periodYear: number): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1723,6 +1733,82 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(monthlyClosingStatusLogs)
       .where(eq(monthlyClosingStatusLogs.cycleId, cycleId))
       .orderBy(desc(monthlyClosingStatusLogs.changedAt));
+  }
+
+  // Audit Logs
+  async createAuditLog(data: InsertAuditLog): Promise<AuditLog> {
+    const [created] = await db.insert(auditLogs).values(data).returning();
+    return created;
+  }
+
+  async listAuditLogs(filters: { buildingId?: string; userId?: string; action?: string; entityType?: string; limit?: number; offset?: number }): Promise<{ logs: AuditLog[]; total: number }> {
+    const conditions: any[] = [];
+    if (filters.buildingId) conditions.push(eq(auditLogs.buildingId, filters.buildingId));
+    if (filters.userId) conditions.push(eq(auditLogs.userId, filters.userId));
+    if (filters.action) conditions.push(eq(auditLogs.action, filters.action));
+    if (filters.entityType) conditions.push(eq(auditLogs.entityType, filters.entityType));
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [totalResult] = await db.select({ value: count() }).from(auditLogs).where(whereClause);
+    const total = totalResult?.value ?? 0;
+
+    let query = db.select().from(auditLogs).where(whereClause).orderBy(desc(auditLogs.createdAt));
+    if (filters.limit) query = query.limit(filters.limit) as any;
+    if (filters.offset) query = query.offset(filters.offset) as any;
+
+    const logs = await query;
+    return { logs, total };
+  }
+
+  async getDiagnosticStats(buildingId?: string): Promise<any> {
+    const buildingsData = buildingId
+      ? [await this.getBuilding(buildingId)].filter(Boolean)
+      : await this.getBuildings();
+
+    const stats = [];
+    for (const b of buildingsData) {
+      if (!b) continue;
+      const allTxns = await this.getBankTransactions({ buildingId: b.id });
+      const identified = allTxns.filter(t => t.status === 'identified').length;
+      const suggested = allTxns.filter(t => t.status === 'suggested').length;
+      const pending = allTxns.filter(t => t.status === 'pending').length;
+
+      const allIncomes = await db.select().from(incomes).where(eq(incomes.buildingId, b.id));
+      const allExpenses = await db.select().from(expenses).where(eq(expenses.buildingId, b.id));
+
+      stats.push({
+        buildingId: b.id,
+        buildingName: b.name,
+        bankTransactions: { total: allTxns.length, identified, suggested, pending },
+        incomes: allIncomes.length,
+        expenses: allExpenses.length,
+      });
+    }
+    return stats;
+  }
+
+  async bulkDeleteBankTransactions(buildingId: string, periodMonth: number, periodYear: number): Promise<number> {
+    const deleted = await db.delete(bankTransactions)
+      .where(and(
+        eq(bankTransactions.buildingId, buildingId),
+        eq(bankTransactions.periodMonth, periodMonth),
+        eq(bankTransactions.periodYear, periodYear)
+      ))
+      .returning();
+    return deleted.length;
+  }
+
+  async clearExportFlags(buildingId: string, periodMonth: number, periodYear: number): Promise<number> {
+    const updated = await db.update(bankTransactions)
+      .set({ exportedAt: null })
+      .where(and(
+        eq(bankTransactions.buildingId, buildingId),
+        eq(bankTransactions.periodMonth, periodMonth),
+        eq(bankTransactions.periodYear, periodYear)
+      ))
+      .returning();
+    return updated.length;
   }
 }
 

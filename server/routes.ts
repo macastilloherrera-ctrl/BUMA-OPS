@@ -4949,6 +4949,18 @@ export async function registerRoutes(
       
       console.log(`[super-admin] User created: ${newUser.id} with password: ${password ? "yes" : "no"}`);
 
+      try {
+        await storage.createAuditLog({
+          userId: (req.user as any).id,
+          userName: `${(req.user as any).firstName || ""} ${(req.user as any).lastName || ""}`.trim(),
+          userRole: profile!.role,
+          action: "create_user",
+          entityType: "user",
+          entityId: newUser.id,
+          metadata: JSON.stringify({ email, role, firstName, lastName }),
+        });
+      } catch(e) {}
+
       res.status(201).json({ id: newUser.id, email: newUser.email });
     } catch (error) {
       console.error("Error creating user:", error);
@@ -5040,6 +5052,106 @@ export async function registerRoutes(
       res.json({ success: true, message: "Contraseña reseteada exitosamente" });
     } catch (error) {
       console.error("Error resetting password:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ========================
+  // ADMIN TOOLS MODULE
+  // ========================
+
+  app.get("/api/super-admin/audit-logs", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isSuperAdminRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+      const filters: any = {};
+      if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
+      if (req.query.userId) filters.userId = req.query.userId as string;
+      if (req.query.action) filters.action = req.query.action as string;
+      if (req.query.entityType) filters.entityType = req.query.entityType as string;
+      filters.limit = parseInt(req.query.limit as string) || 50;
+      filters.offset = parseInt(req.query.offset as string) || 0;
+      const result = await storage.listAuditLogs(filters);
+      res.json(result);
+    } catch (error) {
+      console.error("Error listing audit logs:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/super-admin/diagnostics", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isSuperAdminRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+      const buildingId = req.query.buildingId as string | undefined;
+      const stats = await storage.getDiagnosticStats(buildingId);
+      res.json(stats);
+    } catch (error) {
+      console.error("Error getting diagnostics:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/super-admin/bulk-delete-transactions", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isSuperAdminRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+      const { buildingId, periodMonth, periodYear } = req.body;
+      if (!buildingId || !periodMonth || !periodYear) {
+        return res.status(400).json({ error: "Se requiere buildingId, periodMonth y periodYear" });
+      }
+      const deleted = await storage.bulkDeleteBankTransactions(buildingId, parseInt(periodMonth), parseInt(periodYear));
+      const user = req.user as any;
+      const building = await storage.getBuilding(buildingId);
+      await storage.createAuditLog({
+        userId: user.id,
+        userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+        userRole: profile.role,
+        action: "bulk_delete_transactions",
+        entityType: "bank_transaction",
+        buildingId,
+        buildingName: building?.name || "",
+        metadata: JSON.stringify({ periodMonth, periodYear, deletedCount: deleted }),
+      });
+      res.json({ deleted });
+    } catch (error) {
+      console.error("Error bulk deleting:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/super-admin/clear-export-flags", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isSuperAdminRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+      const { buildingId, periodMonth, periodYear } = req.body;
+      if (!buildingId || !periodMonth || !periodYear) {
+        return res.status(400).json({ error: "Se requiere buildingId, periodMonth y periodYear" });
+      }
+      const cleared = await storage.clearExportFlags(buildingId, parseInt(periodMonth), parseInt(periodYear));
+      const user = req.user as any;
+      const building = await storage.getBuilding(buildingId);
+      await storage.createAuditLog({
+        userId: user.id,
+        userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+        userRole: profile.role,
+        action: "clear_export_flags",
+        entityType: "bank_transaction",
+        buildingId,
+        buildingName: building?.name || "",
+        metadata: JSON.stringify({ periodMonth, periodYear, clearedCount: cleared }),
+      });
+      res.json({ cleared });
+    } catch (error) {
+      console.error("Error clearing export flags:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
@@ -5736,12 +5848,23 @@ export async function registerRoutes(
       };
       
       // Login the user using Passport
-      req.login(sessionUser, (err) => {
+      req.login(sessionUser, async (err) => {
         if (err) {
           console.error("Error logging in:", err);
           return res.status(500).json({ error: "Error al iniciar sesión" });
         }
         
+        try {
+          await storage.createAuditLog({
+            userId: user.id,
+            userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+            userRole: userProfile?.role || "",
+            action: "login",
+            entityType: "session",
+            ipAddress: req.ip || req.headers['x-forwarded-for']?.toString() || "",
+          });
+        } catch(e) {}
+
         res.json({
           success: true,
           user: {
@@ -5844,6 +5967,20 @@ export async function registerRoutes(
       }
       const data = insertIncomeSchema.parse({ ...req.body, createdBy: req.user!.id });
       const income = await storage.createIncome(data);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "create_income",
+          entityType: "income",
+          entityId: income.id,
+          buildingId: income.buildingId,
+          metadata: JSON.stringify({ amount: income.amount, department: income.department }),
+        });
+      } catch(e) {}
+
       res.status(201).json(income);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -6146,6 +6283,20 @@ export async function registerRoutes(
 
       const data = insertExpenseSchema.parse(expenseData);
       const expense = await storage.createExpense(data);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "create_expense",
+          entityType: "expense",
+          entityId: expense.id,
+          buildingId: expense.buildingId,
+          metadata: JSON.stringify({ amount: expense.amount, description: expense.description }),
+        });
+      } catch(e) {}
+
       res.status(201).json(expense);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -6652,6 +6803,20 @@ export async function registerRoutes(
         });
         imported++;
       }
+
+      try {
+        const building = await storage.getBuilding(buildingId);
+        await storage.createAuditLog({
+          userId: (req.user as any).id,
+          userName: `${(req.user as any).firstName || ""} ${(req.user as any).lastName || ""}`.trim(),
+          userRole: profile!.role,
+          action: "import_bank_transactions",
+          entityType: "bank_transaction",
+          buildingId: buildingId,
+          buildingName: building?.name || "",
+          metadata: JSON.stringify({ count: imported, periodMonth: pMonth, periodYear: pYear }),
+        });
+      } catch(e) {}
 
       res.json({ imported, duplicates, total: parseResult.totalRowsScanned, detectedBank: parseResult.detectedBank });
     } catch (error) {
@@ -7266,6 +7431,18 @@ export async function registerRoutes(
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.send(buf);
+
+      try {
+        await storage.createAuditLog({
+          userId: (req.user as any).id,
+          userName: "",
+          action: "export_bank_transactions",
+          entityType: "bank_transaction",
+          buildingId,
+          buildingName: building?.name || "",
+          metadata: JSON.stringify({ format, month, year, onlyNew, count: unified.length }),
+        });
+      } catch(e) {}
 
       await storage.markBankTransactionsExported(txnIds);
     } catch (error) {
