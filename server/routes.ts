@@ -6832,19 +6832,6 @@ export async function registerRoutes(
         }
       }
 
-      await storage.createIncome({
-        buildingId: txn.buildingId,
-        amount: txn.amount,
-        department: unit,
-        description: "abono",
-        paymentDate: txn.txnDate,
-        bank: txn.bankName || null,
-        bankOperationId: txn.reference || null,
-        status: "identified",
-        notes: `Desde conciliación bancaria - ${txn.description || ""}`,
-        createdBy: req.user!.id,
-      });
-
       res.json(updated);
     } catch (error) {
       console.error("Error assigning bank transaction:", error);
@@ -6877,18 +6864,6 @@ export async function registerRoutes(
           status: "identified",
           identifiedBy: req.user!.id,
           identifiedAt: new Date(),
-        });
-        await storage.createIncome({
-          buildingId: txn.buildingId,
-          amount: txn.amount,
-          department: txn.assignedUnit,
-          description: "abono",
-          paymentDate: txn.txnDate,
-          bank: txn.bankName || null,
-          bankOperationId: txn.reference || null,
-          status: "identified",
-          notes: `Desde conciliación bancaria (confirmación masiva) - ${txn.description || ""}`,
-          createdBy: req.user!.id,
         });
         confirmed++;
       }
@@ -6997,19 +6972,6 @@ export async function registerRoutes(
         identifiedAt: new Date(),
       });
 
-      await storage.createIncome({
-        buildingId: txn.buildingId,
-        amount: txn.amount,
-        department: txn.assignedUnit || "",
-        description: "abono",
-        paymentDate: txn.txnDate,
-        bank: txn.bankName || null,
-        bankOperationId: txn.reference || null,
-        status: "identified",
-        notes: `Desde conciliación bancaria (confirmado) - ${txn.description || ""}`,
-        createdBy: req.user!.id,
-      });
-
       res.json(updated);
     } catch (error) {
       console.error("Error confirming bank transaction:", error);
@@ -7106,21 +7068,6 @@ export async function registerRoutes(
         matchReason: "División manual",
       });
 
-      for (const split of splits) {
-        await storage.createIncome({
-          buildingId: txn.buildingId,
-          amount: String(split.amount),
-          department: split.unit,
-          description: split.description || "abono",
-          paymentDate: txn.txnDate,
-          bank: txn.bankName || null,
-          bankOperationId: txn.reference || null,
-          status: "identified",
-          notes: `Desde conciliación bancaria (split) - ${txn.description || ""}`,
-          createdBy: req.user!.id,
-        });
-      }
-
       res.json(updated);
     } catch (error) {
       console.error("Error splitting bank transaction:", error);
@@ -7141,16 +7088,12 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Se requiere buildingId, month y year" });
       }
       const transactions = await storage.getBankTransactions({ buildingId, status: "identified", month, year });
-      const manualIncomes = await storage.getIncomes({ buildingId, month, year, status: "identified" });
       const newTxns = transactions.filter(t => !t.exportedAt).length;
       const exportedTxns = transactions.filter(t => !!t.exportedAt).length;
-      const newIncomes = manualIncomes.filter(i => !i.exportedAt).length;
-      const exportedIncomes = manualIncomes.filter(i => !!i.exportedAt).length;
       res.json({
-        total: transactions.length + manualIncomes.length,
-        new: newTxns + newIncomes,
-        exported: exportedTxns + exportedIncomes,
-        breakdown: { newTxns, exportedTxns, newIncomes, exportedIncomes }
+        total: transactions.length,
+        new: newTxns,
+        exported: exportedTxns,
       });
     } catch (error) {
       console.error("Error getting export stats:", error);
@@ -7237,19 +7180,16 @@ export async function registerRoutes(
       }
 
       let transactions = await storage.getBankTransactions({ buildingId, status: "identified", month, year });
-      let manualIncomes = await storage.getIncomes({ buildingId, month, year, status: "identified" });
 
       if (onlyNew) {
         transactions = transactions.filter(t => !t.exportedAt);
-        manualIncomes = manualIncomes.filter(i => !i.exportedAt);
       }
 
-      if (transactions.length === 0 && manualIncomes.length === 0) {
+      if (transactions.length === 0) {
         return res.status(400).json({ error: onlyNew ? "No hay transacciones nuevas sin exportar para este período" : "No hay transacciones identificadas para este período" });
       }
 
       const txnIds = transactions.map(t => t.id);
-      const incomeIds = manualIncomes.map(i => i.id);
 
       const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
       const monthName = monthNames[month - 1] || "";
@@ -7259,6 +7199,26 @@ export async function registerRoutes(
       interface UnifiedRow { date: Date; amount: number; unit: string; description: string; bank: string; reference: string; rut: string; source: string; }
       const unified: UnifiedRow[] = [];
       transactions.forEach((txn) => {
+        if (txn.assignedUnitsSplit) {
+          try {
+            const splits = JSON.parse(txn.assignedUnitsSplit);
+            if (Array.isArray(splits) && splits.length > 0) {
+              splits.forEach((split: any) => {
+                unified.push({
+                  date: txn.txnDate ? new Date(txn.txnDate) : new Date(),
+                  amount: parseFloat(split.amount) || 0,
+                  unit: split.unit || "",
+                  description: split.description || txn.description || "",
+                  bank: txn.bankName || "",
+                  reference: txn.reference || "",
+                  rut: txn.payerRut || "",
+                  source: "cartola",
+                });
+              });
+              return;
+            }
+          } catch (e) {}
+        }
         unified.push({
           date: txn.txnDate ? new Date(txn.txnDate) : new Date(),
           amount: txn.amount ? parseFloat(txn.amount) : 0,
@@ -7268,18 +7228,6 @@ export async function registerRoutes(
           reference: txn.reference || "",
           rut: txn.payerRut || "",
           source: "cartola",
-        });
-      });
-      manualIncomes.forEach((inc) => {
-        unified.push({
-          date: inc.paymentDate ? new Date(inc.paymentDate) : new Date(),
-          amount: inc.amount ? parseFloat(inc.amount) : 0,
-          unit: inc.department || "",
-          description: inc.description || "abono",
-          bank: inc.bank || "",
-          reference: inc.bankOperationId || "",
-          rut: "",
-          source: "manual",
         });
       });
       unified.sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -7320,7 +7268,6 @@ export async function registerRoutes(
       res.send(buf);
 
       await storage.markBankTransactionsExported(txnIds);
-      await storage.markIncomesExported(incomeIds);
     } catch (error) {
       console.error("Error exporting bank transactions:", error);
       res.status(500).json({ error: "Error interno del servidor" });
