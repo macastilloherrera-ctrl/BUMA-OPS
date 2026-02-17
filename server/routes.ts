@@ -354,7 +354,7 @@ export async function registerRoutes(
       const buildings = await storage.getBuildings();
       const visits = await storage.getVisits();
       
-      const workload = executives.map((exec) => {
+      const workloadPromises = executives.map(async (exec) => {
         const assignedBuildings = buildings.filter((b) => b.assignedExecutiveId === exec.userId);
         const execVisits = visits.filter((v) => v.executiveId === exec.userId);
         const pendingVisits = execVisits.filter((v) => ["programada", "atrasada"].includes(v.status));
@@ -365,14 +365,20 @@ export async function registerRoutes(
           return completed.getMonth() === now.getMonth() && completed.getFullYear() === now.getFullYear();
         });
         
+        const user = await storage.getUser(exec.userId);
+        const displayName = user 
+          ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || exec.userId
+          : exec.userId;
+        
         return {
           id: exec.id,
-          name: exec.userId,
+          name: displayName,
           assignedBuildings: assignedBuildings.length,
           pendingVisits: pendingVisits.length,
           completedThisMonth: completedThisMonth.length,
         };
       });
+      const workload = await Promise.all(workloadPromises);
       
       res.json(workload);
     } catch (error) {
