@@ -112,31 +112,14 @@ export default function SuperAdminPanel() {
     queryKey: ["/api/buildings"],
   });
 
-  const auditLogsQueryKey = ["/api/super-admin/audit-logs", logFilters.action, logFilters.buildingId, logFilters.limit, logFilters.offset];
-  const { data: auditData, isLoading: logsLoading, refetch: refetchLogs } = useQuery<{ logs: any[]; total: number }>({
-    queryKey: auditLogsQueryKey,
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (logFilters.action) params.set("action", logFilters.action);
-      if (logFilters.buildingId) params.set("buildingId", logFilters.buildingId);
-      params.set("limit", String(logFilters.limit));
-      params.set("offset", String(logFilters.offset));
-      const res = await fetch(`/api/super-admin/audit-logs?${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Error al cargar logs");
-      return res.json();
-    },
-    enabled: activeTab === "logs",
+  const auditLogsUrl = `/api/super-admin/audit-logs?limit=${logFilters.limit}&offset=${logFilters.offset}${logFilters.action ? `&action=${logFilters.action}` : ""}${logFilters.buildingId ? `&buildingId=${logFilters.buildingId}` : ""}`;
+  const { data: auditData, isLoading: logsLoading } = useQuery<{ logs: any[]; total: number }>({
+    queryKey: [auditLogsUrl],
   });
 
-  const { data: diagnostics = [], isLoading: diagLoading, refetch: refetchDiag } = useQuery<any[]>({
-    queryKey: ["/api/super-admin/diagnostics", diagBuildingId],
-    queryFn: async () => {
-      const params = diagBuildingId ? `?buildingId=${diagBuildingId}` : "";
-      const res = await fetch(`/api/super-admin/diagnostics${params}`, { credentials: "include" });
-      if (!res.ok) throw new Error("Error al cargar diagnostico");
-      return res.json();
-    },
-    enabled: activeTab === "diagnostics",
+  const diagUrl = `/api/super-admin/diagnostics${diagBuildingId ? `?buildingId=${diagBuildingId}` : ""}`;
+  const { data: diagnostics = [], isLoading: diagLoading } = useQuery<any[]>({
+    queryKey: [diagUrl],
   });
 
   const bulkDeleteMutation = useMutation({
@@ -144,8 +127,8 @@ export default function SuperAdminPanel() {
     onSuccess: async (res: any) => {
       const data = await res.json();
       setShowBulkDeleteConfirm(false);
-      refetchDiag();
-      refetchLogs();
+      queryClient.invalidateQueries({ queryKey: [diagUrl] });
+      queryClient.invalidateQueries({ queryKey: [auditLogsUrl] });
       toast({ title: `${data.deleted} transacciones eliminadas` });
     },
     onError: (error: any) => {
@@ -158,6 +141,8 @@ export default function SuperAdminPanel() {
     onSuccess: async (res: any) => {
       const data = await res.json();
       setShowClearExportConfirm(false);
+      queryClient.invalidateQueries({ queryKey: [diagUrl] });
+      queryClient.invalidateQueries({ queryKey: [auditLogsUrl] });
       toast({ title: `Flags limpiados en ${data.cleared} transacciones` });
     },
     onError: (error: any) => {
@@ -615,7 +600,7 @@ export default function SuperAdminPanel() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => refetchLogs()} data-testid="button-refresh-logs">
+                    <Button variant="outline" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: [auditLogsUrl] })} data-testid="button-refresh-logs">
                       <RefreshCw className="h-4 w-4 mr-2" />
                       Actualizar
                     </Button>
@@ -662,10 +647,10 @@ export default function SuperAdminPanel() {
                         Mostrando {logFilters.offset + 1}-{Math.min(logFilters.offset + logFilters.limit, auditData.total)} de {auditData.total}
                       </p>
                       <div className="flex gap-2">
-                        <Button variant="outline" size="sm" disabled={logFilters.offset === 0} onClick={() => setLogFilters({ ...logFilters, offset: Math.max(0, logFilters.offset - logFilters.limit) })}>
+                        <Button variant="outline" size="sm" disabled={logFilters.offset === 0} onClick={() => setLogFilters({ ...logFilters, offset: Math.max(0, logFilters.offset - logFilters.limit) })} data-testid="button-logs-prev">
                           <ChevronLeft className="h-4 w-4" />
                         </Button>
-                        <Button variant="outline" size="sm" disabled={logFilters.offset + logFilters.limit >= auditData.total} onClick={() => setLogFilters({ ...logFilters, offset: logFilters.offset + logFilters.limit })}>
+                        <Button variant="outline" size="sm" disabled={logFilters.offset + logFilters.limit >= auditData.total} onClick={() => setLogFilters({ ...logFilters, offset: logFilters.offset + logFilters.limit })} data-testid="button-logs-next">
                           <ChevronRight className="h-4 w-4" />
                         </Button>
                       </div>
@@ -702,7 +687,7 @@ export default function SuperAdminPanel() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => refetchDiag()} data-testid="button-refresh-diag">
+                    <Button variant="outline" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: [diagUrl] })} data-testid="button-refresh-diag">
                       <RefreshCw className="h-4 w-4 mr-2" />
                       Actualizar
                     </Button>
