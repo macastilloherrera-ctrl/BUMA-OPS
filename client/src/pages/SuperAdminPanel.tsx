@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { ObjectUploader } from "@/components/ObjectUploader";
-import { Settings, Users, Key, Shield, Building2, Save, RefreshCw, UserPlus, Pencil, ToggleLeft, Upload, FileText, Image, Download, Book, Code } from "lucide-react";
+import { Settings, Users, Key, Shield, Building2, Save, RefreshCw, UserPlus, Pencil, ToggleLeft, Upload, FileText, Image, Download, Book, Code, Activity, Wrench, Trash2, RotateCcw, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import type { UserRole } from "@shared/schema";
 
 interface SystemConfig {
@@ -90,6 +90,12 @@ export default function SuperAdminPanel() {
 
   const [logoUploading, setLogoUploading] = useState(false);
 
+  const [logFilters, setLogFilters] = useState({ action: "", buildingId: "", limit: 50, offset: 0 });
+  const [diagBuildingId, setDiagBuildingId] = useState("");
+  const [bulkForm, setBulkForm] = useState({ buildingId: "", periodMonth: new Date().getMonth() + 1, periodYear: new Date().getFullYear() });
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
+  const [showClearExportConfirm, setShowClearExportConfirm] = useState(false);
+
   const { data: config, isLoading: configLoading } = useQuery<SystemConfig>({
     queryKey: ["/api/super-admin/config"],
   });
@@ -104,6 +110,59 @@ export default function SuperAdminPanel() {
 
   const { data: buildings = [] } = useQuery<Building[]>({
     queryKey: ["/api/buildings"],
+  });
+
+  const auditLogsQueryKey = ["/api/super-admin/audit-logs", logFilters.action, logFilters.buildingId, logFilters.limit, logFilters.offset];
+  const { data: auditData, isLoading: logsLoading, refetch: refetchLogs } = useQuery<{ logs: any[]; total: number }>({
+    queryKey: auditLogsQueryKey,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (logFilters.action) params.set("action", logFilters.action);
+      if (logFilters.buildingId) params.set("buildingId", logFilters.buildingId);
+      params.set("limit", String(logFilters.limit));
+      params.set("offset", String(logFilters.offset));
+      const res = await fetch(`/api/super-admin/audit-logs?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Error al cargar logs");
+      return res.json();
+    },
+    enabled: activeTab === "logs",
+  });
+
+  const { data: diagnostics = [], isLoading: diagLoading, refetch: refetchDiag } = useQuery<any[]>({
+    queryKey: ["/api/super-admin/diagnostics", diagBuildingId],
+    queryFn: async () => {
+      const params = diagBuildingId ? `?buildingId=${diagBuildingId}` : "";
+      const res = await fetch(`/api/super-admin/diagnostics${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Error al cargar diagnostico");
+      return res.json();
+    },
+    enabled: activeTab === "diagnostics",
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/super-admin/bulk-delete-transactions", bulkForm),
+    onSuccess: async (res: any) => {
+      const data = await res.json();
+      setShowBulkDeleteConfirm(false);
+      refetchDiag();
+      refetchLogs();
+      toast({ title: `${data.deleted} transacciones eliminadas` });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error al eliminar", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const clearExportMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/super-admin/clear-export-flags", bulkForm),
+    onSuccess: async (res: any) => {
+      const data = await res.json();
+      setShowClearExportConfirm(false);
+      toast({ title: `Flags limpiados en ${data.cleared} transacciones` });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error al limpiar flags", description: error.message, variant: "destructive" });
+    },
   });
 
   const updateConfigMutation = useMutation({
@@ -259,6 +318,14 @@ export default function SuperAdminPanel() {
               <TabsTrigger value="logs" className="gap-2" data-testid="tab-logs">
                 <FileText className="h-4 w-4" />
                 Logs
+              </TabsTrigger>
+              <TabsTrigger value="diagnostics" className="gap-2" data-testid="tab-diagnostics">
+                <Activity className="h-4 w-4" />
+                Diagnostico
+              </TabsTrigger>
+              <TabsTrigger value="corrections" className="gap-2" data-testid="tab-corrections">
+                <Wrench className="h-4 w-4" />
+                Correcciones
               </TabsTrigger>
               <TabsTrigger value="docs" className="gap-2" data-testid="tab-docs">
                 <Book className="h-4 w-4" />
@@ -506,32 +573,280 @@ export default function SuperAdminPanel() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <FileText className="h-5 w-5" />
-                    Logs del Sistema
+                    Logs de Auditoria
                   </CardTitle>
                   <CardDescription>
-                    Registro de actividad del sistema
+                    Registro de actividades del sistema ({auditData?.total ?? 0} registros)
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center">
+                <CardContent className="space-y-4">
+                  <div className="flex flex-wrap gap-3 items-end">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Accion</Label>
+                      <Select value={logFilters.action} onValueChange={(v) => setLogFilters({ ...logFilters, action: v === "all" ? "" : v, offset: 0 })}>
+                        <SelectTrigger className="w-[180px]" data-testid="select-log-action">
+                          <SelectValue placeholder="Todas" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todas</SelectItem>
+                          <SelectItem value="login">Login</SelectItem>
+                          <SelectItem value="import_bank_transactions">Importacion</SelectItem>
+                          <SelectItem value="export_bank_transactions">Exportacion Txns</SelectItem>
+                          <SelectItem value="export_incomes">Exportacion Ingresos</SelectItem>
+                          <SelectItem value="create_user">Crear Usuario</SelectItem>
+                          <SelectItem value="create_expense">Crear Egreso</SelectItem>
+                          <SelectItem value="create_income">Crear Ingreso</SelectItem>
+                          <SelectItem value="bulk_delete_transactions">Borrado Masivo</SelectItem>
+                          <SelectItem value="clear_export_flags">Limpiar Flags</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Edificio</Label>
+                      <Select value={logFilters.buildingId} onValueChange={(v) => setLogFilters({ ...logFilters, buildingId: v === "all" ? "" : v, offset: 0 })}>
+                        <SelectTrigger className="w-[200px]" data-testid="select-log-building">
+                          <SelectValue placeholder="Todos" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos</SelectItem>
+                          {buildings.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => refetchLogs()} data-testid="button-refresh-logs">
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Actualizar
+                    </Button>
+                  </div>
+
+                  {logsLoading ? (
+                    <div className="text-center py-8 text-muted-foreground">Cargando logs...</div>
+                  ) : !auditData?.logs?.length ? (
+                    <div className="text-center py-8 text-muted-foreground">No hay registros de auditoria</div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead>Usuario</TableHead>
+                          <TableHead>Accion</TableHead>
+                          <TableHead>Edificio</TableHead>
+                          <TableHead>Detalle</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {auditData.logs.map((log: any) => (
+                          <TableRow key={log.id} data-testid={`row-log-${log.id}`}>
+                            <TableCell className="text-xs whitespace-nowrap">
+                              {log.createdAt ? new Date(log.createdAt).toLocaleString("es-CL", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }) : "-"}
+                            </TableCell>
+                            <TableCell className="text-sm">{log.userName || "-"}</TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="text-xs">{log.action}</Badge>
+                            </TableCell>
+                            <TableCell className="text-sm">{log.buildingName || "-"}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
+                              {log.metadata ? (() => { try { const m = JSON.parse(log.metadata); return Object.entries(m).map(([k, v]) => `${k}: ${v}`).join(", "); } catch { return log.metadata; } })() : "-"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+
+                  {auditData && auditData.total > logFilters.limit && (
+                    <div className="flex items-center justify-between pt-2">
                       <p className="text-sm text-muted-foreground">
-                        Ultimas actividades del sistema
+                        Mostrando {logFilters.offset + 1}-{Math.min(logFilters.offset + logFilters.limit, auditData.total)} de {auditData.total}
                       </p>
-                      <Button variant="outline" size="sm" disabled>
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Actualizar
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" disabled={logFilters.offset === 0} onClick={() => setLogFilters({ ...logFilters, offset: Math.max(0, logFilters.offset - logFilters.limit) })}>
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                        <Button variant="outline" size="sm" disabled={logFilters.offset + logFilters.limit >= auditData.total} onClick={() => setLogFilters({ ...logFilters, offset: logFilters.offset + logFilters.limit })}>
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="border rounded-lg p-4 bg-muted/30 min-h-[300px] flex flex-col items-center justify-center">
-                      <FileText className="h-12 w-12 text-muted-foreground mb-4" />
-                      <p className="text-muted-foreground text-center">
-                        El sistema de logs esta en desarrollo.
-                      </p>
-                      <p className="text-sm text-muted-foreground text-center mt-2">
-                        Proximamente podras ver el registro de actividades del sistema aqui.
-                      </p>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="diagnostics" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity className="h-5 w-5" />
+                    Diagnostico por Edificio
+                  </CardTitle>
+                  <CardDescription>
+                    Resumen de datos por edificio: transacciones bancarias, ingresos y egresos
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex gap-3 items-end">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Filtrar Edificio</Label>
+                      <Select value={diagBuildingId} onValueChange={(v) => setDiagBuildingId(v === "all" ? "" : v)}>
+                        <SelectTrigger className="w-[220px]" data-testid="select-diag-building">
+                          <SelectValue placeholder="Todos los edificios" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todos los edificios</SelectItem>
+                          {buildings.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
+                    <Button variant="outline" size="sm" onClick={() => refetchDiag()} data-testid="button-refresh-diag">
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Actualizar
+                    </Button>
+                  </div>
+
+                  {diagLoading ? (
+                    <div className="text-center py-8 text-muted-foreground">Cargando diagnostico...</div>
+                  ) : !diagnostics.length ? (
+                    <div className="text-center py-8 text-muted-foreground">Sin datos de diagnostico</div>
+                  ) : (
+                    <div className="grid gap-4">
+                      {diagnostics.map((d: any) => (
+                        <Card key={d.buildingId}>
+                          <CardContent className="pt-4">
+                            <h3 className="font-semibold mb-3">{d.buildingName}</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                              <div className="p-3 rounded-lg bg-muted/50">
+                                <p className="text-xs text-muted-foreground">Txns Bancarias</p>
+                                <p className="text-lg font-semibold">{d.bankTransactions?.total ?? 0}</p>
+                              </div>
+                              <div className="p-3 rounded-lg bg-green-500/10">
+                                <p className="text-xs text-muted-foreground">Identificadas</p>
+                                <p className="text-lg font-semibold text-green-600">{d.bankTransactions?.identified ?? 0}</p>
+                              </div>
+                              <div className="p-3 rounded-lg bg-yellow-500/10">
+                                <p className="text-xs text-muted-foreground">Sugeridas</p>
+                                <p className="text-lg font-semibold text-yellow-600">{d.bankTransactions?.suggested ?? 0}</p>
+                              </div>
+                              <div className="p-3 rounded-lg bg-muted/50">
+                                <p className="text-xs text-muted-foreground">Ingresos</p>
+                                <p className="text-lg font-semibold">{d.incomes ?? 0}</p>
+                              </div>
+                              <div className="p-3 rounded-lg bg-muted/50">
+                                <p className="text-xs text-muted-foreground">Egresos</p>
+                                <p className="text-lg font-semibold">{d.expenses ?? 0}</p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="corrections" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Wrench className="h-5 w-5" />
+                    Correcciones Masivas
+                  </CardTitle>
+                  <CardDescription>
+                    Herramientas para corregir datos en lote. Estas operaciones quedan registradas en los logs de auditoria.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Edificio</Label>
+                      <Select value={bulkForm.buildingId} onValueChange={(v) => setBulkForm({ ...bulkForm, buildingId: v })}>
+                        <SelectTrigger data-testid="select-bulk-building">
+                          <SelectValue placeholder="Seleccionar edificio" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {buildings.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Mes</Label>
+                      <Select value={String(bulkForm.periodMonth)} onValueChange={(v) => setBulkForm({ ...bulkForm, periodMonth: parseInt(v) })}>
+                        <SelectTrigger data-testid="select-bulk-month">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[1,2,3,4,5,6,7,8,9,10,11,12].map((m) => (
+                            <SelectItem key={m} value={String(m)}>{new Date(2000, m - 1).toLocaleString("es-CL", { month: "long" })}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Ano</Label>
+                      <Select value={String(bulkForm.periodYear)} onValueChange={(v) => setBulkForm({ ...bulkForm, periodYear: parseInt(v) })}>
+                        <SelectTrigger data-testid="select-bulk-year">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[2024, 2025, 2026].map((y) => (
+                            <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Card>
+                      <CardContent className="pt-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                          <h4 className="font-medium">Eliminar Transacciones Bancarias</h4>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Elimina todas las transacciones bancarias del edificio y periodo seleccionado. Util para reimportar datos corruptos.
+                        </p>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          disabled={!bulkForm.buildingId}
+                          onClick={() => setShowBulkDeleteConfirm(true)}
+                          data-testid="button-bulk-delete"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Eliminar Transacciones
+                        </Button>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardContent className="pt-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <RotateCcw className="h-4 w-4 text-orange-500" />
+                          <h4 className="font-medium">Limpiar Flags de Exportacion</h4>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Resetea los flags de exportacion para que las transacciones puedan ser re-exportadas como nuevas.
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={!bulkForm.buildingId}
+                          onClick={() => setShowClearExportConfirm(true)}
+                          data-testid="button-clear-export"
+                        >
+                          <RotateCcw className="h-4 w-4 mr-2" />
+                          Limpiar Flags
+                        </Button>
+                      </CardContent>
+                    </Card>
                   </div>
                 </CardContent>
               </Card>
@@ -795,6 +1110,40 @@ export default function SuperAdminPanel() {
               disabled={resetPasswordMutation.isPending}
             >
               {resetPasswordMutation.isPending ? "Enviando..." : "Resetear Contrasena"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar Eliminacion Masiva</DialogTitle>
+            <DialogDescription>
+              Esta accion eliminara TODAS las transacciones bancarias del edificio "{buildings.find(b => b.id === bulkForm.buildingId)?.name}" para el periodo {bulkForm.periodMonth}/{bulkForm.periodYear}. Esta accion no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBulkDeleteConfirm(false)}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => bulkDeleteMutation.mutate()} disabled={bulkDeleteMutation.isPending} data-testid="button-confirm-bulk-delete">
+              {bulkDeleteMutation.isPending ? "Eliminando..." : "Eliminar Todo"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showClearExportConfirm} onOpenChange={setShowClearExportConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar Limpieza de Flags</DialogTitle>
+            <DialogDescription>
+              Se limpiaran los flags de exportacion de todas las transacciones del edificio "{buildings.find(b => b.id === bulkForm.buildingId)?.name}" para el periodo {bulkForm.periodMonth}/{bulkForm.periodYear}. Las transacciones podran ser re-exportadas como nuevas.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowClearExportConfirm(false)}>Cancelar</Button>
+            <Button onClick={() => clearExportMutation.mutate()} disabled={clearExportMutation.isPending} data-testid="button-confirm-clear-export">
+              {clearExportMutation.isPending ? "Limpiando..." : "Limpiar Flags"}
             </Button>
           </DialogFooter>
         </DialogContent>
