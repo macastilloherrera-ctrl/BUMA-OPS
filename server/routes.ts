@@ -35,7 +35,7 @@ function generateConserjeriaUsername(buildingName: string): string {
 }
 import { db } from "./db";
 import { eq, or } from "drizzle-orm";
-import { users as usersTable } from "@shared/schema";
+import { users as usersTable, buildings as buildingsTable } from "@shared/schema";
 import {
   insertBuildingSchema,
   insertBuildingStaffSchema,
@@ -5949,6 +5949,66 @@ export async function registerRoutes(
   // ========================
   // TRADITIONAL AUTH ROUTES
   // ========================
+
+  app.post("/api/auth/seed-production-data", async (req, res) => {
+    try {
+      const buildingsData = [
+        { name: "Condominio Edificio Metropólitan 1", address: "Diagonal Paraguay 55, Santiago", pin: "6111", conserjeriaUser: "conserjeria_metropolitan_1" },
+        { name: "Comunidad Edificio Chile España Oriente", address: "Avda. Chile España 310, Valparaíso", pin: "5462", conserjeriaUser: "conserjeria_chile_espana" },
+        { name: "Comunidad Edificio Vista Placeres", address: "Avenida Washington 2588, Valparaíso", pin: "6226", conserjeriaUser: "conserjeria_vista_placeres" },
+        { name: "Comunidad Edificio Ottawa", address: "Ottawa 1088, Providencia", pin: "5935", conserjeriaUser: "conserjeria_ottawa" },
+        { name: "Comunidad Edificio Kandinsky", address: "Antonio Varas 1472, Providencia", pin: "2714", conserjeriaUser: "conserjeria_kandinsky" },
+        { name: "Comunidad Edificio Raúl Labbé", address: "Raúl Labbé 12450, Lo Barnechea", pin: "4415", conserjeriaUser: "conserjeria_raul_labbe" },
+        { name: "Comunidad Edificio Torre Berlín", address: "Flamenco 851, La Florida", pin: "7000", conserjeriaUser: "conserjeria_torre_berlin" },
+        { name: "Comunidad Edificio Playa Amarilla", address: "Avenida Borgoño 23000, Con-Cón", pin: "7882", conserjeriaUser: "conserjeria_playa_amarilla" },
+        { name: "Comunidad Edificio OConnell", address: "OConnell 70, Las Condes", pin: "9350", conserjeriaUser: "conserjeria_oconnell" },
+      ];
+
+      const results = [];
+      for (const bd of buildingsData) {
+        const [existingBuilding] = await db.select().from(buildingsTable).where(eq(buildingsTable.name, bd.name));
+        if (existingBuilding) {
+          results.push({ building: bd.name, action: "already_exists" });
+          continue;
+        }
+
+        const buildingId = crypto.randomUUID();
+        const conserjeriaUserId = `conserjeria-${buildingId}`;
+        const pinHash = await bcrypt.hash(bd.pin, 10);
+
+        await db.insert(usersTable).values({
+          id: conserjeriaUserId,
+          email: null,
+          username: bd.conserjeriaUser,
+          firstName: "Conserjería",
+          lastName: bd.name,
+          passwordHash: pinHash,
+          mustChangePassword: false,
+        });
+
+        await db.insert(userProfiles).values({
+          userId: conserjeriaUserId,
+          role: "conserjeria",
+          isActive: true,
+        });
+
+        await db.insert(buildingsTable).values({
+          id: buildingId,
+          name: bd.name,
+          address: bd.address,
+          conserjeriaUserId: conserjeriaUserId,
+        });
+
+        results.push({ building: bd.name, action: "created", conserjeriaUser: bd.conserjeriaUser });
+      }
+
+      console.log("[Seed] Production buildings seeded:", JSON.stringify(results));
+      res.json({ success: true, results });
+    } catch (error: any) {
+      console.error("[Seed] Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
 
   // Login with email and password
   app.post("/api/auth/login", async (req, res) => {
