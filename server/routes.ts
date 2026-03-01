@@ -5961,6 +5961,7 @@ export async function registerRoutes(
       }
       
       const identifierLower = loginIdentifier.toLowerCase().trim();
+      console.log(`[Login Debug] Attempting login for: "${identifierLower}"`);
       const [user] = await db.select().from(usersTable).where(
         or(
           eq(usersTable.email, identifierLower),
@@ -5969,8 +5970,11 @@ export async function registerRoutes(
       );
       
       if (!user) {
+        console.log(`[Login Debug] No user found for identifier: "${identifierLower}"`);
         return res.status(401).json({ error: "Credenciales inválidas" });
       }
+      
+      console.log(`[Login Debug] User found: ${user.email || user.username}, hasHash: ${!!user.passwordHash}`);
       
       // Check if user has password
       if (!user.passwordHash) {
@@ -5979,6 +5983,7 @@ export async function registerRoutes(
       
       // Verify password
       const isValidPassword = await bcrypt.compare(password, user.passwordHash);
+      console.log(`[Login Debug] Password valid: ${isValidPassword}`);
       if (!isValidPassword) {
         return res.status(401).json({ error: "Credenciales inválidas" });
       }
