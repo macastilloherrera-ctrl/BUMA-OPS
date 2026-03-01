@@ -11,6 +11,7 @@ import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { registerDevAuthRoutes, isDevMode } from "./devAuth";
 import { parseBankFile } from "./bankParsers";
+import { sendChatMessage, generateConversationTitle } from "./geminiChat";
 
 function generateConserjeriaUsername(buildingName: string): string {
   const prefixes = [
@@ -8188,6 +8189,135 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error getting verificacion GGCC:", error);
       res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ==========================================
+  // CHAT IA ENDPOINTS
+  // ==========================================
+
+  function notConserjeria(req: Request, res: Response, next: NextFunction) {
+    const profile = (req.user as any)?.profile || req.user;
+    if (profile?.role === "conserjeria") {
+      return res.status(403).json({ error: "Acceso no permitido para conserjería" });
+    }
+    next();
+  }
+
+  app.get("/api/chat/conversations", isAuthenticated, notConserjeria, async (req, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const conversations = await storage.getChatConversations(userId);
+      res.json(conversations);
+    } catch (error) {
+      console.error("Error fetching conversations:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/chat/conversations/:id", isAuthenticated, notConserjeria, async (req, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const id = parseInt(req.params.id);
+      const conversation = await storage.getChatConversation(id, userId);
+      if (!conversation) {
+        return res.status(404).json({ error: "Conversación no encontrada" });
+      }
+      const messages = await storage.getChatMessages(id);
+      res.json({ conversation, messages });
+    } catch (error) {
+      console.error("Error fetching conversation:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/chat/conversations", isAuthenticated, notConserjeria, async (req, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const conversation = await storage.createChatConversation({
+        userId,
+        title: req.body.title || "Nueva conversación",
+      });
+      res.json(conversation);
+    } catch (error) {
+      console.error("Error creating conversation:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/chat/conversations/:id", isAuthenticated, notConserjeria, async (req, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const id = parseInt(req.params.id);
+      await storage.deleteChatConversation(id, userId);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting conversation:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/chat/send", isAuthenticated, notConserjeria, async (req, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const { conversationId, message } = req.body;
+
+      if (!message || typeof message !== "string" || !message.trim()) {
+        return res.status(400).json({ error: "Mensaje requerido" });
+      }
+
+      let convId = conversationId;
+
+      if (!convId) {
+        const conversation = await storage.createChatConversation({
+          userId,
+          title: "Nueva conversación",
+        });
+        convId = conversation.id;
+
+        generateConversationTitle(message).then(title => {
+          storage.updateChatConversationTitle(convId, title);
+        }).catch(() => {});
+      }
+
+      const conv = await storage.getChatConversation(convId, userId);
+      if (!conv) {
+        return res.status(404).json({ error: "Conversación no encontrada" });
+      }
+
+      await storage.addChatMessage({
+        conversationId: convId,
+        role: "user",
+        content: message.trim(),
+      });
+
+      const history = await storage.getChatMessages(convId);
+      const chatHistory = history.map(m => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      const aiResponse = await sendChatMessage(chatHistory);
+
+      const assistantMessage = await storage.addChatMessage({
+        conversationId: convId,
+        role: "assistant",
+        content: aiResponse,
+      });
+
+      res.json({
+        conversationId: convId,
+        message: assistantMessage,
+      });
+    } catch (error: any) {
+      console.error("Error in chat:", error);
+      if (error.message?.includes("API_KEY")) {
+        return res.status(503).json({ error: "API key de Gemini no configurada o inválida" });
+      }
+      if (error.message?.includes("RATE_LIMIT") || error.message?.includes("429") || error.message?.includes("quota")) {
+        return res.status(429).json({ error: "Límite de uso de la API alcanzado. Intenta nuevamente en unos minutos." });
+      }
+      res.status(500).json({ error: "Error al procesar el mensaje. Intenta nuevamente." });
     }
   });
 

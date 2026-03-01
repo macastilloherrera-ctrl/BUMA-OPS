@@ -35,6 +35,7 @@ import {
   Landmark,
   History,
   ClipboardCheck,
+  Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -92,6 +93,12 @@ const managerNavItems = [
       { path: "/reportes/equipos", label: "Informe Equipos", icon: Wrench },
       { path: "/reportes/ejecutivos", label: "Informe Ejecutivos", icon: Users },
       { path: "/reportes/cumplimiento", label: "Estado Documental y Operativo", icon: FileCheck },
+    ]
+  },
+  {
+    group: "Herramientas",
+    items: [
+      { path: "/chat-ia", label: "Asistente IA", icon: Bot },
     ]
   },
 ];
@@ -154,6 +161,12 @@ const managerWithReportsNavItems = [
       { path: "/reportes/cumplimiento", label: "Estado Documental y Operativo", icon: FileCheck },
     ]
   },
+  {
+    group: "Herramientas",
+    items: [
+      { path: "/chat-ia", label: "Asistente IA", icon: Bot },
+    ]
+  },
 ];
 
 const executiveNavItems = [
@@ -192,6 +205,12 @@ const executiveNavItems = [
     group: "Reportes",
     items: [
       { path: "/reportes/cumplimiento", label: "Estado Documental y Operativo", icon: FileCheck },
+    ]
+  },
+  {
+    group: "Herramientas",
+    items: [
+      { path: "/chat-ia", label: "Asistente IA", icon: Bot },
     ]
   },
 ];
@@ -263,6 +282,12 @@ const generalManagerNavItems = [
       { path: "/gestion-permisos", label: "Gestión de Permisos", icon: Shield },
     ]
   },
+  {
+    group: "Herramientas",
+    items: [
+      { path: "/chat-ia", label: "Asistente IA", icon: Bot },
+    ]
+  },
 ];
 
 const financeNavItems = [
@@ -291,6 +316,12 @@ const financeNavItems = [
       { path: "/reportes/egresos", label: "Informe Egresos", icon: FileSpreadsheet },
     ]
   },
+  {
+    group: "Herramientas",
+    items: [
+      { path: "/chat-ia", label: "Asistente IA", icon: Bot },
+    ]
+  },
 ];
 
 const conserjeriaNavItems = [
@@ -309,6 +340,12 @@ const superAdminNavItems = [
     items: [
       { path: "/super-admin", label: "Panel Super Admin", icon: Shield },
       { path: "/gestion-permisos", label: "Gestión de Permisos", icon: Shield },
+    ]
+  },
+  {
+    group: "Herramientas",
+    items: [
+      { path: "/chat-ia", label: "Asistente IA", icon: Bot },
     ]
   },
 ];

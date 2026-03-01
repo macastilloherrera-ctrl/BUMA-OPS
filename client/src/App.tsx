@@ -63,6 +63,7 @@ import CierreMensual from "@/pages/CierreMensual";
 import ConsultaOperacional from "@/pages/ConsultaOperacional";
 import VerificacionGGCC from "@/pages/VerificacionGGCC";
 import GestionPermisos from "@/pages/GestionPermisos";
+import ChatIA from "@/pages/ChatIA";
 
 function LoadingScreen() {
   return (
@@ -247,6 +248,8 @@ function AuthenticatedApp() {
                 {isSuperAdmin && <Route path="/super-admin" component={SuperAdminPanel} />}
                 {(isSuperAdmin || isGeneralManager) && <Route path="/gestion-permisos" component={GestionPermisos} />}
                 
+                {!isConserjeria && <Route path="/chat-ia" component={ChatIA} />}
+
                 <Route path="/perfil" component={() => <Profile userRole={userRole} />} />
 
                 <Route component={NotFound} />

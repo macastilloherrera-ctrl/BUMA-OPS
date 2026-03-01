@@ -120,9 +120,26 @@ Key architectural patterns include:
   - Sidebar: under "Panel Super Admin" for super_admin, under "Administración" for gerente_general
   - Note: Currently a configuration UI; dynamic enforcement of permissions in routing/sidebar is a planned next step
 
+- **Mar 2026 - Chat IA (Asistente OPS)**: Added AI-powered chat assistant for legal and operational questions:
+  - New page `/chat-ia` accessible to all roles except conserjería
+  - Powered by Google Gemini API (gemini-2.0-flash model) with @google/generative-ai SDK
+  - Knowledge base: PDF of Reglamento Ley 21.442 loaded via pdf-parse, plus embedded OPS system knowledge
+  - System prompt includes all BUMA OPS module descriptions and Chilean copropiedad law context
+  - Conversation CRUD: create, list, view, delete conversations per user
+  - DB tables: chat_conversations (userId, title, timestamps), chat_messages (conversationId, role, content)
+  - API endpoints: GET/POST /api/chat/conversations, GET/DELETE /api/chat/conversations/:id, POST /api/chat/send
+  - Role-based access: notConserjeria middleware blocks conserjería users from all chat endpoints
+  - XSS protection: HTML escaping before markdown-to-HTML conversion in frontend
+  - Rate limit handling: 429 errors from Gemini API surfaced as user-friendly Spanish messages
+  - Auto-generated conversation titles via separate Gemini call
+  - Welcome screen with 4 suggested question cards for quick start
+  - Sidebar: "Herramientas" group with "Asistente IA" link for all non-conserjería roles
+  - Dependencies: @google/generative-ai, pdf-parse; GEMINI_API_KEY secret required
+
 ## External Dependencies
 - **PostgreSQL (Neon)**: Primary database for all application data.
 - **Replit Object Storage**: Used for storing image uploads, particularly from field visits.
 - **Edipro**: Integration for exporting financial data (incomes, expenses) in a specific format.
 - **Comunidad Feliz**: Integration for exporting financial data in a specific format.
 - **Kastor**: Integration for exporting financial data in a specific format.
+- **Google Gemini API**: Powers the Chat IA (Asistente OPS) feature for legal and operational Q&A.

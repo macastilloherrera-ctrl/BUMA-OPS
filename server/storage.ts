@@ -30,6 +30,13 @@ import {
   systemConfig,
   rolePermissionsConfig,
   type RolePermissionsConfigRow,
+  chatConversations,
+  chatMessages,
+  knowledgeDocuments,
+  type ChatConversation,
+  type ChatMessage,
+  type InsertChatConversation,
+  type InsertChatMessage,
   incomes,
   expenses,
   recurringExpenseTemplates,
@@ -1843,6 +1850,61 @@ export class DatabaseStorage implements IStorage {
       ))
       .returning();
     return updated.length;
+  }
+
+  async getChatConversations(userId: string): Promise<ChatConversation[]> {
+    return db.select().from(chatConversations)
+      .where(eq(chatConversations.userId, userId))
+      .orderBy(desc(chatConversations.updatedAt));
+  }
+
+  async getChatConversation(id: number, userId: string): Promise<ChatConversation | undefined> {
+    const rows = await db.select().from(chatConversations)
+      .where(and(eq(chatConversations.id, id), eq(chatConversations.userId, userId)));
+    return rows[0];
+  }
+
+  async createChatConversation(data: InsertChatConversation): Promise<ChatConversation> {
+    const rows = await db.insert(chatConversations).values(data).returning();
+    return rows[0];
+  }
+
+  async updateChatConversationTitle(id: number, title: string): Promise<void> {
+    await db.update(chatConversations)
+      .set({ title, updatedAt: new Date() })
+      .where(eq(chatConversations.id, id));
+  }
+
+  async deleteChatConversation(id: number, userId: string): Promise<void> {
+    await db.delete(chatMessages)
+      .where(eq(chatMessages.conversationId, id));
+    await db.delete(chatConversations)
+      .where(and(eq(chatConversations.id, id), eq(chatConversations.userId, userId)));
+  }
+
+  async getChatMessages(conversationId: number): Promise<ChatMessage[]> {
+    return db.select().from(chatMessages)
+      .where(eq(chatMessages.conversationId, conversationId))
+      .orderBy(chatMessages.createdAt);
+  }
+
+  async addChatMessage(data: InsertChatMessage): Promise<ChatMessage> {
+    const rows = await db.insert(chatMessages).values(data).returning();
+    await db.update(chatConversations)
+      .set({ updatedAt: new Date() })
+      .where(eq(chatConversations.id, data.conversationId));
+    return rows[0];
+  }
+
+  async getKnowledgeDocuments(buildingId?: string): Promise<any[]> {
+    if (buildingId) {
+      return db.select().from(knowledgeDocuments)
+        .where(or(
+          eq(knowledgeDocuments.buildingId, buildingId),
+          sql`${knowledgeDocuments.buildingId} IS NULL`
+        ));
+    }
+    return db.select().from(knowledgeDocuments);
   }
 }
 
