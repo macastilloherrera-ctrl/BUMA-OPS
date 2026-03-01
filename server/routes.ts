@@ -8310,11 +8310,12 @@ export async function registerRoutes(
         message: assistantMessage,
       });
     } catch (error: any) {
-      console.error("Error in chat:", error);
-      if (error.message?.includes("API_KEY")) {
+      console.error("Error in chat:", error?.message || error);
+      const errMsg = String(error?.message || "");
+      if (errMsg.includes("API_KEY") || errMsg.includes("API key")) {
         return res.status(503).json({ error: "API key de Gemini no configurada o inválida" });
       }
-      if (error.message?.includes("RATE_LIMIT") || error.message?.includes("429") || error.message?.includes("quota")) {
+      if (errMsg.includes("RATE_LIMIT") || errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("Too Many Requests") || errMsg.includes("exceeded")) {
         return res.status(429).json({ error: "Límite de uso de la API alcanzado. Intenta nuevamente en unos minutos." });
       }
       res.status(500).json({ error: "Error al procesar el mensaje. Intenta nuevamente." });
