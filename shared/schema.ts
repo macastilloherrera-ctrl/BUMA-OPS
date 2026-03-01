@@ -1051,6 +1051,19 @@ export const insertSystemConfigSchema = createInsertSchema(systemConfig).omit({ 
 export type InsertSystemConfig = z.infer<typeof insertSystemConfigSchema>;
 export type SystemConfig = typeof systemConfig.$inferSelect;
 
+export const rolePermissionsConfig = pgTable("role_permissions_config", {
+  role: varchar("role", { length: 50 }).primaryKey(),
+  modules: text("modules").notNull(),
+  homeRoute: varchar("home_route", { length: 255 }).notNull(),
+  buildingScope: varchar("building_scope", { length: 20 }).notNull().default("assigned"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: varchar("updated_by", { length: 255 }),
+});
+
+export const insertRolePermissionsConfigSchema = createInsertSchema(rolePermissionsConfig).omit({ updatedAt: true });
+export type InsertRolePermissionsConfig = z.infer<typeof insertRolePermissionsConfigSchema>;
+export type RolePermissionsConfigRow = typeof rolePermissionsConfig.$inferSelect;
+
 // Helper types for frontend
 export type UserRole = "super_admin" | "gerente_general" | "gerente_operaciones" | "gerente_comercial" | "gerente_finanzas" | "ejecutivo_operaciones" | "conserjeria";
 export type VisitType = "rutina" | "urgente";

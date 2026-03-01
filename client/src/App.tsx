@@ -62,6 +62,7 @@ import RecurringExpenses from "@/pages/RecurringExpenses";
 import CierreMensual from "@/pages/CierreMensual";
 import ConsultaOperacional from "@/pages/ConsultaOperacional";
 import VerificacionGGCC from "@/pages/VerificacionGGCC";
+import GestionPermisos from "@/pages/GestionPermisos";
 
 function LoadingScreen() {
   return (
@@ -244,6 +245,7 @@ function AuthenticatedApp() {
                 )}
                 
                 {isSuperAdmin && <Route path="/super-admin" component={SuperAdminPanel} />}
+                {(isSuperAdmin || isGeneralManager) && <Route path="/gestion-permisos" component={GestionPermisos} />}
                 
                 <Route path="/perfil" component={() => <Profile userRole={userRole} />} />
 

@@ -4873,6 +4873,163 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== ROLE PERMISSIONS MANAGEMENT ====================
+
+  const canManagePermissions = (profile: any) => {
+    return profile && (profile.role === "super_admin" || profile.role === "gerente_general");
+  };
+
+  app.get("/api/role-permissions", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!canManagePermissions(profile)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const rows = await storage.getAllRolePermissions();
+      const { DEFAULT_PERMISSIONS, ALL_ROLES } = await import("../shared/modulePermissions");
+
+      const result: Record<string, any> = {};
+      for (const role of ALL_ROLES) {
+        const row = rows.find(r => r.role === role);
+        if (row) {
+          result[role] = {
+            role: row.role,
+            modules: JSON.parse(row.modules),
+            homeRoute: row.homeRoute,
+            buildingScope: row.buildingScope,
+          };
+        } else {
+          result[role] = DEFAULT_PERMISSIONS[role];
+        }
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error("Error fetching role permissions:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/role-permissions/my", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile) {
+        return res.status(403).json({ error: "No profile" });
+      }
+
+      const row = await storage.getRolePermissions(profile.role);
+      const { DEFAULT_PERMISSIONS } = await import("../shared/modulePermissions");
+
+      if (row) {
+        res.json({
+          role: row.role,
+          modules: JSON.parse(row.modules),
+          homeRoute: row.homeRoute,
+          buildingScope: row.buildingScope,
+        });
+      } else {
+        res.json(DEFAULT_PERMISSIONS[profile.role] || null);
+      }
+    } catch (error) {
+      console.error("Error fetching my role permissions:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.put("/api/role-permissions/:role", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!canManagePermissions(profile)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { role } = req.params;
+      const { ALL_ROLES, MODULE_KEYS } = await import("../shared/modulePermissions");
+      const validRoles = ALL_ROLES as readonly string[];
+      if (!validRoles.includes(role)) {
+        return res.status(400).json({ error: "Rol no válido" });
+      }
+
+      const { modules, homeRoute, buildingScope } = req.body;
+
+      if (!modules || typeof modules !== "object" || !homeRoute || !buildingScope) {
+        return res.status(400).json({ error: "modules, homeRoute y buildingScope son requeridos" });
+      }
+
+      if (!["all", "assigned"].includes(buildingScope)) {
+        return res.status(400).json({ error: "buildingScope debe ser 'all' o 'assigned'" });
+      }
+
+      const validModuleKeys = MODULE_KEYS as readonly string[];
+      for (const key of Object.keys(modules)) {
+        if (!validModuleKeys.includes(key)) {
+          return res.status(400).json({ error: `Módulo no válido: ${key}` });
+        }
+      }
+
+      const result = await storage.upsertRolePermissions(role, {
+        modules: JSON.stringify(modules),
+        homeRoute,
+        buildingScope,
+        updatedBy: (req.user as any).id,
+      });
+
+      try {
+        await storage.createAuditLog({
+          userId: (req.user as any).id,
+          action: "update_role_permissions",
+          entityType: "role_permissions",
+          entityId: role,
+          metadata: JSON.stringify({ role, homeRoute, buildingScope }),
+        });
+      } catch {}
+
+      res.json({
+        role: result.role,
+        modules: JSON.parse(result.modules),
+        homeRoute: result.homeRoute,
+        buildingScope: result.buildingScope,
+      });
+    } catch (error) {
+      console.error("Error updating role permissions:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/role-permissions/seed", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || profile.role !== "super_admin") {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { DEFAULT_PERMISSIONS, ALL_ROLES } = await import("../shared/modulePermissions");
+      const existing = await storage.getAllRolePermissions();
+      let seeded = 0;
+
+      for (const role of ALL_ROLES) {
+        if (!existing.find(r => r.role === role)) {
+          const defaults = DEFAULT_PERMISSIONS[role];
+          if (defaults) {
+            await storage.upsertRolePermissions(role, {
+              modules: JSON.stringify(defaults.modules),
+              homeRoute: defaults.homeRoute,
+              buildingScope: defaults.buildingScope,
+              updatedBy: (req.user as any).id,
+            });
+            seeded++;
+          }
+        }
+      }
+
+      res.json({ seeded, total: ALL_ROLES.length });
+    } catch (error) {
+      console.error("Error seeding role permissions:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   // Super Admin: List all users
   app.get("/api/super-admin/users", isAuthenticated, async (req, res) => {
     try {

@@ -260,6 +260,7 @@ const generalManagerNavItems = [
     group: "Administración",
     items: [
       { path: "/admin/usuarios", label: "Usuarios", icon: Shield },
+      { path: "/gestion-permisos", label: "Gestión de Permisos", icon: Shield },
     ]
   },
 ];
@@ -307,6 +308,7 @@ const superAdminNavItems = [
     group: "Panel Super Admin",
     items: [
       { path: "/super-admin", label: "Panel Super Admin", icon: Shield },
+      { path: "/gestion-permisos", label: "Gestión de Permisos", icon: Shield },
     ]
   },
 ];

@@ -105,6 +105,21 @@ Key architectural patterns include:
   - API endpoint: GET /api/verificacion-ggcc?buildingId=X&month=M&year=Y
   - Data source: identified bank_transactions (same as Historial de Pagos)
 
+- **Mar 2026 - Gestión de Permisos (Dynamic Permission Management)**: Added configurable role-module permission system:
+  - New page `/gestion-permisos` accessible to super_admin and gerente_general
+  - Matrix UI: rows = 30 modules grouped by category, columns = editable roles (excludes super_admin)
+  - Toggle switches per module/role to enable/disable access
+  - General config per role: home route selector and building scope (all/assigned)
+  - DB table `role_permissions_config` stores JSON modules, homeRoute, buildingScope per role
+  - API: GET /api/role-permissions (all), GET /api/role-permissions/my (current user), PUT /api/role-permissions/:role
+  - POST /api/role-permissions/seed initializes defaults from shared/modulePermissions.ts
+  - Zod validation on PUT: validates role against ALL_ROLES, modules against MODULE_KEYS, buildingScope values
+  - Insert schema + types defined (insertRolePermissionsConfigSchema, InsertRolePermissionsConfig)
+  - Save/Discard/Reset-to-defaults functionality with unsaved changes indicator
+  - Audit logging for permission changes
+  - Sidebar: under "Panel Super Admin" for super_admin, under "Administración" for gerente_general
+  - Note: Currently a configuration UI; dynamic enforcement of permissions in routing/sidebar is a planned next step
+
 ## External Dependencies
 - **PostgreSQL (Neon)**: Primary database for all application data.
 - **Replit Object Storage**: Used for storing image uploads, particularly from field visits.

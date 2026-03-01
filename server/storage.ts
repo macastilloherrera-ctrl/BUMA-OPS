@@ -28,6 +28,8 @@ import {
   executiveDocuments,
   notifications,
   systemConfig,
+  rolePermissionsConfig,
+  type RolePermissionsConfigRow,
   incomes,
   expenses,
   recurringExpenseTemplates,
@@ -152,6 +154,11 @@ export interface IStorage {
   // System Config
   getSystemConfig(): Promise<SystemConfig | undefined>;
   updateSystemConfig(data: Partial<InsertSystemConfig>): Promise<SystemConfig>;
+
+  // Role Permissions
+  getAllRolePermissions(): Promise<RolePermissionsConfigRow[]>;
+  getRolePermissions(role: string): Promise<RolePermissionsConfigRow | undefined>;
+  upsertRolePermissions(role: string, data: { modules: string; homeRoute: string; buildingScope: string; updatedBy?: string }): Promise<RolePermissionsConfigRow>;
 
   // Buildings
   getBuildings(): Promise<Building[]>;
@@ -480,6 +487,33 @@ export class DatabaseStorage implements IStorage {
   async getSystemConfig(): Promise<SystemConfig | undefined> {
     const [config] = await db.select().from(systemConfig).where(eq(systemConfig.id, "default"));
     return config || undefined;
+  }
+
+  async getAllRolePermissions(): Promise<RolePermissionsConfigRow[]> {
+    return db.select().from(rolePermissionsConfig);
+  }
+
+  async getRolePermissions(role: string): Promise<RolePermissionsConfigRow | undefined> {
+    const [row] = await db.select().from(rolePermissionsConfig).where(eq(rolePermissionsConfig.role, role));
+    return row || undefined;
+  }
+
+  async upsertRolePermissions(role: string, data: { modules: string; homeRoute: string; buildingScope: string; updatedBy?: string }): Promise<RolePermissionsConfigRow> {
+    const existing = await this.getRolePermissions(role);
+    if (existing) {
+      const [updated] = await db
+        .update(rolePermissionsConfig)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(rolePermissionsConfig.role, role))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(rolePermissionsConfig)
+        .values({ role, ...data, updatedAt: new Date() })
+        .returning();
+      return created;
+    }
   }
 
   async updateSystemConfig(data: Partial<InsertSystemConfig>): Promise<SystemConfig> {
