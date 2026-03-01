@@ -61,6 +61,7 @@ import Egresos from "@/pages/Egresos";
 import RecurringExpenses from "@/pages/RecurringExpenses";
 import CierreMensual from "@/pages/CierreMensual";
 import ConsultaOperacional from "@/pages/ConsultaOperacional";
+import VerificacionGGCC from "@/pages/VerificacionGGCC";
 
 function LoadingScreen() {
   return (
@@ -212,7 +213,10 @@ function AuthenticatedApp() {
                 )}
 
                 {(canAccessFinancial || isOperations) && (
-                  <Route path="/historial-pagos" component={HistorialPagos} />
+                  <>
+                    <Route path="/verificacion-ggcc" component={VerificacionGGCC} />
+                    <Route path="/historial-pagos" component={HistorialPagos} />
+                  </>
                 )}
 
                 {isManager && (

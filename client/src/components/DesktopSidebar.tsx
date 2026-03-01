@@ -34,6 +34,7 @@ import {
   Repeat,
   Landmark,
   History,
+  ClipboardCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -125,6 +126,7 @@ const managerWithReportsNavItems = [
     items: [
       { path: "/cierre-mensual", label: "Cierre Mensual", icon: FileCheck },
       { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
+      { path: "/verificacion-ggcc", label: "Verificación GGCC", icon: ClipboardCheck },
       { path: "/historial-pagos", label: "Historial de Pagos", icon: History },
       { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
       { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
@@ -175,6 +177,7 @@ const executiveNavItems = [
   {
     group: "Pagos",
     items: [
+      { path: "/verificacion-ggcc", label: "Verificación GGCC", icon: ClipboardCheck },
       { path: "/historial-pagos", label: "Historial de Pagos", icon: History },
     ]
   },
@@ -225,6 +228,7 @@ const generalManagerNavItems = [
     items: [
       { path: "/cierre-mensual", label: "Cierre Mensual", icon: FileCheck },
       { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
+      { path: "/verificacion-ggcc", label: "Verificación GGCC", icon: ClipboardCheck },
       { path: "/historial-pagos", label: "Historial de Pagos", icon: History },
       { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
       { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
@@ -272,6 +276,7 @@ const financeNavItems = [
     items: [
       { path: "/cierre-mensual", label: "Cierre Mensual", icon: FileCheck },
       { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
+      { path: "/verificacion-ggcc", label: "Verificación GGCC", icon: ClipboardCheck },
       { path: "/historial-pagos", label: "Historial de Pagos", icon: History },
       { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
       { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },

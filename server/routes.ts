@@ -7813,6 +7813,228 @@ export async function registerRoutes(
   });
 
   // ==========================================
+  // Verificación de Gastos Comunes (GGCC)
+  // ==========================================
+
+  app.get("/api/verificacion-ggcc", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (isConserjeriaRole(profile)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const { buildingId, month, year } = req.query;
+      if (!buildingId || !month || !year) {
+        return res.status(400).json({ error: "buildingId, month y year son requeridos" });
+      }
+
+      const canAccess = await canAccessBuilding(req.user!.id, buildingId as string, profile);
+      if (!canAccess) {
+        return res.status(403).json({ error: "No tiene acceso a este edificio" });
+      }
+
+      const monthNum = parseInt(month as string);
+      const yearNum = parseInt(year as string);
+
+      const identifiedTxns = await storage.getBankTransactions({
+        buildingId: buildingId as string,
+        status: "identified",
+        month: monthNum,
+        year: yearNum,
+      });
+
+      const pendingTxns = await storage.getBankTransactions({
+        buildingId: buildingId as string,
+        status: "pending",
+        month: monthNum,
+        year: yearNum,
+      });
+
+      const suggestedTxns = await storage.getBankTransactions({
+        buildingId: buildingId as string,
+        status: "suggested",
+        month: monthNum,
+        year: yearNum,
+      });
+
+      const allIdentifiedHistoric = await storage.getBankTransactions({
+        buildingId: buildingId as string,
+        status: "identified",
+      });
+
+      const unitPaymentsThisMonth: Record<string, Array<{
+        amount: number;
+        date: string;
+        payerName: string;
+        payerRut: string;
+        sourceBank: string;
+        description: string;
+        transactionId: string;
+      }>> = {};
+
+      function extractPayments(txns: any[], target: typeof unitPaymentsThisMonth) {
+        for (const txn of txns) {
+          let splitUnits: Array<{ unit: string; amount: number }> | null = null;
+          if (txn.assignedUnitsSplit) {
+            try { splitUnits = JSON.parse(txn.assignedUnitsSplit); } catch {}
+          }
+
+          if (splitUnits && Array.isArray(splitUnits)) {
+            for (const s of splitUnits) {
+              if (!s.unit) continue;
+              if (!target[s.unit]) target[s.unit] = [];
+              target[s.unit].push({
+                amount: s.amount || 0,
+                date: txn.txnDate ? new Date(txn.txnDate).toISOString() : "",
+                payerName: txn.payerName || "",
+                payerRut: txn.payerRut || "",
+                sourceBank: txn.sourceBank || txn.bankName || "",
+                description: txn.description || "",
+                transactionId: txn.id,
+              });
+            }
+          } else if (txn.assignedUnit) {
+            if (!target[txn.assignedUnit]) target[txn.assignedUnit] = [];
+            target[txn.assignedUnit].push({
+              amount: parseFloat(txn.amount) || 0,
+              date: txn.txnDate ? new Date(txn.txnDate).toISOString() : "",
+              payerName: txn.payerName || "",
+              payerRut: txn.payerRut || "",
+              sourceBank: txn.sourceBank || txn.bankName || "",
+              description: txn.description || "",
+              transactionId: txn.id,
+            });
+          }
+        }
+      }
+
+      extractPayments(identifiedTxns, unitPaymentsThisMonth);
+
+      const historicUnitMonths: Record<string, Set<string>> = {};
+      for (const txn of allIdentifiedHistoric) {
+        let units: string[] = [];
+        if (txn.assignedUnitsSplit) {
+          try {
+            const splits = JSON.parse(txn.assignedUnitsSplit);
+            if (Array.isArray(splits)) units = splits.map((s: any) => s.unit).filter(Boolean);
+          } catch {}
+        } else if (txn.assignedUnit) {
+          units = [txn.assignedUnit];
+        }
+        const d = txn.txnDate ? new Date(txn.txnDate) : null;
+        if (!d) continue;
+        const key = `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}`;
+        for (const u of units) {
+          if (!historicUnitMonths[u]) historicUnitMonths[u] = new Set();
+          historicUnitMonths[u].add(key);
+        }
+      }
+
+      const allKnownUnits = new Set<string>([
+        ...Object.keys(unitPaymentsThisMonth),
+        ...Object.keys(historicUnitMonths),
+      ]);
+
+      const allAmountsThisMonth: number[] = [];
+      for (const payments of Object.values(unitPaymentsThisMonth)) {
+        for (const p of payments) allAmountsThisMonth.push(p.amount);
+      }
+      const avgAmount = allAmountsThisMonth.length > 0
+        ? allAmountsThisMonth.reduce((a, b) => a + b, 0) / allAmountsThisMonth.length
+        : 0;
+      const stdDev = allAmountsThisMonth.length > 1
+        ? Math.sqrt(allAmountsThisMonth.reduce((sum, v) => sum + Math.pow(v - avgAmount, 2), 0) / allAmountsThisMonth.length)
+        : 0;
+
+      const currentPeriodKey = `${yearNum}-${monthNum}`;
+      const units: Array<{
+        unit: string;
+        status: "paid" | "unpaid" | "multiple" | "no_history";
+        payments: typeof unitPaymentsThisMonth[string];
+        totalPaid: number;
+        paymentCount: number;
+        historicMonths: number;
+        alerts: Array<{ type: string; message: string }>;
+      }> = [];
+
+      for (const unit of allKnownUnits) {
+        const payments = unitPaymentsThisMonth[unit] || [];
+        const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+        const historicMonths = historicUnitMonths[unit]?.size || 0;
+        const paidThisMonth = payments.length > 0;
+        const hasHistory = historicMonths > 0;
+
+        let status: "paid" | "unpaid" | "multiple" | "no_history";
+        if (payments.length > 1) {
+          status = "multiple";
+        } else if (paidThisMonth) {
+          status = "paid";
+        } else if (hasHistory) {
+          status = "unpaid";
+        } else {
+          status = "no_history";
+        }
+
+        const alerts: Array<{ type: string; message: string }> = [];
+
+        if (payments.length > 1) {
+          alerts.push({ type: "duplicate", message: `${payments.length} pagos registrados este mes` });
+        }
+
+        if (paidThisMonth && avgAmount > 0 && stdDev > 0) {
+          for (const p of payments) {
+            if (Math.abs(p.amount - avgAmount) > 2 * stdDev) {
+              const diff = p.amount > avgAmount ? "superior" : "inferior";
+              alerts.push({
+                type: "amount_deviation",
+                message: `Monto ${new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", minimumFractionDigits: 0 }).format(p.amount)} significativamente ${diff} al promedio (${new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", minimumFractionDigits: 0 }).format(avgAmount)})`,
+              });
+            }
+          }
+        }
+
+        if (!paidThisMonth && hasHistory) {
+          const prevMonth = monthNum === 1 ? 12 : monthNum - 1;
+          const prevYear = monthNum === 1 ? yearNum - 1 : yearNum;
+          const prevKey = `${prevYear}-${prevMonth}`;
+          if (historicUnitMonths[unit]?.has(prevKey)) {
+            alerts.push({ type: "debtor", message: "Pagó el mes anterior pero no este mes" });
+          }
+        }
+
+        units.push({
+          unit,
+          status,
+          payments,
+          totalPaid,
+          paymentCount: payments.length,
+          historicMonths,
+          alerts,
+        });
+      }
+
+      units.sort((a, b) => a.unit.localeCompare(b.unit, "es", { numeric: true }));
+
+      const summary = {
+        totalUnits: units.length,
+        paid: units.filter(u => u.status === "paid" || u.status === "multiple").length,
+        unpaid: units.filter(u => u.status === "unpaid").length,
+        noHistory: units.filter(u => u.status === "no_history").length,
+        multiple: units.filter(u => u.status === "multiple").length,
+        totalCollected: units.reduce((sum, u) => sum + u.totalPaid, 0),
+        averagePayment: avgAmount,
+        alertCount: units.reduce((sum, u) => sum + u.alerts.length, 0),
+        pendingTransactions: pendingTxns.length + suggestedTxns.length,
+      };
+
+      res.json({ units, summary });
+    } catch (error) {
+      console.error("Error getting verificacion GGCC:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ==========================================
   // Insurance Policy Expiry Check & Auto-Ticket Generation
   // ==========================================
   

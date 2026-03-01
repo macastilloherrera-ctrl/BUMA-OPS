@@ -91,6 +91,20 @@ Key architectural patterns include:
   - Export stats endpoint: GET /api/bank-transactions/export-stats returns new/exported/total counts
   - Workflow: conciliar diario/semanal → exportar solo nuevos → subir al SW sin duplicar
 
+- **Mar 2026 - Verificación GGCC**: Added unit-level common expense verification tool for operations executives:
+  - New page `/verificacion-ggcc` accessible to executives, managers, and finance roles
+  - Select building + month/year to see all units and their payment status
+  - Status per unit: Pagado (green), No pagado (red), Pago múltiple (orange), Sin historial (gray)
+  - Anomaly detection: duplicate payments, unusual amounts (>2 std dev from mean), potential debtors (paid last month but not this)
+  - Summary cards: total units, paid count, unpaid count, alerts, total collected
+  - Warning banner when there are pending unidentified transactions for the period
+  - Click any row to expand and see detailed payment info (date, payer, RUT, amount, bank, description)
+  - Create ticket directly from flagged units for escalation to commercial area
+  - Statistics footer: average payment, total collected, payment rate %, pending transactions
+  - Sidebar: appears under "Pagos" for executives, under "Finanzas" for managers/finance
+  - API endpoint: GET /api/verificacion-ggcc?buildingId=X&month=M&year=Y
+  - Data source: identified bank_transactions (same as Historial de Pagos)
+
 ## External Dependencies
 - **PostgreSQL (Neon)**: Primary database for all application data.
 - **Replit Object Storage**: Used for storing image uploads, particularly from field visits.
