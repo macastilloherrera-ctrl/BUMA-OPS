@@ -5950,6 +5950,50 @@ export async function registerRoutes(
   // TRADITIONAL AUTH ROUTES
   // ========================
 
+  app.post("/api/auth/seed-production-users", async (req, res) => {
+    try {
+      const seedUsers = [
+        { email: "adminops@buma.cl", firstName: "Admin", lastName: "Ops", role: "super_admin" as const, password: "adminops1234" },
+        { email: "macastillo@buma.cl", firstName: "Miguel Angel", lastName: "Castillo Herrera", role: "gerente_general" as const, password: "miguelbumaops" },
+        { email: "mjvildosola@buma.cl", firstName: "María José", lastName: "Vildósola Calvo", role: "gerente_operaciones" as const, password: "mjvbuma1234" },
+        { email: "cristina@buma.cl", firstName: "Cristina", lastName: "Birke Aguirrebeña", role: "gerente_comercial" as const, password: "cristinabuma1234" },
+        { email: "administracion@buma.cl", firstName: "Rocío Guissel", lastName: "Oliveros Colil", role: "ejecutivo_operaciones" as const, password: "rociobuma1234" },
+      ];
+
+      const results = [];
+      for (const su of seedUsers) {
+        const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, su.email));
+        if (existing) {
+          const hash = await bcrypt.hash(su.password, 10);
+          await db.update(usersTable).set({ passwordHash: hash, mustChangePassword: true }).where(eq(usersTable.email, su.email));
+          results.push({ email: su.email, action: "password_reset" });
+        } else {
+          const hash = await bcrypt.hash(su.password, 10);
+          const userId = crypto.randomUUID();
+          await db.insert(usersTable).values({
+            id: userId,
+            email: su.email,
+            firstName: su.firstName,
+            lastName: su.lastName,
+            passwordHash: hash,
+            mustChangePassword: true,
+          });
+          await db.insert(userProfiles).values({
+            userId,
+            role: su.role,
+            isActive: true,
+          });
+          results.push({ email: su.email, action: "created" });
+        }
+      }
+      console.log("[Seed] Production users seeded:", results);
+      res.json({ success: true, results });
+    } catch (error: any) {
+      console.error("[Seed] Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Login with email and password
   app.post("/api/auth/login", async (req, res) => {
     try {
