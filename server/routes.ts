@@ -3241,61 +3241,38 @@ export async function registerRoutes(
   app.get("/api/reports/expenses", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !["gerente_general", "gerente_comercial"].includes(profile.role)) {
+      if (!profile || !canAccessFinancial(profile)) {
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
       const { buildingId, month, year } = req.query;
-      
-      // Get closed tickets with invoice info
-      const allTickets = await storage.getTickets();
-      
-      let filteredTickets = allTickets.filter(t => 
-        t.status === "resuelto" && 
-        t.invoiceAmount && 
-        parseFloat(t.invoiceAmount) > 0
-      );
 
-      // Filter by building if specified
-      if (buildingId && buildingId !== "all") {
-        filteredTickets = filteredTickets.filter(t => t.buildingId === buildingId);
-      }
-
-      // Filter by month and year if specified
+      const filters: any = {};
+      if (buildingId && buildingId !== "all") filters.buildingId = buildingId as string;
       if (month && year) {
-        const monthNum = parseInt(month as string);
-        const yearNum = parseInt(year as string);
-        filteredTickets = filteredTickets.filter(t => {
-          if (!t.closedAt) return false;
-          const closedDate = new Date(t.closedAt);
-          return closedDate.getUTCMonth() + 1 === monthNum && closedDate.getUTCFullYear() === yearNum;
-        });
+        filters.month = parseInt(month as string);
+        filters.year = parseInt(year as string);
       }
 
-      // Get buildings and maintainers for names
+      const allExpenses = await storage.getExpenses(filters);
+
       const buildings = await storage.getBuildings();
-      const maintainers = await storage.getMaintainers();
-      const categories = await storage.getMaintainerCategories();
-
       const buildingMap = new Map(buildings.map(b => [b.id, b.name]));
-      const maintainerMap = new Map(maintainers.map(m => [m.id, m.companyName]));
-      const categoryMap = new Map(categories.map(c => [c.id, c.name]));
 
-      // Map tickets to expense report format
-      const expenses = filteredTickets.map((t, index) => ({
+      const reportExpenses = allExpenses.map((e, index) => ({
         numero: index + 1,
-        edificio: buildingMap.get(t.buildingId) || "Desconocido",
+        edificio: buildingMap.get(e.buildingId) || "Desconocido",
         fondo: "Gasto Común",
-        subfondo: t.categoryId ? (categoryMap.get(t.categoryId) || "Otros") : "Otros",
-        descripcion: t.description,
-        monto: parseFloat(t.invoiceAmount || "0"),
-        documento: t.invoiceNumber || "",
-        fechaEgreso: t.closedAt ? new Date(t.closedAt).toLocaleDateString("es-CL") : "",
-        proveedor: t.maintainerId ? (maintainerMap.get(t.maintainerId) || "") : "",
-        formaPago: "transferencia",
+        subfondo: e.category || "Otros",
+        descripcion: e.description,
+        monto: parseFloat(e.amount || "0"),
+        documento: e.documentNumber ? `${e.documentType === "factura" ? "Fact." : e.documentType === "boleta" ? "Bol." : "Doc."} ${e.documentNumber}` : "",
+        fechaEgreso: e.paymentDate ? new Date(e.paymentDate).toLocaleDateString("es-CL") : "",
+        proveedor: e.vendorName || "",
+        formaPago: e.paymentMethod || "",
       }));
 
-      res.json(expenses);
+      res.json(reportExpenses);
     } catch (error) {
       console.error("Error fetching expenses:", error);
       res.status(500).json({ error: "Error interno del servidor" });
@@ -3306,66 +3283,44 @@ export async function registerRoutes(
   app.get("/api/reports/expenses/excel", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !["gerente_general", "gerente_comercial"].includes(profile.role)) {
+      if (!profile || !canAccessFinancial(profile)) {
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
       const { buildingId, month, year } = req.query;
       const XLSX = await import("xlsx");
-      
-      // Get closed tickets with invoice info
-      const allTickets = await storage.getTickets();
-      
-      let filteredTickets = allTickets.filter(t => 
-        t.status === "resuelto" && 
-        t.invoiceAmount && 
-        parseFloat(t.invoiceAmount) > 0
-      );
 
-      // Filter by building if specified
-      if (buildingId && buildingId !== "all") {
-        filteredTickets = filteredTickets.filter(t => t.buildingId === buildingId);
-      }
-
-      // Filter by month and year if specified
+      const filters: any = {};
+      if (buildingId && buildingId !== "all") filters.buildingId = buildingId as string;
       if (month && year) {
-        const monthNum = parseInt(month as string);
-        const yearNum = parseInt(year as string);
-        filteredTickets = filteredTickets.filter(t => {
-          if (!t.closedAt) return false;
-          const closedDate = new Date(t.closedAt);
-          return closedDate.getUTCMonth() + 1 === monthNum && closedDate.getUTCFullYear() === yearNum;
-        });
+        filters.month = parseInt(month as string);
+        filters.year = parseInt(year as string);
       }
 
-      // Get buildings and maintainers for names
+      const allExpenses = await storage.getExpenses(filters);
+
       const buildings = await storage.getBuildings();
-      const maintainers = await storage.getMaintainers();
-      const categories = await storage.getMaintainerCategories();
-
       const buildingMap = new Map(buildings.map(b => [b.id, b.name]));
-      const maintainerMap = new Map(maintainers.map(m => [m.id, m.companyName]));
-      const categoryMap = new Map(categories.map(c => [c.id, c.name]));
 
-      // Create worksheet data in Edipro format
       const wsData = [
         ["numero", "fondo", "subfondo", "descripcion", "monto", "documento", "fecha egreso", "fecha banco", "anulado", "Proveedor", "numero respaldo", "forma de pago", "fecha cheque"],
       ];
 
-      filteredTickets.forEach((t, index) => {
+      allExpenses.forEach((e, index) => {
+        const docLabel = e.documentNumber ? `${e.documentType === "factura" ? "Fact." : e.documentType === "boleta" ? "Bol." : "Doc."} ${e.documentNumber}` : "";
         wsData.push([
           String(index + 1),
           "Gasto Común",
-          t.categoryId ? (categoryMap.get(t.categoryId) || "Otros") : "Otros",
-          t.description,
-          t.invoiceAmount || "0",
-          t.invoiceNumber || "",
-          t.closedAt ? new Date(t.closedAt).toLocaleDateString("es-CL") : "",
+          e.category || "Otros",
+          e.description,
+          e.amount || "0",
+          docLabel,
+          e.paymentDate ? new Date(e.paymentDate).toLocaleDateString("es-CL") : "",
           "",
           "no",
-          t.maintainerId ? (maintainerMap.get(t.maintainerId) || "") : "",
+          e.vendorName || "",
           "",
-          "transferencia",
+          e.paymentMethod || "transferencia",
           "",
         ]);
       });

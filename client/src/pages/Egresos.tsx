@@ -255,7 +255,8 @@ export default function Egresos() {
       closeDialog();
     },
     onError: (error: Error) => {
-      toast({ title: "Documento duplicado", description: error.message, variant: "destructive" });
+      const isDuplicate = error.message.includes("ya existe");
+      toast({ title: isDuplicate ? "Documento duplicado" : "Error al crear egreso", description: error.message, variant: "destructive" });
     },
   });
 
