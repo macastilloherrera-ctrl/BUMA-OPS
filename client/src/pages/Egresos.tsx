@@ -312,16 +312,22 @@ export default function Egresos() {
     queryKey: ["/api/vendors"],
   });
 
+  const { data: maintainerList } = useQuery<{ id: string; companyName: string }[]>({
+    queryKey: ["/api/maintainers"],
+  });
+
   const { data: categoryList } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/maintainers/categories"],
   });
 
-  const [vendorSearch, setVendorSearch] = useState("");
-  const [showVendorSuggestions, setShowVendorSuggestions] = useState(false);
+  const combinedProviders = (() => {
+    const map = new Map<string, string>();
+    maintainerList?.forEach(m => map.set(m.companyName.toUpperCase(), m.companyName));
+    vendorList?.forEach(v => map.set(v.name.toUpperCase(), v.name));
+    return Array.from(map.entries()).map(([key, name]) => ({ key, name })).sort((a, b) => a.name.localeCompare(b.name));
+  })();
 
-  const filteredVendors = vendorList?.filter(v =>
-    v.name.includes(vendorSearch.toUpperCase())
-  ).slice(0, 8) || [];
+  const [showVendorSuggestions, setShowVendorSuggestions] = useState(false);
 
   const defaultFormValues: ExpenseFormValues = {
     buildingId: "",
@@ -950,51 +956,38 @@ export default function Egresos() {
                   render={({ field }) => (
                     <FormItem className="relative">
                       <FormLabel>Proveedor</FormLabel>
-                      {vendorList && vendorList.length > 0 ? (
-                        <>
-                          <Select
-                            onValueChange={(val) => {
-                              if (val === "__manual__") {
-                                field.onChange("");
-                                setShowVendorSuggestions(true);
-                              } else {
-                                field.onChange(val);
-                                setShowVendorSuggestions(false);
-                              }
-                            }}
-                            value={showVendorSuggestions ? "__manual__" : (field.value || "")}
-                          >
-                            <FormControl>
-                              <SelectTrigger data-testid="select-vendor">
-                                <SelectValue placeholder="Seleccionar proveedor" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {vendorList.map(v => (
-                                <SelectItem key={v.id} value={v.name} data-testid={`vendor-option-${v.id}`}>
-                                  {v.name}{v.rut ? ` (${v.rut})` : ""}
-                                </SelectItem>
-                              ))}
-                              <SelectItem value="__manual__">Ingresar manualmente...</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          {showVendorSuggestions && (
-                            <FormControl>
-                              <Input
-                                placeholder="Nombre del proveedor (MAYÚSCULAS)"
-                                data-testid="input-vendor-name"
-                                className="mt-2"
-                                value={field.value || ""}
-                                onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                              />
-                            </FormControl>
-                          )}
-                        </>
-                      ) : (
+                      <Select
+                        onValueChange={(val) => {
+                          if (val === "__manual__") {
+                            field.onChange("");
+                            setShowVendorSuggestions(true);
+                          } else {
+                            field.onChange(val);
+                            setShowVendorSuggestions(false);
+                          }
+                        }}
+                        value={showVendorSuggestions ? "__manual__" : (field.value || "")}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-vendor">
+                            <SelectValue placeholder="Seleccionar proveedor" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {combinedProviders.map(p => (
+                            <SelectItem key={p.key} value={p.name} data-testid={`vendor-option-${p.key}`}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="__manual__">Ingresar manualmente...</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {showVendorSuggestions && (
                         <FormControl>
                           <Input
                             placeholder="Nombre del proveedor (MAYÚSCULAS)"
                             data-testid="input-vendor-name"
+                            className="mt-2"
                             value={field.value || ""}
                             onChange={(e) => field.onChange(e.target.value.toUpperCase())}
                           />
