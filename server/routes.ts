@@ -6177,7 +6177,11 @@ export async function registerRoutes(
       if (!isManagerRole(profile)) {
         return res.status(403).json({ error: "Solo gerentes pueden crear ingresos" });
       }
-      const data = insertIncomeSchema.parse({ ...req.body, createdBy: req.user!.id });
+      const incomeData: any = { ...req.body, createdBy: req.user!.id };
+      if (incomeData.paymentDate && typeof incomeData.paymentDate === "string") {
+        incomeData.paymentDate = new Date(incomeData.paymentDate);
+      }
+      const data = insertIncomeSchema.parse(incomeData);
       const income = await storage.createIncome(data);
 
       try {
@@ -6209,7 +6213,11 @@ export async function registerRoutes(
       if (!isManagerRole(profile)) {
         return res.status(403).json({ error: "Solo gerentes pueden modificar ingresos" });
       }
-      const data = insertIncomeSchema.partial().parse(req.body);
+      const incomeUpdates: any = { ...req.body };
+      if (incomeUpdates.paymentDate && typeof incomeUpdates.paymentDate === "string") {
+        incomeUpdates.paymentDate = new Date(incomeUpdates.paymentDate);
+      }
+      const data = insertIncomeSchema.partial().parse(incomeUpdates);
       const income = await storage.updateIncome(req.params.id, data);
       if (!income) {
         return res.status(404).json({ error: "Ingreso no encontrado" });
@@ -6488,6 +6496,13 @@ export async function registerRoutes(
         createdBy: req.user!.id,
       };
 
+      const dateFields = ["paymentDate", "consumptionPeriodFrom", "consumptionPeriodTo"];
+      for (const field of dateFields) {
+        if (expenseData[field] && typeof expenseData[field] === "string") {
+          expenseData[field] = new Date(expenseData[field]);
+        }
+      }
+
       if (isConserjeria) {
         expenseData.operationallyValidated = false;
         expenseData.financiallyValidated = false;
@@ -6584,6 +6599,13 @@ export async function registerRoutes(
         updates.chargeMonth = nextMonth;
         updates.chargeYear = nextYear;
         updates.inclusionStatus = "included";
+      }
+
+      const dateFields = ["paymentDate", "consumptionPeriodFrom", "consumptionPeriodTo"];
+      for (const field of dateFields) {
+        if (updates[field] && typeof updates[field] === "string") {
+          updates[field] = new Date(updates[field]);
+        }
       }
 
       const data = insertExpenseSchema.partial().parse(updates);
