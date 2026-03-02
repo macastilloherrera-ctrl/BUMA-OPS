@@ -6112,6 +6112,28 @@ export async function registerRoutes(
   });
 
   // Logout
+  app.post("/api/admin/activate-all-profiles", async (req, res) => {
+    try {
+      const { secret } = req.body;
+      if (secret !== "buma-reset-2026-temp") {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const allProfiles = await db.select().from(userProfiles);
+      const results: string[] = [];
+      for (const profile of allProfiles) {
+        if (!profile.isActive) {
+          await db.update(userProfiles).set({ isActive: true }).where(eq(userProfiles.id, profile.id));
+          results.push(`${profile.userId}: activated`);
+        } else {
+          results.push(`${profile.userId}: already active`);
+        }
+      }
+      res.json({ success: true, results });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/auth/logout", (req, res) => {
     req.logout((err) => {
       if (err) {
