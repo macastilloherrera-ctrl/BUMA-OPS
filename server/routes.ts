@@ -5415,6 +5415,16 @@ export async function registerRoutes(
         return res.status(403).json({ error: "No tiene permisos para crear proyectos" });
       }
       
+      if (req.body.contractorName && typeof req.body.contractorName === "string" && req.body.contractorName.trim()) {
+        const normalizedContractor = req.body.contractorName.toUpperCase().trim();
+        req.body.contractorName = normalizedContractor;
+        try {
+          await storage.findOrCreateVendor(normalizedContractor);
+        } catch (vendorError) {
+          console.error("Error registering contractor as vendor:", vendorError);
+        }
+      }
+
       const projectData = {
         ...req.body,
         createdBy: (req.user as any).id,

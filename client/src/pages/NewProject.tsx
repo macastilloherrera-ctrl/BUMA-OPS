@@ -73,6 +73,23 @@ export default function NewProject() {
     queryKey: ["/api/admin/users"],
   });
 
+  const { data: vendorList } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/vendors"],
+  });
+
+  const { data: maintainerList } = useQuery<{ id: string; companyName: string }[]>({
+    queryKey: ["/api/maintainers"],
+  });
+
+  const combinedProviders = (() => {
+    const map = new Map<string, string>();
+    maintainerList?.forEach(m => map.set(m.companyName.toUpperCase(), m.companyName));
+    vendorList?.forEach(v => map.set(v.name.toUpperCase(), v.name));
+    return Array.from(map.entries()).map(([key, name]) => ({ key, name })).sort((a, b) => a.name.localeCompare(b.name));
+  })();
+
+  const [showManualContractor, setShowManualContractor] = useState(false);
+
   const assignableRoles = ["ejecutivo_operaciones", "gerente_operaciones", "gerente_general", "gerente_comercial", "gerente_finanzas"];
   const executives = users?.filter(u => assignableRoles.includes(u.role) && u.isActive) || [];
 
@@ -164,6 +181,7 @@ export default function NewProject() {
         }
       }
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
       if (failedQuotes > 0) {
         toast({
           title: "Proyecto creado con advertencia",
@@ -369,9 +387,43 @@ export default function NewProject() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Nombre de la Empresa</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Ej: Constructora ABC Ltda." {...field} data-testid="input-contractor-name" />
-                      </FormControl>
+                      <Select
+                        onValueChange={(val) => {
+                          if (val === "__manual__") {
+                            field.onChange("");
+                            setShowManualContractor(true);
+                          } else {
+                            field.onChange(val);
+                            setShowManualContractor(false);
+                          }
+                        }}
+                        value={showManualContractor ? "__manual__" : (field.value || "")}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-contractor">
+                            <SelectValue placeholder="Seleccionar proveedor" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {combinedProviders.map(p => (
+                            <SelectItem key={p.key} value={p.name}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value="__manual__">Ingresar manualmente...</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {showManualContractor && (
+                        <FormControl>
+                          <Input
+                            placeholder="Nombre de la empresa contratista"
+                            data-testid="input-contractor-name"
+                            className="mt-2"
+                            value={field.value || ""}
+                            onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                          />
+                        </FormControl>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
