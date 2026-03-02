@@ -12,7 +12,7 @@ import { MobileNav } from "@/components/MobileNav";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import type { UserProfile, UserRole } from "@shared/schema";
-import { getRoleHome, canAccessRoute, isManagerRole, isFinanceRole } from "@/lib/roleRoutes";
+import { usePermissions, canAccessRouteDynamic } from "@/hooks/use-permissions";
 
 import { Logo } from "@/components/Logo";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -79,21 +79,20 @@ function LoadingScreen() {
 
 import { useEffect, useRef } from "react";
 
-function RouteGuard({ userRole, children }: { userRole: UserRole; children: React.ReactNode }) {
+function RouteGuard({ allowedRoutes, homeRoute, children }: { allowedRoutes: string[]; homeRoute: string; children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
-  const roleHome = getRoleHome(userRole);
   const lastRedirectedPath = useRef<string | null>(null);
   
-  const canAccess = canAccessRoute(userRole, location);
+  const canAccess = canAccessRouteDynamic(allowedRoutes, location);
   
   useEffect(() => {
     if (canAccess) {
       lastRedirectedPath.current = null;
     } else if (lastRedirectedPath.current !== location) {
       lastRedirectedPath.current = location;
-      setLocation(roleHome);
+      setLocation(homeRoute);
     }
-  }, [canAccess, location, roleHome, setLocation]);
+  }, [canAccess, location, homeRoute, setLocation]);
   
   if (!canAccess) {
     return null;
@@ -109,19 +108,14 @@ function AuthenticatedApp() {
     queryKey: ["/api/user/profile"],
   });
 
-  if (profileLoading) {
+  const userRole: UserRole = userProfile?.role || "ejecutivo_operaciones";
+  const permissions = usePermissions(userRole);
+
+  if (profileLoading || permissions.isLoading) {
     return <LoadingScreen />;
   }
 
-  const userRole: UserRole = userProfile?.role || "ejecutivo_operaciones";
-  const isSuperAdmin = userRole === "super_admin";
-  const isGeneralManager = userRole === "gerente_general";
-  const isFinance = isFinanceRole(userRole);
-  const isManager = isManagerRole(userRole);
-  const canAccessFinancial = ["gerente_general", "gerente_comercial", "gerente_finanzas"].includes(userRole);
-  const isConserjeria = userRole === "conserjeria";
-  const isOperations = userRole === "gerente_operaciones" || userRole === "ejecutivo_operaciones";
-  const roleHome = getRoleHome(userRole);
+  const m = permissions.modules;
 
   const sidebarStyle = {
     "--sidebar-width": "16rem",
@@ -134,7 +128,7 @@ function AuthenticatedApp() {
     <SidebarProvider style={sidebarStyle as React.CSSProperties}>
       <div className="flex h-screen w-full">
         <div className="hidden md:block">
-          <DesktopSidebar user={user} userRole={userRole} onLogout={logout} />
+          <DesktopSidebar user={user} userRole={userRole} onLogout={logout} permissions={permissions} />
         </div>
         
         <div className="flex flex-col flex-1 min-w-0">
@@ -158,97 +152,142 @@ function AuthenticatedApp() {
           </header>
 
           <main className="flex-1 overflow-auto">
-            <RouteGuard userRole={userRole}>
+            <RouteGuard allowedRoutes={permissions.allowedRoutes} homeRoute={permissions.homeRoute}>
               <Switch>
-                <Route path="/" component={() => <Redirect to={roleHome} />} />
+                <Route path="/" component={() => <Redirect to={permissions.homeRoute} />} />
                 
-                {isGeneralManager && (
+                {m.dashboard_overview && (
                   <Route path="/dashboard/overview" component={DashboardOverview} />
                 )}
                 
-                {(isManager || isFinance) && (
-                  <>
-                    <Route path="/dashboard/tickets" component={DashboardTickets} />
-                  </>
+                {m.dashboard_tickets && (
+                  <Route path="/dashboard/tickets" component={DashboardTickets} />
                 )}
 
-                {isManager && (
+                {m.dashboard_visitas && (
                   <Route path="/dashboard/visitas" component={DashboardVisits} />
                 )}
 
-                <Route path="/visitas" component={Visits} />
-                <Route path="/visitas/programar" component={ScheduleVisit} />
-                <Route path="/visitas/:id" component={VisitDetail} />
-                <Route path="/visitas/:id/en-curso" component={VisitInProgress} />
-                <Route path="/visitas/:id/incidente" component={IncidentForm} />
-                <Route path="/visitas/:id/informe" component={VisitReport} />
-
-                <Route path="/tickets" component={Tickets} />
-                <Route path="/tickets/nuevo" component={NewTicket} />
-                <Route path="/tickets/:id" component={TicketDetail} />
-                <Route path="/calendario" component={CalendarView} />
-
-                <Route path="/edificios" component={Buildings} />
-                <Route path="/edificios/:id" component={BuildingDetail} />
-                <Route path="/equipos" component={CriticalAssets} />
-                
-                <Route path="/proyectos" component={Projects} />
-                <Route path="/proyectos/semaforo" component={ProjectsSemaforo} />
-                <Route path="/proyectos/calendario" component={ProjectsCalendar} />
-                <Route path="/proyectos/nuevo" component={NewProject} />
-                <Route path="/proyectos/:id" component={ProjectDetail} />
-                
-                {(canAccessFinancial || isConserjeria) && (
-                  <Route path="/egresos" component={Egresos} />
-                )}
-                {canAccessFinancial && (
+                {m.visitas && (
                   <>
-                    <Route path="/cierre-mensual" component={CierreMensual} />
-                    <Route path="/conciliacion-bancaria" component={ConciliacionBancaria} />
-                    <Route path="/ingresos" component={Ingresos} />
-                    <Route path="/consumos-recurrentes" component={RecurringExpenses} />
+                    <Route path="/visitas" component={Visits} />
+                    <Route path="/visitas/programar" component={ScheduleVisit} />
+                    <Route path="/visitas/:id" component={VisitDetail} />
+                    <Route path="/visitas/:id/en-curso" component={VisitInProgress} />
+                    <Route path="/visitas/:id/incidente" component={IncidentForm} />
+                    <Route path="/visitas/:id/informe" component={VisitReport} />
                   </>
                 )}
 
-                {(isOperations || isManager || isGeneralManager) && (
+                {m.tickets && (
+                  <>
+                    <Route path="/tickets" component={Tickets} />
+                    <Route path="/tickets/nuevo" component={NewTicket} />
+                    <Route path="/tickets/:id" component={TicketDetail} />
+                  </>
+                )}
+
+                {m.calendario && (
+                  <Route path="/calendario" component={CalendarView} />
+                )}
+
+                {m.edificios && (
+                  <>
+                    <Route path="/edificios" component={Buildings} />
+                    <Route path="/edificios/:id" component={BuildingDetail} />
+                  </>
+                )}
+
+                {m.equipos_criticos && (
+                  <Route path="/equipos" component={CriticalAssets} />
+                )}
+                
+                {m.proyectos && (
+                  <>
+                    <Route path="/proyectos" component={Projects} />
+                    <Route path="/proyectos/semaforo" component={ProjectsSemaforo} />
+                    <Route path="/proyectos/calendario" component={ProjectsCalendar} />
+                    <Route path="/proyectos/nuevo" component={NewProject} />
+                    <Route path="/proyectos/:id" component={ProjectDetail} />
+                  </>
+                )}
+                
+                {m.egresos && (
+                  <Route path="/egresos" component={Egresos} />
+                )}
+
+                {m.cierre_mensual && (
+                  <Route path="/cierre-mensual" component={CierreMensual} />
+                )}
+
+                {m.conciliacion_bancaria && (
+                  <Route path="/conciliacion-bancaria" component={ConciliacionBancaria} />
+                )}
+
+                {m.ingresos && (
+                  <Route path="/ingresos" component={Ingresos} />
+                )}
+
+                {m.consumos_recurrentes && (
+                  <Route path="/consumos-recurrentes" component={RecurringExpenses} />
+                )}
+
+                {m.consulta_operacional && (
                   <Route path="/consulta-operacional" component={ConsultaOperacional} />
                 )}
 
-                {(canAccessFinancial || isOperations) && (
-                  <>
-                    <Route path="/verificacion-ggcc" component={VerificacionGGCC} />
-                    <Route path="/historial-pagos" component={HistorialPagos} />
-                  </>
+                {m.verificacion_ggcc && (
+                  <Route path="/verificacion-ggcc" component={VerificacionGGCC} />
                 )}
 
-                {isManager && (
-                  <>
-                    <Route path="/mantenedores" component={Maintainers} />
-                    <Route path="/ejecutivos" component={Executives} />
-                  </>
+                {m.historial_pagos && (
+                  <Route path="/historial-pagos" component={HistorialPagos} />
                 )}
-                {(userRole === "gerente_general" || userRole === "gerente_comercial") && (
+
+                {m.mantenedores && (
+                  <Route path="/mantenedores" component={Maintainers} />
+                )}
+
+                {m.ejecutivos && (
+                  <Route path="/ejecutivos" component={Executives} />
+                )}
+
+                {m.reportes_egresos && (
                   <Route path="/reportes/egresos" component={ExpenseReport} />
                 )}
-                {isManager && (
-                  <>
-                    <Route path="/reportes/visitas" component={ReportVisits} />
-                    <Route path="/reportes/tickets" component={ReportTickets} />
-                    <Route path="/reportes/financiero" component={ReportFinancial} />
-                    <Route path="/reportes/equipos" component={ReportEquipment} />
-                    <Route path="/reportes/ejecutivos" component={ReportExecutives} />
-                  </>
+
+                {m.reportes_visitas && (
+                  <Route path="/reportes/visitas" component={ReportVisits} />
                 )}
-                <Route path="/reportes/cumplimiento" component={RegulatoryComplianceReport} />
+
+                {m.reportes_tickets && (
+                  <Route path="/reportes/tickets" component={ReportTickets} />
+                )}
+
+                {m.reportes_financiero && (
+                  <Route path="/reportes/financiero" component={ReportFinancial} />
+                )}
+
+                {m.reportes_equipos && (
+                  <Route path="/reportes/equipos" component={ReportEquipment} />
+                )}
+
+                {m.reportes_ejecutivos && (
+                  <Route path="/reportes/ejecutivos" component={ReportExecutives} />
+                )}
+
+                {m.estado_documental && (
+                  <Route path="/reportes/cumplimiento" component={RegulatoryComplianceReport} />
+                )}
                 
-                {userRole === "gerente_general" && (
+                {m.admin_usuarios && (
                   <Route path="/admin/usuarios" component={AdminUsers} />
                 )}
                 
-                {isSuperAdmin && <Route path="/super-admin" component={SuperAdminPanel} />}
-                {(isSuperAdmin || isGeneralManager) && <Route path="/gestion-permisos" component={GestionPermisos} />}
+                {m.panel_super_admin && <Route path="/super-admin" component={SuperAdminPanel} />}
+                {(m.panel_super_admin || m.admin_usuarios) && <Route path="/gestion-permisos" component={GestionPermisos} />}
                 
-                {!isConserjeria && <Route path="/chat-ia" component={ChatIA} />}
+                <Route path="/chat-ia" component={ChatIA} />
 
                 <Route path="/perfil" component={() => <Profile userRole={userRole} />} />
 

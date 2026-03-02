@@ -43,243 +43,109 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Logo } from "@/components/Logo";
 import type { User } from "@shared/models/auth";
 import type { UserRole, Ticket as TicketType } from "@shared/schema";
+import type { UserPermissions } from "@/hooks/use-permissions";
+import type { ModuleKey } from "@shared/modulePermissions";
+import { ROLE_LABELS } from "@shared/modulePermissions";
+import type { LucideIcon } from "lucide-react";
 
 interface DesktopSidebarProps {
   user: User;
   userRole: UserRole;
   onLogout: () => void;
+  permissions: UserPermissions;
 }
 
-const managerNavItems = [
-  { 
-    group: "Dashboards",
-    items: [
-      { path: "/dashboard/tickets", label: "Tickets Semáforo", icon: Ticket },
-      { path: "/dashboard/visitas", label: "Panel Visitas", icon: Calendar },
-      { path: "/calendario", label: "Calendario", icon: CalendarDays },
-    ]
-  },
-  {
-    group: "Operaciones",
-    items: [
-      { path: "/tickets", label: "Todos los Tickets", icon: Ticket },
-      { path: "/tickets?mine=true", label: "Mis Tickets", icon: ClipboardList },
-      { path: "/visitas", label: "Visitas", icon: Calendar },
-      { path: "/consulta-operacional", label: "Consulta Operacional", icon: BarChart3 },
-    ]
-  },
-  {
-    group: "Proyectos",
-    items: [
-      { path: "/proyectos/semaforo", label: "Proyectos Semáforo", icon: FolderKanban },
-      { path: "/proyectos", label: "Panel Proyectos", icon: ClipboardList },
-      { path: "/proyectos/calendario", label: "Calendario Proyectos", icon: CalendarDays },
-    ]
-  },
-  {
-    group: "Gestión",
-    items: [
-      { path: "/edificios", label: "Edificios", icon: Building2 },
-      { path: "/equipos", label: "Equipos Críticos", icon: Wrench },
-      { path: "/mantenedores", label: "Proveedores", icon: HardHat },
-      { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
-    ]
-  },
-  {
-    group: "Reportes",
-    items: [
-      { path: "/reportes/visitas", label: "Informe Visitas", icon: Calendar },
-      { path: "/reportes/tickets", label: "Informe Tickets", icon: Ticket },
-      { path: "/reportes/equipos", label: "Informe Equipos", icon: Wrench },
-      { path: "/reportes/ejecutivos", label: "Informe Ejecutivos", icon: Users },
-      { path: "/reportes/cumplimiento", label: "Estado Documental y Operativo", icon: FileCheck },
-    ]
-  },
-  {
-    group: "Herramientas",
-    items: [
-      { path: "/chat-ia", label: "Asistente IA", icon: Bot },
-    ]
-  },
-];
+interface NavItem {
+  path: string;
+  label: string;
+  icon: LucideIcon;
+  moduleKey?: ModuleKey;
+}
 
-const managerWithReportsNavItems = [
-  { 
+interface NavGroup {
+  group: string;
+  items: NavItem[];
+}
+
+const allNavGroups: NavGroup[] = [
+  {
+    group: "Panel Super Admin",
+    items: [
+      { path: "/super-admin", label: "Panel Super Admin", icon: Shield, moduleKey: "panel_super_admin" },
+      { path: "/gestion-permisos", label: "Gestión de Permisos", icon: Shield, moduleKey: "panel_super_admin" },
+    ]
+  },
+  {
     group: "Dashboards",
     items: [
-      { path: "/dashboard/tickets", label: "Tickets Semáforo", icon: Ticket },
-      { path: "/dashboard/visitas", label: "Panel Visitas", icon: Calendar },
-      { path: "/calendario", label: "Calendario", icon: CalendarDays },
+      { path: "/dashboard/overview", label: "Panel General", icon: LayoutDashboard, moduleKey: "dashboard_overview" },
+      { path: "/dashboard/tickets", label: "Tickets Semáforo", icon: Ticket, moduleKey: "dashboard_tickets" },
+      { path: "/dashboard/visitas", label: "Panel Visitas", icon: Calendar, moduleKey: "dashboard_visitas" },
+      { path: "/calendario", label: "Calendario", icon: CalendarDays, moduleKey: "calendario" },
     ]
   },
   {
     group: "Operaciones",
     items: [
-      { path: "/tickets", label: "Todos los Tickets", icon: Ticket },
-      { path: "/tickets?mine=true", label: "Mis Tickets", icon: ClipboardList },
-      { path: "/visitas", label: "Visitas", icon: Calendar },
+      { path: "/tickets", label: "Todos los Tickets", icon: Ticket, moduleKey: "tickets" },
+      { path: "/tickets?mine=true", label: "Mis Tickets", icon: ClipboardList, moduleKey: "tickets" },
+      { path: "/visitas", label: "Visitas", icon: Calendar, moduleKey: "visitas" },
+      { path: "/consulta-operacional", label: "Consulta Operacional", icon: BarChart3, moduleKey: "consulta_operacional" },
+    ]
+  },
+  {
+    group: "Mi Edificio",
+    items: [
+      { path: "/tickets", label: "Tickets Asignados", icon: Ticket, moduleKey: "tickets" },
+      { path: "/egresos", label: "Cuentas / Egresos", icon: ArrowUpCircle, moduleKey: "egresos" },
     ]
   },
   {
     group: "Proyectos",
     items: [
-      { path: "/proyectos/semaforo", label: "Proyectos Semáforo", icon: FolderKanban },
-      { path: "/proyectos", label: "Panel Proyectos", icon: ClipboardList },
-      { path: "/proyectos/calendario", label: "Calendario Proyectos", icon: CalendarDays },
+      { path: "/proyectos/semaforo", label: "Proyectos Semáforo", icon: FolderKanban, moduleKey: "proyectos" },
+      { path: "/proyectos", label: "Panel Proyectos", icon: ClipboardList, moduleKey: "proyectos" },
+      { path: "/proyectos/calendario", label: "Calendario Proyectos", icon: CalendarDays, moduleKey: "proyectos" },
     ]
   },
   {
     group: "Finanzas",
     items: [
-      { path: "/cierre-mensual", label: "Cierre Mensual", icon: FileCheck },
-      { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
-      { path: "/verificacion-ggcc", label: "Verificación GGCC", icon: ClipboardCheck },
-      { path: "/historial-pagos", label: "Historial de Pagos", icon: History },
-      { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
-      { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
-      { path: "/consumos-recurrentes", label: "Consumos Recurrentes", icon: Repeat },
+      { path: "/cierre-mensual", label: "Cierre Mensual", icon: FileCheck, moduleKey: "cierre_mensual" },
+      { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark, moduleKey: "conciliacion_bancaria" },
+      { path: "/verificacion-ggcc", label: "Verificación GGCC", icon: ClipboardCheck, moduleKey: "verificacion_ggcc" },
+      { path: "/historial-pagos", label: "Historial de Pagos", icon: History, moduleKey: "historial_pagos" },
+      { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle, moduleKey: "ingresos" },
+      { path: "/egresos", label: "Egresos", icon: ArrowUpCircle, moduleKey: "egresos" },
+      { path: "/consumos-recurrentes", label: "Consumos Recurrentes", icon: Repeat, moduleKey: "consumos_recurrentes" },
     ]
   },
   {
     group: "Gestión",
     items: [
-      { path: "/edificios", label: "Edificios", icon: Building2 },
-      { path: "/equipos", label: "Equipos Críticos", icon: Wrench },
-      { path: "/mantenedores", label: "Proveedores", icon: HardHat },
-      { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
+      { path: "/edificios", label: "Edificios", icon: Building2, moduleKey: "edificios" },
+      { path: "/equipos", label: "Equipos Críticos", icon: Wrench, moduleKey: "equipos_criticos" },
+      { path: "/mantenedores", label: "Proveedores", icon: HardHat, moduleKey: "mantenedores" },
+      { path: "/ejecutivos", label: "Ejecutivos", icon: Users, moduleKey: "ejecutivos" },
     ]
   },
   {
     group: "Reportes",
     items: [
-      { path: "/reportes/visitas", label: "Informe Visitas", icon: Calendar },
-      { path: "/reportes/tickets", label: "Informe Tickets", icon: Ticket },
-      { path: "/reportes/financiero", label: "Informe Financiero", icon: DollarSign },
-      { path: "/reportes/equipos", label: "Informe Equipos", icon: Wrench },
-      { path: "/reportes/ejecutivos", label: "Informe Ejecutivos", icon: Users },
-      { path: "/reportes/egresos", label: "Informe Egresos", icon: FileSpreadsheet },
-      { path: "/reportes/cumplimiento", label: "Estado Documental y Operativo", icon: FileCheck },
-    ]
-  },
-  {
-    group: "Herramientas",
-    items: [
-      { path: "/chat-ia", label: "Asistente IA", icon: Bot },
-    ]
-  },
-];
-
-const executiveNavItems = [
-  {
-    group: "Mi Trabajo",
-    items: [
-      { path: "/visitas", label: "Agenda de Visitas", icon: Calendar },
-      { path: "/tickets", label: "Mis Tickets", icon: Ticket },
-      { path: "/calendario", label: "Calendario", icon: CalendarDays },
-      { path: "/consulta-operacional", label: "Consulta Operacional", icon: BarChart3 },
-    ]
-  },
-  {
-    group: "Proyectos",
-    items: [
-      { path: "/proyectos/semaforo", label: "Proyectos Semáforo", icon: FolderKanban },
-      { path: "/proyectos", label: "Panel Proyectos", icon: ClipboardList },
-      { path: "/proyectos/calendario", label: "Calendario Proyectos", icon: CalendarDays },
-    ]
-  },
-  {
-    group: "Pagos",
-    items: [
-      { path: "/verificacion-ggcc", label: "Verificación GGCC", icon: ClipboardCheck },
-      { path: "/historial-pagos", label: "Historial de Pagos", icon: History },
-    ]
-  },
-  {
-    group: "Consulta",
-    items: [
-      { path: "/edificios", label: "Edificios", icon: Building2 },
-      { path: "/equipos", label: "Equipos Críticos", icon: Wrench },
-    ]
-  },
-  {
-    group: "Reportes",
-    items: [
-      { path: "/reportes/cumplimiento", label: "Estado Documental y Operativo", icon: FileCheck },
-    ]
-  },
-  {
-    group: "Herramientas",
-    items: [
-      { path: "/chat-ia", label: "Asistente IA", icon: Bot },
-    ]
-  },
-];
-
-const generalManagerNavItems = [
-  { 
-    group: "Dashboards",
-    items: [
-      { path: "/dashboard/overview", label: "Panel General", icon: LayoutDashboard },
-      { path: "/dashboard/tickets", label: "Tickets Semáforo", icon: Ticket },
-      { path: "/dashboard/visitas", label: "Panel Visitas", icon: Calendar },
-      { path: "/calendario", label: "Calendario", icon: CalendarDays },
-    ]
-  },
-  {
-    group: "Operaciones",
-    items: [
-      { path: "/tickets", label: "Todos los Tickets", icon: Ticket },
-      { path: "/tickets?mine=true", label: "Mis Tickets", icon: ClipboardList },
-      { path: "/visitas", label: "Visitas", icon: Calendar },
-      { path: "/consulta-operacional", label: "Consulta Operacional", icon: BarChart3 },
-    ]
-  },
-  {
-    group: "Proyectos",
-    items: [
-      { path: "/proyectos/semaforo", label: "Proyectos Semáforo", icon: FolderKanban },
-      { path: "/proyectos", label: "Panel Proyectos", icon: ClipboardList },
-      { path: "/proyectos/calendario", label: "Calendario Proyectos", icon: CalendarDays },
-    ]
-  },
-  {
-    group: "Finanzas",
-    items: [
-      { path: "/cierre-mensual", label: "Cierre Mensual", icon: FileCheck },
-      { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
-      { path: "/verificacion-ggcc", label: "Verificación GGCC", icon: ClipboardCheck },
-      { path: "/historial-pagos", label: "Historial de Pagos", icon: History },
-      { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
-      { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
-      { path: "/consumos-recurrentes", label: "Consumos Recurrentes", icon: Repeat },
-    ]
-  },
-  {
-    group: "Gestión",
-    items: [
-      { path: "/edificios", label: "Edificios", icon: Building2 },
-      { path: "/equipos", label: "Equipos Críticos", icon: Wrench },
-      { path: "/mantenedores", label: "Proveedores", icon: HardHat },
-      { path: "/ejecutivos", label: "Ejecutivos", icon: Users },
-    ]
-  },
-  {
-    group: "Reportes",
-    items: [
-      { path: "/reportes/visitas", label: "Informe Visitas", icon: Calendar },
-      { path: "/reportes/tickets", label: "Informe Tickets", icon: Ticket },
-      { path: "/reportes/financiero", label: "Informe Financiero", icon: DollarSign },
-      { path: "/reportes/equipos", label: "Informe Equipos", icon: Wrench },
-      { path: "/reportes/ejecutivos", label: "Informe Ejecutivos", icon: Users },
-      { path: "/reportes/egresos", label: "Informe Egresos", icon: FileSpreadsheet },
-      { path: "/reportes/cumplimiento", label: "Estado Documental y Operativo", icon: FileCheck },
+      { path: "/reportes/visitas", label: "Informe Visitas", icon: Calendar, moduleKey: "reportes_visitas" },
+      { path: "/reportes/tickets", label: "Informe Tickets", icon: Ticket, moduleKey: "reportes_tickets" },
+      { path: "/reportes/financiero", label: "Informe Financiero", icon: DollarSign, moduleKey: "reportes_financiero" },
+      { path: "/reportes/equipos", label: "Informe Equipos", icon: Wrench, moduleKey: "reportes_equipos" },
+      { path: "/reportes/ejecutivos", label: "Informe Ejecutivos", icon: Users, moduleKey: "reportes_ejecutivos" },
+      { path: "/reportes/egresos", label: "Informe Egresos", icon: FileSpreadsheet, moduleKey: "reportes_egresos" },
+      { path: "/reportes/cumplimiento", label: "Estado Documental y Operativo", icon: FileCheck, moduleKey: "estado_documental" },
     ]
   },
   {
     group: "Administración",
     items: [
-      { path: "/admin/usuarios", label: "Usuarios", icon: Shield },
-      { path: "/gestion-permisos", label: "Gestión de Permisos", icon: Shield },
+      { path: "/admin/usuarios", label: "Usuarios", icon: Shield, moduleKey: "admin_usuarios" },
+      { path: "/gestion-permisos", label: "Gestión de Permisos", icon: Shield, moduleKey: "admin_usuarios" },
     ]
   },
   {
@@ -290,70 +156,35 @@ const generalManagerNavItems = [
   },
 ];
 
-const financeNavItems = [
-  { 
-    group: "Dashboards",
-    items: [
-      { path: "/dashboard/tickets", label: "Tickets Semáforo", icon: Ticket },
-    ]
-  },
-  {
-    group: "Finanzas",
-    items: [
-      { path: "/cierre-mensual", label: "Cierre Mensual", icon: FileCheck },
-      { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark },
-      { path: "/verificacion-ggcc", label: "Verificación GGCC", icon: ClipboardCheck },
-      { path: "/historial-pagos", label: "Historial de Pagos", icon: History },
-      { path: "/ingresos", label: "Ingresos", icon: ArrowDownCircle },
-      { path: "/egresos", label: "Egresos", icon: ArrowUpCircle },
-      { path: "/consumos-recurrentes", label: "Consumos Recurrentes", icon: Repeat },
-    ]
-  },
-  {
-    group: "Reportes",
-    items: [
-      { path: "/reportes/cumplimiento", label: "Estado Documental y Operativo", icon: FileCheck },
-      { path: "/reportes/egresos", label: "Informe Egresos", icon: FileSpreadsheet },
-    ]
-  },
-  {
-    group: "Herramientas",
-    items: [
-      { path: "/chat-ia", label: "Asistente IA", icon: Bot },
-    ]
-  },
-];
+function getFilteredNavGroups(modules: Record<ModuleKey, boolean>, userRole: UserRole): NavGroup[] {
+  const isConserjeria = userRole === "conserjeria";
 
-const conserjeriaNavItems = [
-  {
-    group: "Mi Edificio",
-    items: [
-      { path: "/tickets", label: "Tickets Asignados", icon: Ticket },
-      { path: "/egresos", label: "Cuentas / Egresos", icon: ArrowUpCircle },
-    ]
-  },
-];
+  const result: NavGroup[] = [];
 
-const superAdminNavItems = [
-  {
-    group: "Panel Super Admin",
-    items: [
-      { path: "/super-admin", label: "Panel Super Admin", icon: Shield },
-      { path: "/gestion-permisos", label: "Gestión de Permisos", icon: Shield },
-    ]
-  },
-  {
-    group: "Herramientas",
-    items: [
-      { path: "/chat-ia", label: "Asistente IA", icon: Bot },
-    ]
-  },
-];
+  for (const group of allNavGroups) {
+    if (group.group === "Panel Super Admin" && !modules.panel_super_admin) continue;
+    if (group.group === "Administración" && !modules.admin_usuarios) continue;
+    if (group.group === "Mi Edificio" && !isConserjeria) continue;
+    if (isConserjeria && group.group !== "Mi Edificio") continue;
 
-export function DesktopSidebar({ user, userRole, onLogout }: DesktopSidebarProps) {
+    if (group.group === "Administración" && modules.panel_super_admin) continue;
+
+    const filteredItems = group.items.filter((item) => {
+      if (!item.moduleKey) return true;
+      return !!modules[item.moduleKey];
+    });
+
+    if (filteredItems.length > 0) {
+      result.push({ group: group.group, items: filteredItems });
+    }
+  }
+
+  return result;
+}
+
+export function DesktopSidebar({ user, userRole, onLogout, permissions }: DesktopSidebarProps) {
   const [location] = useLocation();
   
-  // Fetch delegated tickets count for managers
   const isManager = ["gerente_general", "gerente_operaciones", "gerente_comercial"].includes(userRole);
   
   const { data: delegatedTickets } = useQuery<TicketType[]>({
@@ -364,26 +195,7 @@ export function DesktopSidebar({ user, userRole, onLogout }: DesktopSidebarProps
   
   const delegatedCount = delegatedTickets?.length || 0;
   
-  const getNavItems = () => {
-    switch (userRole) {
-      case "super_admin":
-        return superAdminNavItems;
-      case "gerente_general":
-        return generalManagerNavItems;
-      case "gerente_comercial":
-        return managerWithReportsNavItems;
-      case "gerente_operaciones":
-        return managerNavItems;
-      case "gerente_finanzas":
-        return financeNavItems;
-      case "conserjeria":
-        return conserjeriaNavItems;
-      default:
-        return executiveNavItems;
-    }
-  };
-  
-  const navItems = getNavItems();
+  const navItems = getFilteredNavGroups(permissions.modules, userRole);
 
   const getInitials = () => {
     const first = user.firstName?.[0] || "";
@@ -392,15 +204,7 @@ export function DesktopSidebar({ user, userRole, onLogout }: DesktopSidebarProps
   };
 
   const getRoleLabel = () => {
-    const labels: Record<UserRole, string> = {
-      super_admin: "Super Admin",
-      gerente_general: "Gerente General",
-      gerente_operaciones: "Gerente Operaciones",
-      gerente_comercial: "Gerente Comercial",
-      gerente_finanzas: "Ejecutivo de Apoyo",
-      ejecutivo_operaciones: "Ejecutivo Operaciones",
-    };
-    return labels[userRole];
+    return ROLE_LABELS[userRole] || userRole;
   };
 
   return (

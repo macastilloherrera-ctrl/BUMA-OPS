@@ -29,7 +29,6 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { ArrowLeft, Calendar, AlertTriangle } from "lucide-react";
 import type { Building, UserProfile } from "@shared/schema";
 import { Link } from "wouter";
-import { isManagerRole } from "@/lib/roleRoutes";
 
 const scheduleVisitSchema = z.object({
   buildingId: z.string().min(1, "Selecciona un edificio"),
@@ -59,7 +58,7 @@ export default function ScheduleVisit() {
     queryKey: ["/api/me"],
   });
 
-  const isManager = userProfile ? isManagerRole(userProfile.role as any) : false;
+  const isManager = userProfile ? ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas"].includes(userProfile.role) : false;
 
   const { data: allBuildings } = useQuery<Building[]>({
     queryKey: ["/api/buildings"],

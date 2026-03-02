@@ -79,6 +79,45 @@ function isAuthenticated(req: Request, res: Response, next: NextFunction) {
 }
 
 // Middleware to check if user is a manager (can see costs)
+async function getUserPermissions(role: string): Promise<Record<string, boolean> | null> {
+  try {
+    const row = await storage.getRolePermissions(role);
+    if (row) {
+      return JSON.parse(row.modules);
+    }
+    const { DEFAULT_PERMISSIONS } = await import("../shared/modulePermissions");
+    const defaults = DEFAULT_PERMISSIONS[role];
+    return defaults ? defaults.modules : null;
+  } catch {
+    return null;
+  }
+}
+
+function requireModule(...moduleKeys: string[]) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ error: "No autenticado" });
+    }
+    const user = req.user as any;
+    if (!user.id && user.claims?.sub) {
+      user.id = user.claims.sub;
+    }
+    const profile = await storage.getUserProfile(req.user.id);
+    if (!profile) {
+      return res.status(403).json({ error: "Acceso denegado" });
+    }
+    const modules = await getUserPermissions(profile.role);
+    if (!modules) {
+      return res.status(403).json({ error: "Acceso denegado" });
+    }
+    const hasAccess = moduleKeys.some(k => modules[k]);
+    if (!hasAccess) {
+      return res.status(403).json({ error: "Acceso denegado" });
+    }
+    next();
+  };
+}
+
 async function isManager(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {
     return res.status(401).json({ error: "No autenticado" });
