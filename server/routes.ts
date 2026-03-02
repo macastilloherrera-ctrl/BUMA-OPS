@@ -60,6 +60,7 @@ import {
   insertMonthlyClosingCycleSchema,
   userProfiles,
   rolePermissionsConfig,
+  maintainerCategories,
   type UserRole,
   type UserProfile,
 } from "@shared/schema";
@@ -6013,6 +6014,22 @@ export async function registerRoutes(
     try {
       const results = [];
 
+      const staffPasswords: Record<string, string> = {
+        "adminops@buma.cl": "BumaOps2026!",
+        "macastillo@buma.cl": "BumaOps2026!",
+        "mjvildosola@buma.cl": "BumaOps2026!",
+        "cristina@buma.cl": "BumaOps2026!",
+        "administracion@buma.cl": "BumaOps2026!",
+      };
+      for (const [emailAddr, pw] of Object.entries(staffPasswords)) {
+        const hash = await bcrypt.hash(pw, 10);
+        const [updated] = await db.update(usersTable)
+          .set({ passwordHash: hash, updatedAt: new Date() })
+          .where(eq(usersTable.email, emailAddr))
+          .returning({ id: usersTable.id, email: usersTable.email });
+        results.push({ action: "password_fixed", email: emailAddr, found: !!updated });
+      }
+
       await db.update(userProfiles).set({ role: "gerente_finanzas" }).where(
         eq(userProfiles.userId, (await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, "administracion@buma.cl")))[0]?.id || "")
       );
@@ -6036,6 +6053,21 @@ export async function registerRoutes(
         } else {
           await db.insert(rolePermissionsConfig).values({ role: p.role, modules: p.modules, homeRoute: p.homeRoute, buildingScope: p.buildingScope });
           results.push({ action: "permissions_created", role: p.role });
+        }
+      }
+
+      const defaultCategories = [
+        "Ascensores", "Bombas", "Camaras de seguridad", "Electricos",
+        "Filtraciones", "Filtros de piscina", "Jardineria", "Mantencion general",
+        "Pinturas", "Portones", "Valvulas", "Vidrios"
+      ];
+      for (const name of defaultCategories) {
+        const [existing] = await db.select().from(maintainerCategories).where(eq(maintainerCategories.name, name));
+        if (!existing) {
+          await db.insert(maintainerCategories).values({ name, isDefault: true });
+          results.push({ action: "category_created", name });
+        } else {
+          results.push({ action: "category_exists", name });
         }
       }
 
