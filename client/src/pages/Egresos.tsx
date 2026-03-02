@@ -265,6 +265,7 @@ export default function Egresos() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
       toast({ title: "Egreso actualizado exitosamente" });
       closeDialog();
     },
@@ -309,6 +310,10 @@ export default function Egresos() {
 
   const { data: vendorList } = useQuery<{ id: string; name: string; rut: string | null }[]>({
     queryKey: ["/api/vendors"],
+  });
+
+  const { data: categoryList } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/maintainers/categories"],
   });
 
   const [vendorSearch, setVendorSearch] = useState("");
@@ -920,13 +925,20 @@ export default function Egresos() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Categoría</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Ej: agua, luz, gas"
-                          data-testid="input-category"
-                          {...field}
-                        />
-                      </FormControl>
+                      <Select onValueChange={field.onChange} value={field.value || ""}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-category">
+                            <SelectValue placeholder="Seleccionar categoría" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {categoryList?.map(cat => (
+                            <SelectItem key={cat.id} value={cat.name} data-testid={`category-option-${cat.id}`}>
+                              {cat.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -938,44 +950,55 @@ export default function Egresos() {
                   render={({ field }) => (
                     <FormItem className="relative">
                       <FormLabel>Proveedor</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Nombre del proveedor (se guardará en MAYÚSCULAS)"
-                          data-testid="input-vendor-name"
-                          value={field.value}
-                          onChange={(e) => {
-                            const val = e.target.value.toUpperCase();
-                            field.onChange(val);
-                            setVendorSearch(val);
-                            setShowVendorSuggestions(val.length > 0);
-                          }}
-                          onFocus={() => {
-                            if (field.value && field.value.length > 0) setShowVendorSuggestions(true);
-                          }}
-                          onBlur={() => {
-                            setTimeout(() => setShowVendorSuggestions(false), 200);
-                          }}
-                        />
-                      </FormControl>
-                      {showVendorSuggestions && filteredVendors.length > 0 && (
-                        <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-popover border rounded-md shadow-md max-h-40 overflow-y-auto" data-testid="vendor-suggestions">
-                          {filteredVendors.map(v => (
-                            <button
-                              key={v.id}
-                              type="button"
-                              className="w-full text-left px-3 py-2 text-sm hover-elevate cursor-pointer"
-                              data-testid={`vendor-suggestion-${v.id}`}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                field.onChange(v.name);
-                                setVendorSearch(v.name);
+                      {vendorList && vendorList.length > 0 ? (
+                        <>
+                          <Select
+                            onValueChange={(val) => {
+                              if (val === "__manual__") {
+                                field.onChange("");
+                                setShowVendorSuggestions(true);
+                              } else {
+                                field.onChange(val);
                                 setShowVendorSuggestions(false);
-                              }}
-                            >
-                              {v.name}
-                            </button>
-                          ))}
-                        </div>
+                              }
+                            }}
+                            value={showVendorSuggestions ? "__manual__" : (field.value || "")}
+                          >
+                            <FormControl>
+                              <SelectTrigger data-testid="select-vendor">
+                                <SelectValue placeholder="Seleccionar proveedor" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {vendorList.map(v => (
+                                <SelectItem key={v.id} value={v.name} data-testid={`vendor-option-${v.id}`}>
+                                  {v.name}{v.rut ? ` (${v.rut})` : ""}
+                                </SelectItem>
+                              ))}
+                              <SelectItem value="__manual__">Ingresar manualmente...</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {showVendorSuggestions && (
+                            <FormControl>
+                              <Input
+                                placeholder="Nombre del proveedor (MAYÚSCULAS)"
+                                data-testid="input-vendor-name"
+                                className="mt-2"
+                                value={field.value || ""}
+                                onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                              />
+                            </FormControl>
+                          )}
+                        </>
+                      ) : (
+                        <FormControl>
+                          <Input
+                            placeholder="Nombre del proveedor (MAYÚSCULAS)"
+                            data-testid="input-vendor-name"
+                            value={field.value || ""}
+                            onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                          />
+                        </FormControl>
                       )}
                       <FormMessage />
                     </FormItem>
