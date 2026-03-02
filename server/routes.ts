@@ -1980,13 +1980,22 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Ticket no encontrado" });
       }
       
-      // Auto-create expense when work is completed with invoice data
-      if (patchBody.status === "trabajo_completado" && patchBody.invoiceStatus === "submitted"
-          && patchBody.invoiceAmount && Number(patchBody.invoiceAmount) > 0) {
+      // Auto-create expense when ticket has invoice data (trabajo_completado or resuelto)
+      const shouldAutoExpense = (
+        (patchBody.status === "trabajo_completado" || patchBody.status === "resuelto") &&
+        (
+          (patchBody.invoiceStatus === "submitted" && patchBody.invoiceAmount && Number(patchBody.invoiceAmount) > 0) ||
+          (existingTicket.invoiceStatus === "submitted" && existingTicket.invoiceAmount && Number(existingTicket.invoiceAmount) > 0)
+        )
+      );
+      if (shouldAutoExpense) {
         try {
           const existingExpenses = await storage.getExpenses({ buildingId: existingTicket.buildingId });
           const alreadyHasExpense = existingExpenses.some(e => e.sourceTicketId === existingTicket.id);
           if (!alreadyHasExpense) {
+            const invoiceAmt = patchBody.invoiceAmount || existingTicket.invoiceAmount;
+            const invoiceNum = patchBody.invoiceNumber || existingTicket.invoiceNumber;
+            const invoiceDoc = patchBody.invoiceDocumentKey || (existingTicket as any).invoiceDocumentKey || null;
             let vendorName = "";
             if (existingTicket.maintainerId) {
               const maintainer = await storage.getMaintainer(existingTicket.maintainerId);
@@ -1997,12 +2006,12 @@ export async function registerRoutes(
               sourceType: "ticket",
               sourceTicketId: existingTicket.id,
               description: `Ticket ${existingTicket.id.substring(0, 8).toUpperCase()} - ${existingTicket.description?.substring(0, 100) || "Trabajo completado"}`,
-              amount: String(patchBody.invoiceAmount),
+              amount: String(invoiceAmt),
               vendorName: vendorName || null,
               vendorId: existingTicket.maintainerId || null,
               documentType: "factura",
-              documentNumber: patchBody.invoiceNumber || null,
-              documentKey: patchBody.invoiceDocumentKey || null,
+              documentNumber: invoiceNum || null,
+              documentKey: invoiceDoc,
               paymentDate: new Date(),
               validationStatus: "pendiente",
               createdBy: req.user!.id,
