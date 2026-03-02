@@ -118,6 +118,23 @@ export default function RecurringExpenses() {
     }
   );
 
+  const { data: vendorList } = useQuery<{ id: string; name: string; rut: string | null }[]>({
+    queryKey: ["/api/vendors"],
+  });
+
+  const { data: maintainerList } = useQuery<{ id: string; companyName: string }[]>({
+    queryKey: ["/api/maintainers"],
+  });
+
+  const combinedProviders = (() => {
+    const map = new Map<string, string>();
+    maintainerList?.forEach(m => map.set(m.companyName.toUpperCase(), m.companyName));
+    vendorList?.forEach(v => map.set(v.name.toUpperCase(), v.name));
+    return Array.from(map.entries()).map(([key, name]) => ({ key, name })).sort((a, b) => a.name.localeCompare(b.name));
+  })();
+
+  const [showManualVendor, setShowManualVendor] = useState(false);
+
   const queryParams = new URLSearchParams();
   if (selectedBuilding !== "all")
     queryParams.set("buildingId", selectedBuilding);
@@ -591,13 +608,43 @@ export default function RecurringExpenses() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Proveedor</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="Nombre del proveedor"
-                        data-testid="input-vendor-name"
-                        {...field}
-                      />
-                    </FormControl>
+                    <Select
+                      onValueChange={(val) => {
+                        if (val === "__manual__") {
+                          field.onChange("");
+                          setShowManualVendor(true);
+                        } else {
+                          field.onChange(val);
+                          setShowManualVendor(false);
+                        }
+                      }}
+                      value={showManualVendor ? "__manual__" : (field.value || "")}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-vendor">
+                          <SelectValue placeholder="Seleccionar proveedor" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {combinedProviders.map(p => (
+                          <SelectItem key={p.key} value={p.name}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="__manual__">Ingresar manualmente...</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {showManualVendor && (
+                      <FormControl>
+                        <Input
+                          placeholder="Nombre del proveedor (MAYÚSCULAS)"
+                          data-testid="input-vendor-name"
+                          className="mt-2"
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                        />
+                      </FormControl>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}

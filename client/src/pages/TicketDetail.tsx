@@ -235,7 +235,7 @@ export default function TicketDetail() {
     queryKey: ["/api/user/profile"],
   });
 
-  const isManager = userProfile?.role === "gerente_general" || userProfile?.role === "gerente_operaciones";
+  const isManager = userProfile?.role ? ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas"].includes(userProfile.role) : false;
   const canSeeCosts = userProfile?.role !== "ejecutivo_operaciones";
 
   const { data: ticket, isLoading } = useQuery<TicketWithDetails>({

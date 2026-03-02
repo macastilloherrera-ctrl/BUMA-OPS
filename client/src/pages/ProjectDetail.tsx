@@ -167,9 +167,26 @@ export default function ProjectDetail() {
     queryKey: ["/api/projects", id],
   });
 
-  const { data: allVendors } = useQuery<Vendor[]>({
+  const { data: rawVendors } = useQuery<Vendor[]>({
     queryKey: ["/api/vendors"],
   });
+
+  const { data: maintainersList } = useQuery<{ id: string; companyName: string }[]>({
+    queryKey: ["/api/maintainers"],
+  });
+
+  const allVendors = (() => {
+    const map = new Map<string, Vendor>();
+    maintainersList?.forEach(m => {
+      const key = m.companyName.toUpperCase();
+      if (!map.has(key)) map.set(key, { id: m.id, name: m.companyName, rut: null, isActive: true, createdAt: "" } as Vendor);
+    });
+    rawVendors?.forEach(v => {
+      const key = v.name.toUpperCase();
+      if (!map.has(key)) map.set(key, v);
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  })();
 
   const updateProjectMutation = useMutation({
     mutationFn: async (data: Partial<Project>) => {
@@ -433,7 +450,7 @@ export default function ProjectDetail() {
     }
   };
 
-  const isManager = userProfile?.role && ["super_admin", "gerente_general", "gerente_operaciones", "gerente_comercial"].includes(userProfile.role);
+  const isManager = userProfile?.role ? ["super_admin", "gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas"].includes(userProfile.role) : false;
 
   const getNextReviewNumber = () => {
     if (!project) return 1;

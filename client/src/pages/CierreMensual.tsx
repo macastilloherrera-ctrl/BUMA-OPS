@@ -158,7 +158,7 @@ export default function CierreMensual() {
   const { data: userProfile } = useQuery<UserProfile>({
     queryKey: ["/api/user/profile"],
   });
-  const canModify = userProfile && ["gerente_general", "gerente_comercial"].includes(userProfile.role);
+  const canModify = userProfile && ["gerente_general", "gerente_comercial", "gerente_finanzas"].includes(userProfile.role);
   const canEditChecklist = userProfile && ["gerente_general", "gerente_comercial", "gerente_finanzas"].includes(userProfile.role);
 
   const [selectedYear, setSelectedYear] = useState<string>(String(currentYear));

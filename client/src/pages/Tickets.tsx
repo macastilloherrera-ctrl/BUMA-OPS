@@ -28,7 +28,7 @@ export default function Tickets() {
     queryKey: ["/api/user/profile"],
   });
 
-  const isManager = userProfile?.role === "gerente_general" || userProfile?.role === "gerente_operaciones" || userProfile?.role === "gerente_comercial";
+  const isManager = userProfile?.role ? ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas"].includes(userProfile.role) : false;
 
   const { data: tickets, isLoading } = useQuery<TicketWithBuilding[]>({
     queryKey: ["/api/tickets"],
