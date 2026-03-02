@@ -5977,6 +5977,38 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/auth/fix-passwords", async (req, res) => {
+    try {
+      const staffPasswords: Record<string, string> = {
+        "adminops@buma.cl": "BumaOps2026!",
+        "macastillo@buma.cl": "BumaOps2026!",
+        "mjvildosola@buma.cl": "BumaOps2026!",
+        "cristina@buma.cl": "BumaOps2026!",
+        "administracion@buma.cl": "BumaOps2026!",
+      };
+
+      const results = [];
+      for (const [email, password] of Object.entries(staffPasswords)) {
+        const hash = await bcrypt.hash(password, 10);
+        const [updated] = await db.update(usersTable)
+          .set({ passwordHash: hash, updatedAt: new Date() })
+          .where(eq(usersTable.email, email))
+          .returning({ id: usersTable.id, email: usersTable.email });
+        if (updated) {
+          results.push({ email: updated.email, status: "password_reset" });
+        } else {
+          results.push({ email, status: "not_found" });
+        }
+      }
+
+      console.log("[Fix] Passwords reset:", JSON.stringify(results));
+      res.json({ success: true, results });
+    } catch (error: any) {
+      console.error("[Fix] Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/auth/sync-production", async (req, res) => {
     try {
       const results = [];
