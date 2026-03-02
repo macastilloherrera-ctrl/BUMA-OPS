@@ -52,7 +52,7 @@ const roleLabels: Record<string, string> = {
   gerente_general: "Gerente General",
   gerente_operaciones: "Gerente de Operaciones",
   gerente_comercial: "Gerente Comercial",
-  gerente_finanzas: "Gerente de Finanzas",
+  gerente_finanzas: "Ejecutivo de Apoyo",
   ejecutivo_operaciones: "Ejecutivo de Operaciones",
   conserjeria: "Conserjería",
 };

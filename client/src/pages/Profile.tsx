@@ -28,7 +28,7 @@ export default function Profile({ userRole = "ejecutivo_operaciones" }: ProfileP
       gerente_general: "Gerente General",
       gerente_operaciones: "Gerente de Operaciones",
       gerente_comercial: "Gerente Comercial",
-      gerente_finanzas: "Gerente de Finanzas",
+      gerente_finanzas: "Ejecutivo de Apoyo",
       ejecutivo_operaciones: "Ejecutivo de Operaciones",
     };
     return labels[userRole];

@@ -104,7 +104,7 @@ BUMA OPS es una plataforma interna de operaciones para la administración de edi
 
 **12. Gestión de Permisos**
 - Configuración de acceso a módulos por rol.
-- 7 roles: Super Admin, Gerente General, Gerente Operaciones, Gerente Comercial, Gerente Finanzas, Ejecutivo Operaciones, Conserjería.
+- 7 roles: Super Admin, Gerente General, Gerente Operaciones, Gerente Comercial, Ejecutivo de Apoyo, Ejecutivo Operaciones, Conserjería.
 
 ### Conceptos Clave:
 - **Gasto Común**: Cuota mensual que pagan los copropietarios para mantener el edificio.

@@ -34,7 +34,7 @@ function generateConserjeriaUsername(buildingName: string): string {
   return `conserjeria_${slug}`;
 }
 import { db } from "./db";
-import { eq, or } from "drizzle-orm";
+import { eq, or, sql } from "drizzle-orm";
 import { users as usersTable, buildings as buildingsTable } from "@shared/schema";
 import {
   insertBuildingSchema,
@@ -59,6 +59,7 @@ import {
   insertRecurringExpenseTemplateSchema,
   insertMonthlyClosingCycleSchema,
   userProfiles,
+  rolePermissionsConfig,
   type UserRole,
   type UserProfile,
 } from "@shared/schema";
@@ -4808,7 +4809,7 @@ export async function registerRoutes(
         { id: "gerente_general", name: "Gerente General", description: "Acceso total a la plataforma" },
         { id: "gerente_operaciones", name: "Gerente de Operaciones", description: "Gestiona visitas, tickets y equipos" },
         { id: "gerente_comercial", name: "Gerente Comercial", description: "Acceso a reportes financieros" },
-        { id: "gerente_finanzas", name: "Gerente de Finanzas", description: "Acceso al módulo financiero" },
+        { id: "gerente_finanzas", name: "Ejecutivo de Apoyo", description: "Acceso al módulo financiero y apoyo operativo" },
         { id: "ejecutivo_operaciones", name: "Ejecutivo de Operaciones", description: "Trabajo de campo, sin acceso a costos" },
         { id: "conserjeria", name: "Conserjería", description: "Solo ve tickets de su edificio, sube evidencia" },
       ];
@@ -5949,6 +5950,70 @@ export async function registerRoutes(
   // ========================
   // TRADITIONAL AUTH ROUTES
   // ========================
+
+  app.get("/api/auth/debug-users-temp", async (req, res) => {
+    try {
+      const allUsers = await db.select({
+        id: usersTable.id,
+        email: usersTable.email,
+        username: usersTable.username,
+        firstName: usersTable.firstName,
+        lastName: usersTable.lastName,
+        hasPassword: sql<boolean>`CASE WHEN ${usersTable.passwordHash} IS NOT NULL AND ${usersTable.passwordHash} != '' THEN true ELSE false END`,
+      }).from(usersTable);
+      
+      const profiles = await db.select().from(userProfiles);
+      
+      res.json({ 
+        userCount: allUsers.length,
+        users: allUsers.map(u => ({
+          ...u,
+          profileRole: profiles.find(p => p.userId === u.id)?.role || "no_profile",
+          isActive: profiles.find(p => p.userId === u.id)?.isActive ?? false,
+        }))
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/auth/sync-production", async (req, res) => {
+    try {
+      const results = [];
+
+      await db.update(userProfiles).set({ role: "gerente_finanzas" }).where(
+        eq(userProfiles.userId, (await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, "administracion@buma.cl")))[0]?.id || "")
+      );
+      results.push({ action: "role_changed", email: "administracion@buma.cl", newRole: "gerente_finanzas" });
+
+      const permissionsData = [
+        { role: "conserjeria", modules: {"panel_super_admin":false,"dashboard_overview":false,"dashboard_tickets":false,"dashboard_visitas":false,"calendario":false,"visitas":false,"tickets":true,"edificios":false,"equipos_criticos":false,"proyectos":false,"conciliacion_bancaria":false,"cierre_mensual":false,"ingresos":false,"egresos":true,"consumos_recurrentes":false,"historial_pagos":false,"consulta_operacional":false,"verificacion_ggcc":false,"mantenedores":false,"ejecutivos":false,"admin_usuarios":false,"reportes_visitas":false,"reportes_tickets":false,"reportes_financiero":false,"reportes_equipos":false,"reportes_ejecutivos":false,"reportes_egresos":false,"estado_documental":false,"ver_costos":false,"aprobar_equipos":false}, homeRoute: "/tickets", buildingScope: "assigned" },
+        { role: "ejecutivo_operaciones", modules: {"panel_super_admin":false,"dashboard_overview":false,"dashboard_tickets":false,"dashboard_visitas":false,"calendario":true,"visitas":true,"tickets":true,"edificios":true,"equipos_criticos":true,"proyectos":true,"conciliacion_bancaria":false,"cierre_mensual":false,"ingresos":false,"egresos":false,"consumos_recurrentes":true,"historial_pagos":true,"consulta_operacional":true,"verificacion_ggcc":true,"mantenedores":true,"ejecutivos":false,"admin_usuarios":false,"reportes_visitas":false,"reportes_tickets":false,"reportes_financiero":false,"reportes_equipos":false,"reportes_ejecutivos":false,"reportes_egresos":false,"estado_documental":true,"ver_costos":false,"aprobar_equipos":false}, homeRoute: "/visitas?view=today", buildingScope: "assigned" },
+        { role: "gerente_comercial", modules: {"panel_super_admin":false,"dashboard_overview":false,"dashboard_tickets":true,"dashboard_visitas":true,"calendario":true,"visitas":true,"tickets":true,"edificios":true,"equipos_criticos":true,"proyectos":true,"conciliacion_bancaria":true,"cierre_mensual":true,"ingresos":true,"egresos":true,"consumos_recurrentes":true,"historial_pagos":true,"consulta_operacional":true,"verificacion_ggcc":true,"mantenedores":true,"ejecutivos":true,"admin_usuarios":false,"reportes_visitas":true,"reportes_tickets":true,"reportes_financiero":true,"reportes_equipos":true,"reportes_ejecutivos":true,"reportes_egresos":true,"estado_documental":true,"ver_costos":true,"aprobar_equipos":true}, homeRoute: "/dashboard/tickets", buildingScope: "all" },
+        { role: "gerente_finanzas", modules: {"panel_super_admin":false,"dashboard_overview":false,"dashboard_tickets":true,"dashboard_visitas":true,"calendario":false,"visitas":false,"tickets":true,"edificios":true,"equipos_criticos":true,"proyectos":true,"conciliacion_bancaria":true,"cierre_mensual":true,"ingresos":true,"egresos":true,"consumos_recurrentes":true,"historial_pagos":true,"consulta_operacional":false,"verificacion_ggcc":true,"mantenedores":true,"ejecutivos":false,"admin_usuarios":false,"reportes_visitas":false,"reportes_tickets":true,"reportes_financiero":false,"reportes_equipos":true,"reportes_ejecutivos":false,"reportes_egresos":true,"estado_documental":true,"ver_costos":false,"aprobar_equipos":false}, homeRoute: "/dashboard/tickets", buildingScope: "all" },
+        { role: "gerente_general", modules: {"panel_super_admin":false,"dashboard_overview":true,"dashboard_tickets":true,"dashboard_visitas":true,"calendario":true,"visitas":true,"tickets":true,"edificios":true,"equipos_criticos":true,"proyectos":true,"conciliacion_bancaria":true,"cierre_mensual":true,"ingresos":true,"egresos":true,"consumos_recurrentes":true,"historial_pagos":true,"consulta_operacional":true,"verificacion_ggcc":true,"mantenedores":true,"ejecutivos":true,"admin_usuarios":true,"reportes_visitas":true,"reportes_tickets":true,"reportes_financiero":true,"reportes_equipos":true,"reportes_ejecutivos":true,"reportes_egresos":true,"estado_documental":true,"ver_costos":true,"aprobar_equipos":true}, homeRoute: "/dashboard/overview", buildingScope: "all" },
+        { role: "gerente_operaciones", modules: {"panel_super_admin":false,"dashboard_overview":false,"dashboard_tickets":true,"dashboard_visitas":true,"calendario":true,"visitas":true,"tickets":true,"edificios":true,"equipos_criticos":true,"proyectos":true,"conciliacion_bancaria":false,"cierre_mensual":true,"ingresos":true,"egresos":true,"consumos_recurrentes":true,"historial_pagos":true,"consulta_operacional":true,"verificacion_ggcc":true,"mantenedores":true,"ejecutivos":true,"admin_usuarios":false,"reportes_visitas":true,"reportes_tickets":true,"reportes_financiero":false,"reportes_equipos":true,"reportes_ejecutivos":true,"reportes_egresos":false,"estado_documental":true,"ver_costos":true,"aprobar_equipos":true}, homeRoute: "/dashboard/tickets", buildingScope: "all" },
+        { role: "super_admin", modules: {"panel_super_admin":true,"dashboard_overview":false,"dashboard_tickets":false,"dashboard_visitas":false,"calendario":false,"visitas":false,"tickets":false,"edificios":false,"equipos_criticos":false,"proyectos":true,"conciliacion_bancaria":false,"cierre_mensual":false,"ingresos":false,"egresos":false,"consumos_recurrentes":false,"historial_pagos":false,"consulta_operacional":false,"verificacion_ggcc":true,"mantenedores":false,"ejecutivos":false,"admin_usuarios":false,"reportes_visitas":false,"reportes_tickets":false,"reportes_financiero":false,"reportes_equipos":false,"reportes_ejecutivos":false,"reportes_egresos":false,"estado_documental":false,"ver_costos":true,"aprobar_equipos":true}, homeRoute: "/super-admin", buildingScope: "all" },
+      ];
+
+      for (const p of permissionsData) {
+        const [existing] = await db.select().from(rolePermissionsConfig).where(eq(rolePermissionsConfig.role, p.role));
+        if (existing) {
+          await db.update(rolePermissionsConfig).set({ modules: p.modules, homeRoute: p.homeRoute, buildingScope: p.buildingScope }).where(eq(rolePermissionsConfig.role, p.role));
+          results.push({ action: "permissions_updated", role: p.role });
+        } else {
+          await db.insert(rolePermissionsConfig).values({ role: p.role, modules: p.modules, homeRoute: p.homeRoute, buildingScope: p.buildingScope });
+          results.push({ action: "permissions_created", role: p.role });
+        }
+      }
+
+      console.log("[Sync] Production sync complete:", JSON.stringify(results));
+      res.json({ success: true, results });
+    } catch (error: any) {
+      console.error("[Sync] Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
 
   // Login with email and password
   app.post("/api/auth/login", async (req, res) => {
