@@ -376,27 +376,28 @@ export default function Maintainers() {
                 )}
               />
 
-              <div className="flex gap-2 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleMaintainerDialogClose}
-                  className="flex-1"
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  type="submit"
-                  className="flex-1"
-                  disabled={createMaintainerMutation.isPending}
-                  data-testid="button-save-maintainer"
-                >
-                  {createMaintainerMutation.isPending ? "Guardando..." : "Guardar"}
-                </Button>
-              </div>
             </form>
           </Form>
         </ScrollArea>
+        <div className="flex gap-2 pt-4 border-t">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleMaintainerDialogClose}
+            className="flex-1"
+          >
+            Cancelar
+          </Button>
+          <Button
+            type="button"
+            className="flex-1"
+            disabled={createMaintainerMutation.isPending}
+            data-testid="button-save-maintainer"
+            onClick={() => maintainerForm.handleSubmit((data) => createMaintainerMutation.mutate(data))()}
+          >
+            {createMaintainerMutation.isPending ? "Guardando..." : "Guardar"}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );
