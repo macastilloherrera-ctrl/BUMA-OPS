@@ -6440,11 +6440,11 @@ export async function registerRoutes(
       const docNumber = req.body.documentNumber ? String(req.body.documentNumber).trim() : null;
 
       if (docType && docType !== "otro" && docNumber && vendorName) {
-        const duplicate = await storage.checkDuplicateDocument(docType, docNumber, vendorName);
+        const duplicate = await storage.checkDuplicateDocument(docType, docNumber, vendorName, undefined, req.body.buildingId);
         if (duplicate) {
           const typeLabel = docType === "factura" ? "Factura" : "Boleta";
           return res.status(409).json({
-            error: `${typeLabel} N° ${docNumber} del proveedor ${vendorName} ya existe en el sistema`,
+            error: `${typeLabel} N° ${docNumber} del proveedor ${vendorName} ya existe en este edificio`,
             duplicateId: duplicate.id,
           });
         }
@@ -6534,7 +6534,7 @@ export async function registerRoutes(
       const docNumber = updates.documentNumber !== undefined ? updates.documentNumber : existingExpense.documentNumber;
       const vName = updates.vendorName !== undefined ? updates.vendorName : existingExpense.vendorName;
       if (docType && docType !== "otro" && docNumber && vName) {
-        const duplicate = await storage.checkDuplicateDocument(docType, docNumber, vName, req.params.id);
+        const duplicate = await storage.checkDuplicateDocument(docType, docNumber, vName, req.params.id, existingExpense.buildingId);
         if (duplicate) {
           const typeLabel = docType === "factura" ? "Factura" : "Boleta";
           return res.status(409).json({

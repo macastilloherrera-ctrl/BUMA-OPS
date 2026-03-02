@@ -376,7 +376,7 @@ export interface IStorage {
   createExpense(expense: InsertExpense): Promise<Expense>;
   updateExpense(id: string, data: Partial<InsertExpense>): Promise<Expense | undefined>;
   deleteExpense(id: string): Promise<boolean>;
-  checkDuplicateDocument(documentType: string, documentNumber: string, vendorName: string, excludeId?: string): Promise<Expense | undefined>;
+  checkDuplicateDocument(documentType: string, documentNumber: string, vendorName: string, excludeId?: string, buildingId?: string): Promise<Expense | undefined>;
 
   // Recurring Expense Templates
   getRecurringExpenseTemplates(filters?: { buildingId?: string; isActive?: boolean }): Promise<RecurringExpenseTemplate[]>;
@@ -1546,7 +1546,7 @@ export class DatabaseStorage implements IStorage {
     return this.createVendor({ name: normalized, isActive: true });
   }
 
-  async checkDuplicateDocument(documentType: string, documentNumber: string, vendorName: string, excludeId?: string): Promise<Expense | undefined> {
+  async checkDuplicateDocument(documentType: string, documentNumber: string, vendorName: string, excludeId?: string, buildingId?: string): Promise<Expense | undefined> {
     const normalizedVendor = vendorName.toUpperCase().trim();
     const normalizedDocNum = documentNumber.trim();
     const conditions = [
@@ -1556,6 +1556,9 @@ export class DatabaseStorage implements IStorage {
     ];
     if (excludeId) {
       conditions.push(ne(expenses.id, excludeId));
+    }
+    if (buildingId) {
+      conditions.push(eq(expenses.buildingId, buildingId));
     }
     const [duplicate] = await db.select().from(expenses).where(and(...conditions));
     return duplicate || undefined;
