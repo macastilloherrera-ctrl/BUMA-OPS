@@ -73,7 +73,8 @@ export default function NewProject() {
     queryKey: ["/api/admin/users"],
   });
 
-  const executives = users?.filter(u => u.role === "ejecutivo_operaciones" && u.isActive) || [];
+  const assignableRoles = ["ejecutivo_operaciones", "gerente_operaciones", "gerente_general", "gerente_comercial", "gerente_finanzas"];
+  const executives = users?.filter(u => assignableRoles.includes(u.role) && u.isActive) || [];
 
   const form = useForm<ProjectFormData>({
     resolver: zodResolver(projectSchema),
@@ -285,20 +286,23 @@ export default function NewProject() {
                   name="assignedExecutiveId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Ejecutivo Asignado</FormLabel>
+                      <FormLabel>Responsable Asignado</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger data-testid="select-executive">
-                            <SelectValue placeholder="Seleccionar ejecutivo" />
+                            <SelectValue placeholder="Seleccionar responsable" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
                           <SelectItem value="none">Sin asignar</SelectItem>
-                          {executives?.map((exec) => (
-                            <SelectItem key={exec.id} value={exec.id}>
-                              {exec.firstName} {exec.lastName}
-                            </SelectItem>
-                          ))}
+                          {executives?.map((exec) => {
+                            const roleLabels: Record<string, string> = { gerente_general: "Gerente General", gerente_operaciones: "Gerente Operaciones", gerente_comercial: "Gerente Comercial", gerente_finanzas: "Ejecutivo de Apoyo", ejecutivo_operaciones: "Ejecutivo" };
+                            return (
+                              <SelectItem key={exec.id} value={exec.id}>
+                                {exec.firstName} {exec.lastName} ({roleLabels[exec.role] || exec.role})
+                              </SelectItem>
+                            );
+                          })}
                         </SelectContent>
                       </Select>
                       <FormMessage />
