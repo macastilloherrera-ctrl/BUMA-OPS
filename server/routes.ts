@@ -88,7 +88,7 @@ async function isManager(req: Request, res: Response, next: NextFunction) {
     user.id = user.claims.sub;
   }
   const profile = await storage.getUserProfile(req.user.id);
-  if (!profile || !["gerente_general", "gerente_operaciones"].includes(profile.role)) {
+  if (!profile || !isManagerRole(profile)) {
     return res.status(403).json({ error: "Acceso denegado" });
   }
   next();
