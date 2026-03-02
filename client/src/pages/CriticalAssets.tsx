@@ -139,6 +139,23 @@ export default function CriticalAssets() {
     queryKey: ["/api/buildings"],
   });
 
+  const { data: vendorList } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/vendors"],
+  });
+
+  const { data: maintainerList } = useQuery<{ id: string; companyName: string }[]>({
+    queryKey: ["/api/maintainers"],
+  });
+
+  const combinedProviders = (() => {
+    const map = new Map<string, string>();
+    maintainerList?.forEach(m => map.set(m.companyName.toUpperCase(), m.companyName));
+    vendorList?.forEach(v => map.set(v.name.toUpperCase(), v.name));
+    return Array.from(map.entries()).map(([key, name]) => ({ key, name })).sort((a, b) => a.name.localeCompare(b.name));
+  })();
+
+  const [showManualProvider, setShowManualProvider] = useState(false);
+
   const form = useForm<AssetForm>({
     resolver: zodResolver(assetSchema),
     defaultValues: {
@@ -464,13 +481,43 @@ export default function CriticalAssets() {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Proveedor</FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="Nombre proveedor"
-                                {...field}
-                                data-testid="input-maintainer"
-                              />
-                            </FormControl>
+                            <Select
+                              onValueChange={(val) => {
+                                if (val === "__manual__") {
+                                  field.onChange("");
+                                  setShowManualProvider(true);
+                                } else {
+                                  field.onChange(val);
+                                  setShowManualProvider(false);
+                                }
+                              }}
+                              value={showManualProvider ? "__manual__" : (field.value || "")}
+                            >
+                              <FormControl>
+                                <SelectTrigger data-testid="select-maintainer">
+                                  <SelectValue placeholder="Seleccionar proveedor" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {combinedProviders.map(p => (
+                                  <SelectItem key={p.key} value={p.name}>
+                                    {p.name}
+                                  </SelectItem>
+                                ))}
+                                <SelectItem value="__manual__">Ingresar manualmente...</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            {showManualProvider && (
+                              <FormControl>
+                                <Input
+                                  placeholder="Nombre del proveedor"
+                                  data-testid="input-maintainer"
+                                  className="mt-2"
+                                  value={field.value || ""}
+                                  onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                                />
+                              </FormControl>
+                            )}
                             <FormMessage />
                           </FormItem>
                         )}
@@ -782,9 +829,43 @@ export default function CriticalAssets() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Realizada por</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Nombre del mantenedor o empresa" {...field} data-testid="input-maintainer-name" />
-                    </FormControl>
+                    <Select
+                      onValueChange={(val) => {
+                        if (val === "__manual__") {
+                          field.onChange("");
+                          setShowManualProvider(true);
+                        } else {
+                          field.onChange(val);
+                          setShowManualProvider(false);
+                        }
+                      }}
+                      value={showManualProvider ? "__manual__" : (field.value || "")}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="select-maintainer-record">
+                          <SelectValue placeholder="Seleccionar proveedor" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {combinedProviders.map(p => (
+                          <SelectItem key={p.key} value={p.name}>
+                            {p.name}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="__manual__">Ingresar manualmente...</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {showManualProvider && (
+                      <FormControl>
+                        <Input
+                          placeholder="Nombre del mantenedor o empresa"
+                          data-testid="input-maintainer-name"
+                          className="mt-2"
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                        />
+                      </FormControl>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
