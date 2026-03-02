@@ -6112,6 +6112,37 @@ export async function registerRoutes(
   });
 
   // Logout
+  app.post("/api/admin/reset-all-staff-passwords", async (req, res) => {
+    try {
+      const { secret } = req.body;
+      if (secret !== "buma-reset-2026-temp") {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const defaultPassword = "BumaOps2026!";
+      const hash = await bcrypt.hash(defaultPassword, 10);
+      const staffEmails = [
+        'macastillo@buma.cl',
+        'mjvildosola@buma.cl',
+        'cristina@buma.cl',
+        'administracion@buma.cl',
+        'adminops@buma.cl'
+      ];
+      const results: string[] = [];
+      for (const email of staffEmails) {
+        const [user] = await db.select().from(usersTable).where(eq(usersTable.email, email));
+        if (user) {
+          await db.update(usersTable).set({ passwordHash: hash, mustChangePassword: true }).where(eq(usersTable.id, user.id));
+          results.push(`${email}: reset OK`);
+        } else {
+          results.push(`${email}: not found`);
+        }
+      }
+      res.json({ success: true, results });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/auth/logout", (req, res) => {
     req.logout((err) => {
       if (err) {
