@@ -5985,6 +5985,13 @@ export async function registerRoutes(
         return res.status(401).json({ error: "Credenciales inválidas" });
       }
       
+      // Force password change if using default password
+      const isDefaultPassword = password === "BumaOps2026!";
+      if (isDefaultPassword && !user.mustChangePassword) {
+        await db.update(usersTable).set({ mustChangePassword: true }).where(eq(usersTable.id, user.id));
+        user.mustChangePassword = true;
+      }
+      
       // Check if user profile is active
       const userProfile = await storage.getUserProfile(user.id);
       if (!userProfile || !userProfile.isActive) {
