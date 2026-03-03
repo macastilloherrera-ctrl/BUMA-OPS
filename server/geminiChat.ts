@@ -168,7 +168,7 @@ export async function sendChatMessage(
   const truncatedRegulation = regulation.substring(0, 80000);
   const systemPrompt = buildSystemPrompt(truncatedRegulation, buildingDocs);
   const model = genAI.getGenerativeModel({
-    model: "gemini-2.0-flash-001",
+    model: "gemini-2.5-flash",
     systemInstruction: { parts: [{ text: systemPrompt }] },
   });
 
@@ -220,7 +220,7 @@ export async function generateConversationTitle(userMessage: string): Promise<st
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-001" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
     const result = await model.generateContent(
       `Genera un título muy corto (máximo 6 palabras) en español para una conversación que empieza con este mensaje. Solo devuelve el título, sin comillas ni puntuación extra:\n\n"${userMessage.substring(0, 200)}"`
