@@ -164,11 +164,13 @@ export async function sendChatMessage(
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-
   const regulation = await loadRegulationText();
   const truncatedRegulation = regulation.substring(0, 80000);
   const systemPrompt = buildSystemPrompt(truncatedRegulation, buildingDocs);
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.0-flash",
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+  });
 
   const validHistory = messages.slice(0, -1).filter(msg => msg.content && msg.content.trim());
 
@@ -194,7 +196,6 @@ export async function sendChatMessage(
   try {
     const chat = model.startChat({
       history: chatHistory,
-      systemInstruction: systemPrompt,
     });
 
     const lastMessage = messages[messages.length - 1];
