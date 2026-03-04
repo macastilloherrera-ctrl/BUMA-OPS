@@ -36,6 +36,7 @@ import {
   History,
   ClipboardCheck,
   Bot,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -152,6 +153,7 @@ const allNavGroups: NavGroup[] = [
     group: "Herramientas",
     items: [
       { path: "/chat-ia", label: "Asistente IA", icon: Bot },
+      { path: "/monitoreo-chat", label: "Monitoreo Chat IA", icon: Eye, moduleKey: "monitoreo_chat_ia" },
     ]
   },
 ];

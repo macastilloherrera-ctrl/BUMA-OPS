@@ -23,6 +23,7 @@ Key architectural patterns include:
 - **Financial Export Management**: Includes mechanisms for preventing duplicate exports of bank transactions and incomes to external administration software.
 - **Unit-level Payment Verification**: A tool for operations executives to verify common expense payments per unit, including anomaly detection and detailed payment history.
 - **AI-powered Chat Assistant**: An integrated chat assistant (Asistente OPS) provides legal and operational guidance based on a knowledge base, including Chilean copropiedad law and system context.
+- **Chat IA Monitoring**: Super Admin and Gerente General can monitor all users' AI chat conversations via `/monitoreo-chat`, with filtering by user, message viewing, and conversation deletion. Module key: `monitoreo_chat_ia`.
 
 ## External Dependencies
 - **PostgreSQL (Neon)**: Primary database for all application data.

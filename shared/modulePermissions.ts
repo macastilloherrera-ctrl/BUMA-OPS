@@ -29,6 +29,7 @@ export const MODULE_KEYS = [
   "estado_documental",
   "ver_costos",
   "aprobar_equipos",
+  "monitoreo_chat_ia",
 ] as const;
 
 export type ModuleKey = typeof MODULE_KEYS[number];
@@ -70,6 +71,7 @@ export const MODULE_DEFINITIONS: Record<ModuleKey, ModuleDefinition> = {
   estado_documental: { label: "Estado Documental y Operativo", group: "Reportes", routes: ["/reportes/cumplimiento"] },
   ver_costos: { label: "Ver costos", group: "Permisos Especiales", routes: [] },
   aprobar_equipos: { label: "Aprobar equipos", group: "Permisos Especiales", routes: [] },
+  monitoreo_chat_ia: { label: "Monitoreo Chat IA", group: "Administración", routes: ["/monitoreo-chat"] },
 };
 
 export type RoleModulePermissions = Record<ModuleKey, boolean>;
@@ -137,6 +139,7 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissionsConfig> = {
       estado_documental: false,
       ver_costos: true,
       aprobar_equipos: true,
+      monitoreo_chat_ia: true,
     },
   },
   gerente_general: {
@@ -174,6 +177,7 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissionsConfig> = {
       estado_documental: true,
       ver_costos: true,
       aprobar_equipos: true,
+      monitoreo_chat_ia: true,
     },
   },
   gerente_operaciones: {
@@ -211,6 +215,7 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissionsConfig> = {
       estado_documental: true,
       ver_costos: true,
       aprobar_equipos: true,
+      monitoreo_chat_ia: false,
     },
   },
   gerente_comercial: {
@@ -248,6 +253,7 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissionsConfig> = {
       estado_documental: true,
       ver_costos: true,
       aprobar_equipos: true,
+      monitoreo_chat_ia: false,
     },
   },
   gerente_finanzas: {
@@ -285,6 +291,7 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissionsConfig> = {
       estado_documental: true,
       ver_costos: true,
       aprobar_equipos: false,
+      monitoreo_chat_ia: false,
     },
   },
   ejecutivo_operaciones: {
@@ -322,6 +329,7 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissionsConfig> = {
       estado_documental: true,
       ver_costos: false,
       aprobar_equipos: false,
+      monitoreo_chat_ia: false,
     },
   },
   conserjeria: {
@@ -359,6 +367,7 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissionsConfig> = {
       estado_documental: false,
       ver_costos: false,
       aprobar_equipos: false,
+      monitoreo_chat_ia: false,
     },
   },
 };

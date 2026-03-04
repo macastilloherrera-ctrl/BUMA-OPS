@@ -81,12 +81,16 @@ function isAuthenticated(req: Request, res: Response, next: NextFunction) {
 // Middleware to check if user is a manager (can see costs)
 async function getUserPermissions(role: string): Promise<Record<string, boolean> | null> {
   try {
-    const row = await storage.getRolePermissions(role);
-    if (row) {
-      return JSON.parse(row.modules);
-    }
     const { DEFAULT_PERMISSIONS } = await import("../shared/modulePermissions");
     const defaults = DEFAULT_PERMISSIONS[role];
+    const row = await storage.getRolePermissions(role);
+    if (row) {
+      const stored = JSON.parse(row.modules);
+      if (defaults) {
+        return { ...defaults.modules, ...stored };
+      }
+      return stored;
+    }
     return defaults ? defaults.modules : null;
   } catch {
     return null;
@@ -4927,15 +4931,18 @@ export async function registerRoutes(
       const row = await storage.getRolePermissions(profile.role);
       const { DEFAULT_PERMISSIONS } = await import("../shared/modulePermissions");
 
+      const defaults = DEFAULT_PERMISSIONS[profile.role];
       if (row) {
+        const storedModules = JSON.parse(row.modules);
+        const mergedModules = defaults ? { ...defaults.modules, ...storedModules } : storedModules;
         res.json({
           role: row.role,
-          modules: JSON.parse(row.modules),
+          modules: mergedModules,
           homeRoute: row.homeRoute,
           buildingScope: row.buildingScope,
         });
       } else {
-        res.json(DEFAULT_PERMISSIONS[profile.role] || null);
+        res.json(defaults || null);
       }
     } catch (error) {
       console.error("Error fetching my role permissions:", error);
@@ -8233,6 +8240,70 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error getting verificacion GGCC:", error);
       res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ==========================================
+  // CHAT IA MONITORING ENDPOINTS
+  // ==========================================
+
+  app.get("/api/chat/monitoring/conversations", isAuthenticated, requireModule("monitoreo_chat_ia"), async (req, res) => {
+    try {
+      const { userId } = req.query;
+      const result = await db.execute(sql`
+        SELECT cc.id, cc.user_id, cc.title, cc.created_at, cc.updated_at,
+               u.email, u.first_name, u.last_name,
+               (SELECT COUNT(*) FROM chat_messages cm WHERE cm.conversation_id = cc.id) as message_count
+        FROM chat_conversations cc
+        LEFT JOIN users u ON cc.user_id = u.id
+        ${userId ? sql`WHERE cc.user_id = ${String(userId)}` : sql``}
+        ORDER BY cc.updated_at DESC
+        LIMIT 200
+      `);
+      res.json(result.rows || result);
+    } catch (error: any) {
+      console.error("Error fetching monitoring conversations:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/chat/monitoring/conversations/:id/messages", isAuthenticated, requireModule("monitoreo_chat_ia"), async (req, res) => {
+    try {
+      const conversationId = parseInt(req.params.id);
+      const messages = await storage.getChatMessages(conversationId);
+      res.json(messages);
+    } catch (error: any) {
+      console.error("Error fetching monitoring messages:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/chat/monitoring/users", isAuthenticated, requireModule("monitoreo_chat_ia"), async (req, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT DISTINCT u.id, u.email, u.first_name, u.last_name,
+               COUNT(cc.id) as conversation_count
+        FROM users u
+        INNER JOIN chat_conversations cc ON u.id = cc.user_id
+        GROUP BY u.id, u.email, u.first_name, u.last_name
+        ORDER BY conversation_count DESC
+      `);
+      res.json(result.rows || result);
+    } catch (error: any) {
+      console.error("Error fetching chat users:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.delete("/api/chat/monitoring/conversations/:id", isAuthenticated, requireModule("monitoreo_chat_ia"), async (req, res) => {
+    try {
+      const conversationId = parseInt(req.params.id);
+      await db.execute(sql`DELETE FROM chat_messages WHERE conversation_id = ${conversationId}`);
+      await db.execute(sql`DELETE FROM chat_conversations WHERE id = ${conversationId}`);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error deleting conversation:", error);
+      res.status(500).json({ error: error.message });
     }
   });
 

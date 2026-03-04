@@ -64,6 +64,7 @@ import ConsultaOperacional from "@/pages/ConsultaOperacional";
 import VerificacionGGCC from "@/pages/VerificacionGGCC";
 import GestionPermisos from "@/pages/GestionPermisos";
 import ChatIA from "@/pages/ChatIA";
+import MonitoreoChat from "@/pages/MonitoreoChat";
 
 function LoadingScreen() {
   return (
@@ -288,6 +289,7 @@ function AuthenticatedApp() {
                 {(m.panel_super_admin || m.admin_usuarios) && <Route path="/gestion-permisos" component={GestionPermisos} />}
                 
                 <Route path="/chat-ia" component={ChatIA} />
+                {m.monitoreo_chat_ia && <Route path="/monitoreo-chat" component={MonitoreoChat} />}
 
                 <Route path="/perfil" component={() => <Profile userRole={userRole} />} />
 
