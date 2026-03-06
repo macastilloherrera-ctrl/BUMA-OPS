@@ -158,7 +158,7 @@ function isOperationsRole(profile: UserProfile | null): boolean {
 }
 
 function canAccessFinancial(profile: UserProfile | null): boolean {
-  return !!profile && ["gerente_general", "gerente_comercial", "gerente_finanzas"].includes(profile.role);
+  return !!profile && ["gerente_general", "gerente_comercial", "gerente_finanzas", "gerente_operaciones"].includes(profile.role);
 }
 
 function canExportFinancial(profile: UserProfile | null): boolean {
