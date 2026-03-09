@@ -91,7 +91,7 @@ export default function NewProject() {
   const [showManualContractor, setShowManualContractor] = useState(false);
 
   const assignableRoles = ["ejecutivo_operaciones", "gerente_operaciones", "gerente_general", "gerente_comercial", "gerente_finanzas"];
-  const executives = users?.filter(u => assignableRoles.includes(u.role) && u.isActive) || [];
+  const executives = users?.filter(u => assignableRoles.includes(u.profile?.role) && u.profile?.isActive) || [];
 
   const form = useForm<ProjectFormData>({
     resolver: zodResolver(projectSchema),
@@ -317,7 +317,7 @@ export default function NewProject() {
                             const roleLabels: Record<string, string> = { gerente_general: "Gerente General", gerente_operaciones: "Gerente Operaciones", gerente_comercial: "Gerente Comercial", gerente_finanzas: "Ejecutivo de Apoyo", ejecutivo_operaciones: "Ejecutivo" };
                             return (
                               <SelectItem key={exec.id} value={exec.id}>
-                                {exec.firstName} {exec.lastName} ({roleLabels[exec.role] || exec.role})
+                                {exec.firstName} {exec.lastName} ({roleLabels[exec.profile?.role] || exec.profile?.role})
                               </SelectItem>
                             );
                           })}
