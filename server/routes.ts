@@ -6865,8 +6865,9 @@ export async function registerRoutes(
       if (!building) {
         return res.status(404).json({ error: "Edificio no encontrado" });
       }
-      const allExpenses = await storage.getExpenses({ buildingId, month, year, paymentStatus: "paid" });
-      const filtered = allExpenses.filter(e => e.inclusionStatus !== "postponed");
+      const paidExpenses = await storage.getExpenses({ buildingId, month, year, paymentStatus: "paid" });
+      const filtered = paidExpenses.filter(e => e.inclusionStatus !== "postponed");
+      const allExpensesForGeneric = await storage.getExpenses({ buildingId, month, year });
       const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
       const monthName = monthNames[month - 1] || "";
       const paymentMethodMap: Record<string, string> = {
@@ -6874,6 +6875,17 @@ export async function registerRoutes(
         pac: "PAC",
         pago_electronico: "Pago electrónico",
         cheque: "Cheque",
+      };
+      const paymentStatusMap: Record<string, string> = {
+        pending: "Pendiente",
+        paid: "Pagado",
+        deferred: "Diferido",
+        postponed: "Postergado",
+      };
+      const inclusionStatusMap: Record<string, string> = {
+        included: "Incluido",
+        postponed: "Postergado",
+        deferred: "Diferido",
       };
       const XLSX = await import("xlsx");
 
@@ -6900,10 +6912,13 @@ export async function registerRoutes(
           wsData.push([dateStr, exp.vendorName || "", exp.amount ? parseFloat(exp.amount) : 0, exp.description || "", exp.documentNumber || ""]);
         });
       } else {
-        wsData.push(["Fecha", "Proveedor", "Monto", "Descripcion", "Categoría", "Forma de pago", "Documento"]);
-        filtered.forEach((exp) => {
+        wsData.push(["Fecha", "Proveedor", "Monto", "Descripcion", "Categoría", "Forma de pago", "Documento", "Estado"]);
+        allExpensesForGeneric.forEach((exp) => {
           const dateStr = exp.paymentDate ? formatDateCL(new Date(exp.paymentDate)) : "";
-          wsData.push([dateStr, exp.vendorName || "", exp.amount ? parseFloat(exp.amount) : 0, exp.description || "", exp.category || "", paymentMethodMap[exp.paymentMethod || ""] || "", exp.documentNumber || ""]);
+          const estadoLabel = exp.inclusionStatus === "postponed"
+            ? "Postergado"
+            : (paymentStatusMap[exp.paymentStatus || ""] || exp.paymentStatus || "");
+          wsData.push([dateStr, exp.vendorName || "", exp.amount ? parseFloat(exp.amount) : 0, exp.description || "", exp.category || "", paymentMethodMap[exp.paymentMethod || ""] || "", exp.documentNumber || "", estadoLabel]);
         });
       }
 

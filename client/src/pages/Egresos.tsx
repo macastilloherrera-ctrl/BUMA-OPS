@@ -328,6 +328,7 @@ export default function Egresos() {
     return Array.from(map.entries()).map(([key, name]) => ({ key, name })).sort((a, b) => a.name.localeCompare(b.name));
   })();
 
+  const [vendorSearch, setVendorSearch] = useState("");
   const [showVendorSuggestions, setShowVendorSuggestions] = useState(false);
 
   const defaultFormValues: ExpenseFormValues = {
