@@ -1,0 +1,36 @@
+Necesito un diagnóstico completo de este proyecto para migrarlo fuera de Replit. Por favor responde cada punto con detalle:
+
+1. ARQUITECTURA GENERAL
+- ¿Cuál es el stack tecnológico completo? (lenguaje, framework backend, framework frontend, si los hay separados)
+- ¿Es un monolito o hay servicios separados?
+- ¿Cómo está organizada la estructura de carpetas del proyecto? Lista los directorios principales y qué contiene cada uno.
+
+2. BASE DE DATOS
+- ¿Qué motor de base de datos se usa? (PostgreSQL, SQLite, MongoDB, Replit DB, etc.)
+- ¿Dónde están definidos los modelos o esquemas? Indica los archivos exactos.
+- ¿Existe algún archivo de migraciones o de definición del esquema (schema.sql, migrations/, prisma.schema, models.py, etc.)?
+- Lista todas las tablas o colecciones existentes con una descripción breve de cada una.
+
+3. MÓDULOS DEL SISTEMA
+- Lista todos los módulos funcionales del sistema (ej: edificios, residentes, ingresos, egresos, conciliación bancaria, etc.)
+- Para cada módulo indica: qué archivos lo componen, qué tablas de base de datos usa, y cómo se conecta con otros módulos.
+
+4. MÓDULOS FINANCIEROS (PRIORIDAD)
+- ¿Cómo funciona el módulo de ingresos? ¿Qué datos registra y cómo los almacena?
+- ¿Cómo funciona el módulo de egresos? ¿Qué datos registra?
+- ¿Cómo funciona la conciliación bancaria? ¿Se importan cartolas o se registra manualmente?
+- ¿Hay relaciones entre estos tres módulos? ¿Están bien normalizadas en la base de datos?
+
+5. APIs Y CONEXIONES EXTERNAS
+- ¿Existen endpoints de API definidos? Lista los principales con su método (GET, POST, etc.) y propósito.
+- ¿Hay integraciones con servicios externos? (pagos, correo, almacenamiento de archivos, etc.)
+
+6. DATOS EN PRODUCCIÓN
+- ¿Cuántos registros aproximados hay en las tablas principales?
+- ¿Dónde están almacenados los archivos subidos por usuarios, si los hay?
+
+7. VARIABLES DE ENTORNO Y CONFIGURACIÓN
+- ¿Qué variables de entorno usa el sistema? (sin mostrar los valores, solo los nombres)
+- ¿Existe un archivo .env.example o similar?
+
+Con toda esta información podré evaluar la calidad de la arquitectura, el estado de los módulos financieros, y planificar la migración sin perder datos.
