@@ -128,18 +128,25 @@ import {
   monthlyClosingCycles,
   monthlyClosingChecklistItems,
   monthlyClosingStatusLogs,
+  closingCycleGlobalConfig,
+  closingCycleBuildingOverride,
   type MonthlyClosingCycle,
   type InsertMonthlyClosingCycle,
   type MonthlyClosingChecklistItem,
   type InsertMonthlyClosingChecklistItem,
   type MonthlyClosingStatusLog,
   type InsertMonthlyClosingStatusLog,
+  type ClosingCycleGlobalConfig,
+  type InsertClosingCycleGlobalConfig,
+  type ClosingCycleBuildingOverride,
+  type InsertClosingCycleBuildingOverride,
+  type EffectiveClosingConfig,
   auditLogs,
   type AuditLog,
   type InsertAuditLog,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, desc, gte, lte, lt, or, sql, ne, count } from "drizzle-orm";
+import { eq, and, desc, gte, lte, lt, or, sql, ne, count, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -386,7 +393,7 @@ export interface IStorage {
   deleteRecurringExpenseTemplate(id: string): Promise<boolean>;
 
   // Bank Transactions (Conciliación)
-  getBankTransactions(filters?: { buildingId?: string; status?: string; month?: number; year?: number }): Promise<BankTransaction[]>;
+  getBankTransactions(filters?: { buildingId?: string; status?: string | string[]; month?: number; year?: number }): Promise<BankTransaction[]>;
   getBankTransaction(id: string): Promise<BankTransaction | undefined>;
   createBankTransaction(txn: InsertBankTransaction): Promise<BankTransaction>;
   updateBankTransaction(id: string, data: Partial<InsertBankTransaction>): Promise<BankTransaction | undefined>;
@@ -412,6 +419,17 @@ export interface IStorage {
   createMonthlyClosingChecklistItem(item: InsertMonthlyClosingChecklistItem): Promise<MonthlyClosingChecklistItem>;
   updateMonthlyClosingChecklistItem(id: string, data: Partial<InsertMonthlyClosingChecklistItem>): Promise<MonthlyClosingChecklistItem | undefined>;
   deleteMonthlyClosingChecklistItem(id: string): Promise<boolean>;
+
+  // Closing Cycle Global Config
+  getGlobalClosingConfig(): Promise<ClosingCycleGlobalConfig | null>;
+  upsertGlobalClosingConfig(data: Omit<InsertClosingCycleGlobalConfig, "createdBy" | "updatedBy">, userId: string): Promise<ClosingCycleGlobalConfig>;
+  getBuildingOverride(buildingId: string, month: number, year: number): Promise<ClosingCycleBuildingOverride | null>;
+  upsertBuildingOverride(data: InsertClosingCycleBuildingOverride): Promise<ClosingCycleBuildingOverride>;
+  deleteBuildingOverride(id: string): Promise<boolean>;
+  listBuildingOverrides(buildingId?: string): Promise<ClosingCycleBuildingOverride[]>;
+  getEffectiveClosingConfig(buildingId: string, month: number, year: number): Promise<EffectiveClosingConfig | null>;
+  applyGlobalConfigToNewCycle(buildingId: string, month: number, year: number): Promise<Partial<InsertMonthlyClosingCycle>>;
+  checkClosingCycleAlerts(month: number, year: number): Promise<{ created: number; skipped: number }>;
 
   // Audit Logs
   createAuditLog(data: InsertAuditLog): Promise<AuditLog>;
@@ -1616,10 +1634,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Bank Transactions
-  async getBankTransactions(filters?: { buildingId?: string; status?: string; month?: number; year?: number }): Promise<BankTransaction[]> {
+  async getBankTransactions(filters?: { buildingId?: string; status?: string | string[]; month?: number; year?: number }): Promise<BankTransaction[]> {
     const conditions: any[] = [];
     if (filters?.buildingId) conditions.push(eq(bankTransactions.buildingId, filters.buildingId));
-    if (filters?.status) conditions.push(eq(bankTransactions.status, filters.status as any));
+    if (filters?.status) {
+      if (Array.isArray(filters.status)) {
+        conditions.push(inArray(bankTransactions.status, filters.status as any[]));
+      } else {
+        conditions.push(eq(bankTransactions.status, filters.status as any));
+      }
+    }
     if (filters?.month) conditions.push(eq(bankTransactions.periodMonth, filters.month));
     if (filters?.year) conditions.push(eq(bankTransactions.periodYear, filters.year));
     if (conditions.length > 0) {
@@ -1777,6 +1801,250 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(monthlyClosingStatusLogs)
       .where(eq(monthlyClosingStatusLogs.cycleId, cycleId))
       .orderBy(desc(monthlyClosingStatusLogs.changedAt));
+  }
+
+  // ─── Closing Cycle Global Config ───────────────────────────────────────────
+
+  async getGlobalClosingConfig(): Promise<ClosingCycleGlobalConfig | null> {
+    const [row] = await db.select().from(closingCycleGlobalConfig).limit(1);
+    return row ?? null;
+  }
+
+  async upsertGlobalClosingConfig(
+    data: Omit<InsertClosingCycleGlobalConfig, "createdBy" | "updatedBy">,
+    userId: string,
+  ): Promise<ClosingCycleGlobalConfig> {
+    const existing = await this.getGlobalClosingConfig();
+    if (existing) {
+      const [updated] = await db
+        .update(closingCycleGlobalConfig)
+        .set({ ...data, updatedBy: userId, updatedAt: new Date() })
+        .where(eq(closingCycleGlobalConfig.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db
+      .insert(closingCycleGlobalConfig)
+      .values({ ...data, createdBy: userId, updatedBy: userId })
+      .returning();
+    return created;
+  }
+
+  async getBuildingOverride(buildingId: string, month: number, year: number): Promise<ClosingCycleBuildingOverride | null> {
+    const [row] = await db
+      .select()
+      .from(closingCycleBuildingOverride)
+      .where(
+        and(
+          eq(closingCycleBuildingOverride.buildingId, buildingId),
+          eq(closingCycleBuildingOverride.month, month),
+          eq(closingCycleBuildingOverride.year, year),
+        ),
+      );
+    return row ?? null;
+  }
+
+  async upsertBuildingOverride(data: InsertClosingCycleBuildingOverride): Promise<ClosingCycleBuildingOverride> {
+    const existing = await this.getBuildingOverride(data.buildingId, data.month, data.year);
+    if (existing) {
+      const [updated] = await db
+        .update(closingCycleBuildingOverride)
+        .set(data)
+        .where(eq(closingCycleBuildingOverride.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(closingCycleBuildingOverride).values(data).returning();
+    return created;
+  }
+
+  async deleteBuildingOverride(id: string): Promise<boolean> {
+    await db.delete(closingCycleBuildingOverride).where(eq(closingCycleBuildingOverride.id, id));
+    return true;
+  }
+
+  async listBuildingOverrides(buildingId?: string): Promise<ClosingCycleBuildingOverride[]> {
+    if (buildingId) {
+      return db
+        .select()
+        .from(closingCycleBuildingOverride)
+        .where(eq(closingCycleBuildingOverride.buildingId, buildingId))
+        .orderBy(desc(closingCycleBuildingOverride.year), desc(closingCycleBuildingOverride.month));
+    }
+    return db
+      .select()
+      .from(closingCycleBuildingOverride)
+      .orderBy(desc(closingCycleBuildingOverride.year), desc(closingCycleBuildingOverride.month));
+  }
+
+  async getEffectiveClosingConfig(buildingId: string, month: number, year: number): Promise<EffectiveClosingConfig | null> {
+    const global = await this.getGlobalClosingConfig();
+    if (!global) return null;
+
+    const override = await this.getBuildingOverride(buildingId, month, year);
+
+    return {
+      emissionDay: override?.emissionDay ?? global.emissionDay,
+      expenseCutoffDay: override?.expenseCutoffDay ?? global.expenseCutoffDay,
+      incomeCutoffDay: override?.incomeCutoffDay ?? global.incomeCutoffDay,
+      preStateDay: override?.preStateDay ?? global.preStateDay,
+      finalEmissionDay: override?.finalEmissionDay ?? global.finalEmissionDay,
+      alertDaysBeforeDeadline: global.alertDaysBeforeDeadline,
+      alertOnMissingCycle: global.alertOnMissingCycle,
+      hasOverride: !!override,
+    };
+  }
+
+  async applyGlobalConfigToNewCycle(buildingId: string, month: number, year: number): Promise<Partial<InsertMonthlyClosingCycle>> {
+    const config = await this.getEffectiveClosingConfig(buildingId, month, year);
+    if (!config) return {};
+
+    // Construye las fechas usando el día de cada etapa en el mes/año del ciclo
+    function dayToDate(day: number): Date {
+      // Si el día ya pasó en el mes actual, proyecta al mes del ciclo
+      const d = new Date(year, month - 1, day);
+      return d;
+    }
+
+    return {
+      issueDay: config.emissionDay,
+      cutoffExpensesDate: dayToDate(config.expenseCutoffDay),
+      cutoffIncomesDate: dayToDate(config.incomeCutoffDay),
+      preStatementDate: dayToDate(config.preStateDay),
+      finalIssueDate: dayToDate(config.finalEmissionDay),
+    };
+  }
+
+  async checkClosingCycleAlerts(month: number, year: number): Promise<{ created: number; skipped: number }> {
+    const global = await this.getGlobalClosingConfig();
+    const activeBuildings = await db
+      .select()
+      .from(buildings)
+      .where(eq(buildings.status, "activo" as any));
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    let created = 0;
+    let skipped = 0;
+
+    for (const building of activeBuildings) {
+      const config = await this.getEffectiveClosingConfig(building.id, month, year);
+      const cycle = await this.getMonthlyClosingCycleByBuildingAndPeriod(building.id, month, year);
+
+      // Helper: evita insertar notificación duplicada
+      const notifKey = (type: string, stage: string) =>
+        `closing_alert:${building.id}:${month}:${year}:${type}:${stage}`;
+
+      const alreadyExists = async (refKey: string): Promise<boolean> => {
+        // Usamos el campo ticketId para almacenar la clave de deduplicación
+        const [existing] = await db
+          .select()
+          .from(notifications)
+          .where(eq(notifications.ticketId, refKey))
+          .limit(1);
+        return !!existing;
+      };
+
+      const pushNotif = async (
+        userId: string,
+        type: "warning" | "error" | "info",
+        title: string,
+        message: string,
+        refKey: string,
+      ) => {
+        if (await alreadyExists(refKey)) { skipped++; return; }
+        await db.insert(notifications).values({
+          userId,
+          type: type as any,
+          title,
+          message,
+          ticketId: refKey,
+          isRead: false,
+        });
+        created++;
+      };
+
+      // Destinatario: usamos el createdBy del ciclo si existe, sino un userId genérico de sistema
+      const recipientId = cycle?.createdBy ?? "system";
+
+      if (!config) continue;
+
+      // ALERTA D: edificio activo sin ciclo del mes actual
+      if (!cycle && config.alertOnMissingCycle) {
+        const key = notifKey("info", "no_cycle");
+        await pushNotif(
+          recipientId,
+          "info",
+          `Sin ciclo de cierre — ${building.name}`,
+          `El edificio ${building.name} no tiene ciclo de cierre para ${month}/${year}.`,
+          key,
+        );
+      }
+
+      if (!cycle) continue;
+
+      const checklistItems = await this.getMonthlyClosingChecklistItems(cycle.id);
+
+      // Mapa de etapa → ítem de checklist (por sortOrder)
+      const stageChecklist: Record<string, boolean> = {
+        expenses: checklistItems.find(i => i.sortOrder === 1)?.completed ?? false,
+        incomes: checklistItems.find(i => i.sortOrder === 3)?.completed ?? false,
+        preState: checklistItems.find(i => i.sortOrder === 5)?.completed ?? false,
+        final: checklistItems.find(i => i.sortOrder === 7)?.completed ?? false,
+      };
+
+      const stages: Array<{ key: string; day: number; label: string; completed: boolean }> = [
+        { key: "expenses", day: config.expenseCutoffDay, label: "Corte de egresos", completed: stageChecklist.expenses },
+        { key: "incomes", day: config.incomeCutoffDay, label: "Corte de ingresos", completed: stageChecklist.incomes },
+        { key: "preState", day: config.preStateDay, label: "Pre-estado al comité", completed: stageChecklist.preState },
+        { key: "final", day: config.finalEmissionDay, label: "Emisión final", completed: stageChecklist.final },
+      ];
+
+      for (const stage of stages) {
+        const stageDate = new Date(year, month - 1, stage.day);
+        stageDate.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil((stageDate.getTime() - today.getTime()) / 86400000);
+
+        if (!stage.completed) {
+          // ALERTA A: fecha vencida
+          if (diffDays < 0) {
+            await pushNotif(
+              cycle.createdBy,
+              "error",
+              `Etapa vencida: ${stage.label} — ${building.name}`,
+              `La etapa "${stage.label}" del cierre ${month}/${year} venció el ${stageDate.toLocaleDateString("es-CL")} y no está completada.`,
+              notifKey("error", stage.key),
+            );
+          }
+          // ALERTA C: proximidad (alertDaysBeforeDeadline días antes)
+          else if (diffDays <= config.alertDaysBeforeDeadline) {
+            await pushNotif(
+              cycle.createdBy,
+              "warning",
+              `Etapa próxima a vencer: ${stage.label} — ${building.name}`,
+              `La etapa "${stage.label}" del cierre ${month}/${year} vence en ${diffDays} día${diffDays !== 1 ? "s" : ""} (${stageDate.toLocaleDateString("es-CL")}).`,
+              notifKey("warning", stage.key),
+            );
+          }
+        }
+      }
+
+      // ALERTA B: hoy > emissionDay y no existe ciclo
+      const emissionDate = new Date(year, month - 1, config.emissionDay);
+      emissionDate.setHours(0, 0, 0, 0);
+      if (today > emissionDate && cycle.status === "open") {
+        await pushNotif(
+          cycle.createdBy,
+          "error",
+          `Emisión no iniciada — ${building.name}`,
+          `El ciclo de cierre ${month}/${year} del edificio ${building.name} sigue abierto después del día de emisión (${config.emissionDay}).`,
+          notifKey("error", "emission_overdue"),
+        );
+      }
+    }
+
+    return { created, skipped };
   }
 
   // Audit Logs

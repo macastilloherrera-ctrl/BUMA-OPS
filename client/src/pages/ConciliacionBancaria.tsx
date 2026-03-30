@@ -144,6 +144,8 @@ export default function ConciliacionBancaria() {
   const [splitDialogOpen, setSplitDialogOpen] = useState(false);
   const [ignoreDialogOpen, setIgnoreDialogOpen] = useState(false);
   const [payerDirDialogOpen, setPayerDirDialogOpen] = useState(false);
+  const [confirmAllDialogOpen, setConfirmAllDialogOpen] = useState(false);
+  const [confirmAllLowScoreAcknowledged, setConfirmAllLowScoreAcknowledged] = useState(false);
   const [selectedTxn, setSelectedTxn] = useState<BankTransaction | null>(null);
 
   const [assignUnit, setAssignUnit] = useState("");
@@ -237,6 +239,10 @@ export default function ConciliacionBancaria() {
     multi: transactions?.filter((t) => t.status === "multi").length || 0,
     ignored: transactions?.filter((t) => t.status === "ignored").length || 0,
   };
+
+  const suggestedWithUnit = transactions?.filter((t) => t.status === "suggested" && t.assignedUnit) ?? [];
+  const suggestedHighScore = suggestedWithUnit.filter((t) => (t.matchScore ?? 0) >= 80);
+  const suggestedLowScore = suggestedWithUnit.filter((t) => (t.matchScore ?? 0) < 80);
 
   const identifiedAmount = transactions
     ?.filter((t) => t.status === "identified")
@@ -355,16 +361,19 @@ export default function ConciliacionBancaria() {
   });
 
   const confirmAllMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (minScore?: number) => {
       const res = await apiRequest("POST", "/api/bank-transactions/confirm-all-suggested", {
         buildingId,
         periodMonth: Number(month),
         periodYear: Number(year),
+        ...(minScore !== undefined && { minScore }),
       });
       return res.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions", buildingId, month, year] });
+      setConfirmAllDialogOpen(false);
+      setConfirmAllLowScoreAcknowledged(false);
       toast({ title: `${data.confirmed || 0} transacciones confirmadas` });
     },
     onError: (error: Error) => {
@@ -557,6 +566,82 @@ export default function ConciliacionBancaria() {
           {step === 5 && <Step5 />}
         </div>
       </div>
+
+      {confirmAllDialogOpen && (
+        <Dialog open={confirmAllDialogOpen} onOpenChange={(open) => { setConfirmAllDialogOpen(open); if (!open) setConfirmAllLowScoreAcknowledged(false); }}>
+          <DialogContent className="max-w-md" data-testid="dialog-confirm-all">
+            <DialogHeader>
+              <DialogTitle>Confirmar transacciones sugeridas</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border bg-green-50 p-3 text-center">
+                  <p className="text-2xl font-bold text-green-700">{suggestedHighScore.length}</p>
+                  <p className="text-xs text-green-600 mt-1">Score alto (80–100)</p>
+                  <p className="text-xs text-muted-foreground">Confirmación segura</p>
+                </div>
+                <div className={`rounded-lg border p-3 text-center ${suggestedLowScore.length > 0 ? "bg-yellow-50" : "bg-muted/40"}`}>
+                  <p className={`text-2xl font-bold ${suggestedLowScore.length > 0 ? "text-yellow-700" : "text-muted-foreground"}`}>{suggestedLowScore.length}</p>
+                  <p className={`text-xs mt-1 ${suggestedLowScore.length > 0 ? "text-yellow-600" : "text-muted-foreground"}`}>Score bajo (50–79)</p>
+                  <p className="text-xs text-muted-foreground">Requieren revisión</p>
+                </div>
+              </div>
+
+              {suggestedLowScore.length > 0 && !confirmAllLowScoreAcknowledged && (
+                <div className="flex gap-2 rounded-md border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-800">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>
+                    Hay <strong>{suggestedLowScore.length} transacción{suggestedLowScore.length !== 1 ? "es" : ""}</strong> con match de baja confianza.
+                    Confirmarlas sin revisión puede generar descuadres contables.
+                  </span>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 pt-1">
+                {suggestedHighScore.length > 0 && (
+                  <Button
+                    onClick={() => confirmAllMutation.mutate(80)}
+                    disabled={confirmAllMutation.isPending}
+                    data-testid="button-confirm-high-only"
+                  >
+                    {confirmAllMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-1" />}
+                    Confirmar solo score alto ({suggestedHighScore.length})
+                  </Button>
+                )}
+
+                {suggestedLowScore.length > 0 && !confirmAllLowScoreAcknowledged && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setConfirmAllLowScoreAcknowledged(true)}
+                    data-testid="button-acknowledge-low-score"
+                  >
+                    <AlertCircle className="h-4 w-4 mr-1" />
+                    Confirmar todas igualmente…
+                  </Button>
+                )}
+
+                {(suggestedLowScore.length === 0 || confirmAllLowScoreAcknowledged) && (
+                  <Button
+                    variant={confirmAllLowScoreAcknowledged ? "destructive" : "default"}
+                    onClick={() => confirmAllMutation.mutate(undefined)}
+                    disabled={confirmAllMutation.isPending}
+                    data-testid="button-confirm-all-scores"
+                  >
+                    {confirmAllMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-1" />}
+                    {confirmAllLowScoreAcknowledged
+                      ? `Confirmar todas (incluye ${suggestedLowScore.length} de score bajo)`
+                      : `Confirmar todas (${suggestedWithUnit.length})`}
+                  </Button>
+                )}
+
+                <Button variant="ghost" onClick={() => { setConfirmAllDialogOpen(false); setConfirmAllLowScoreAcknowledged(false); }}>
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {assignDialogOpen && selectedTxn && (
         <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
@@ -924,7 +1009,7 @@ export default function ConciliacionBancaria() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => confirmAllMutation.mutate()}
+                onClick={() => { setConfirmAllLowScoreAcknowledged(false); setConfirmAllDialogOpen(true); }}
                 disabled={confirmAllMutation.isPending}
                 data-testid="button-confirm-all"
               >

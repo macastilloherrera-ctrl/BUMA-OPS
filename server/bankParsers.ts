@@ -10,6 +10,7 @@ export interface ParsedTransaction {
   sourceBank: string;
   bankName: string;
   rawRowJson: string;
+  rowIndex: number;
 }
 
 export interface ParseResult {
@@ -357,6 +358,8 @@ export function parseBankFile(buffer: Buffer, originalName: string): ParseResult
       transactions = parseGeneric(rows);
       break;
   }
+
+  transactions = transactions.map((t, idx) => ({ ...t, rowIndex: idx }));
 
   return {
     transactions,

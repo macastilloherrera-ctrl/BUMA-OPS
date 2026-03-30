@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,13 +11,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import type { Building, MonthlyClosingCycle, MonthlyClosingChecklistItem, MonthlyClosingStatusLog, UserProfile } from "@shared/schema";
 import {
   Building2, Plus, Calendar, AlertCircle, CheckCircle, Clock, Trash2,
-  ChevronRight, ArrowLeft, FileCheck, AlertTriangle, CircleDot, X, History
+  ChevronRight, ArrowLeft, FileCheck, AlertTriangle, CircleDot, X, History, Settings, Info
 } from "lucide-react";
 
 const MONTHS = [
@@ -168,6 +170,17 @@ export default function CierreMensual() {
 
   const { data: buildings } = useQuery<Building[]>({ queryKey: ["/api/buildings"] });
 
+  const { data: globalClosingConfig } = useQuery<{ id: string } | null>({
+    queryKey: ["/api/closing-config/global"],
+    queryFn: async () => {
+      const res = await fetch("/api/closing-config/global", { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+
+  const [preloadedFromGlobalConfig, setPreloadedFromGlobalConfig] = useState(false);
+
   const { data: cycles, isLoading } = useQuery<MonthlyClosingCycle[]>({
     queryKey: ["/api/monthly-closing-cycles/dashboard", selectedYear],
     queryFn: () =>
@@ -199,11 +212,15 @@ export default function CierreMensual() {
   const [editNotes, setEditNotes] = useState("");
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", "/api/monthly-closing-cycles", data),
-    onSuccess: () => {
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/monthly-closing-cycles", data);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/monthly-closing-cycles/dashboard"] });
       toast({ title: "Ciclo creado exitosamente" });
       setCreateDialogOpen(false);
+      setPreloadedFromGlobalConfig(false);
       resetCreateForm();
     },
     onError: (error: Error) => {
@@ -369,10 +386,24 @@ export default function CierreMensual() {
             </SelectContent>
           </Select>
           {canModify && (
-            <Button onClick={() => setCreateDialogOpen(true)} data-testid="button-create-cycle">
-              <Plus className="h-4 w-4 mr-1" />
-              Nuevo Ciclo
-            </Button>
+            <>
+              <Button variant="outline" asChild>
+                <Link href="/configuracion-ciclo">
+                  <Settings className="h-4 w-4 mr-1" />
+                  Ver Configuración Global
+                </Link>
+              </Button>
+              <Button
+                onClick={() => {
+                  setPreloadedFromGlobalConfig(!!globalClosingConfig);
+                  setCreateDialogOpen(true);
+                }}
+                data-testid="button-create-cycle"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                Nuevo Ciclo
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -441,6 +472,31 @@ export default function CierreMensual() {
                           </span>
                           {getStatusBadge(cycle?.status)}
                           {cycle && getRiskBadge(cycle.risk)}
+                          {/* Alerta semáforo */}
+                          {!cycle ? (
+                            globalClosingConfig && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Info className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                </TooltipTrigger>
+                                <TooltipContent>Sin ciclo para este período</TooltipContent>
+                              </Tooltip>
+                            )
+                          ) : getDateStatus(cycle.finalIssueDate) === "overdue" && cycle.status !== "approved" && cycle.status !== "issued" ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                              </TooltipTrigger>
+                              <TooltipContent>Emisión final vencida y ciclo no aprobado</TooltipContent>
+                            </Tooltip>
+                          ) : getDateStatus(cycle.finalIssueDate) === "warning" && cycle.status !== "approved" && cycle.status !== "issued" ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <AlertTriangle className="h-3.5 w-3.5 text-yellow-500 shrink-0" />
+                              </TooltipTrigger>
+                              <TooltipContent>Emisión final próxima a vencer</TooltipContent>
+                            </Tooltip>
+                          ) : null}
                         </div>
                         {cycle && (
                           <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -745,6 +801,12 @@ export default function CierreMensual() {
             <DialogTitle data-testid="text-create-title">Crear Nuevo Ciclo</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
+            {preloadedFromGlobalConfig && (
+              <div className="flex gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+                <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                <span>Fechas precargadas desde configuración global. Puedes modificarlas antes de guardar.</span>
+              </div>
+            )}
             <div className="space-y-1">
               <Label className="text-sm">Edificio</Label>
               <Select value={createBuildingId} onValueChange={setCreateBuildingId}>

@@ -37,6 +37,7 @@ import {
   ClipboardCheck,
   Bot,
   Eye,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +62,7 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   moduleKey?: ModuleKey;
+  roles?: UserRole[];
 }
 
 interface NavGroup {
@@ -113,6 +115,7 @@ const allNavGroups: NavGroup[] = [
     group: "Finanzas",
     items: [
       { path: "/cierre-mensual", label: "Cierre Mensual", icon: FileCheck, moduleKey: "cierre_mensual" },
+      { path: "/configuracion-ciclo", label: "Config. Ciclo Global", icon: Settings, moduleKey: "cierre_mensual", roles: ["gerente_general", "gerente_comercial"] },
       { path: "/conciliacion-bancaria", label: "Conciliación Bancaria", icon: Landmark, moduleKey: "conciliacion_bancaria" },
       { path: "/verificacion-ggcc", label: "Verificación GGCC", icon: ClipboardCheck, moduleKey: "verificacion_ggcc" },
       { path: "/historial-pagos", label: "Historial de Pagos", icon: History, moduleKey: "historial_pagos" },
@@ -173,7 +176,9 @@ function getFilteredNavGroups(modules: Record<ModuleKey, boolean>, userRole: Use
 
     const filteredItems = group.items.filter((item) => {
       if (!item.moduleKey) return true;
-      return !!modules[item.moduleKey];
+      if (!modules[item.moduleKey]) return false;
+      if (item.roles && item.roles.length > 0) return item.roles.includes(userRole);
+      return true;
     });
 
     if (filteredItems.length > 0) {

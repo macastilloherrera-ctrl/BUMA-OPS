@@ -60,6 +60,7 @@ import HistorialPagos from "@/pages/HistorialPagos";
 import Egresos from "@/pages/Egresos";
 import RecurringExpenses from "@/pages/RecurringExpenses";
 import CierreMensual from "@/pages/CierreMensual";
+import ClosingCycleConfig from "@/pages/ClosingCycleConfig";
 import ConsultaOperacional from "@/pages/ConsultaOperacional";
 import VerificacionGGCC from "@/pages/VerificacionGGCC";
 import GestionPermisos from "@/pages/GestionPermisos";
@@ -219,6 +220,10 @@ function AuthenticatedApp() {
 
                 {m.cierre_mensual && (
                   <Route path="/cierre-mensual" component={CierreMensual} />
+                )}
+
+                {m.cierre_mensual && (
+                  <Route path="/configuracion-ciclo" component={ClosingCycleConfig} />
                 )}
 
                 {m.conciliacion_bancaria && (

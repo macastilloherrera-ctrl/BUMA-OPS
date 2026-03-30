@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, serial, timestamp, boolean, decimal, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, serial, timestamp, boolean, decimal, pgEnum, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -1662,6 +1662,61 @@ export type InsertMonthlyClosingStatusLog = z.infer<typeof insertMonthlyClosingS
 export type MonthlyClosingStatusLog = typeof monthlyClosingStatusLogs.$inferSelect;
 export type ClosingCycleStatus = "open" | "preparation" | "pending_info" | "pre_ready" | "under_review" | "approved" | "issued";
 export type ClosingCycleRisk = "low" | "medium" | "high";
+
+// Closing Cycle Global Config (singleton — solo un registro)
+export const closingCycleGlobalConfig = pgTable("closing_cycle_global_config", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  emissionDay: integer("emission_day").notNull().default(25),
+  expenseCutoffDay: integer("expense_cutoff_day").notNull().default(18),
+  incomeCutoffDay: integer("income_cutoff_day").notNull().default(20),
+  preStateDay: integer("pre_state_day").notNull().default(22),
+  finalEmissionDay: integer("final_emission_day").notNull().default(25),
+  alertDaysBeforeDeadline: integer("alert_days_before_deadline").notNull().default(2),
+  alertOnMissingCycle: boolean("alert_on_missing_cycle").notNull().default(true),
+  createdBy: varchar("created_by").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  updatedBy: varchar("updated_by").notNull(),
+});
+
+// Closing Cycle Building Override (override por edificio/mes/año)
+export const closingCycleBuildingOverride = pgTable("closing_cycle_building_override", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  buildingId: varchar("building_id").notNull(),
+  month: integer("month").notNull(),
+  year: integer("year").notNull(),
+  emissionDay: integer("emission_day"),
+  expenseCutoffDay: integer("expense_cutoff_day"),
+  incomeCutoffDay: integer("income_cutoff_day"),
+  preStateDay: integer("pre_state_day"),
+  finalEmissionDay: integer("final_emission_day"),
+  reason: text("reason").notNull(),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  uniqBuildingPeriod: unique("uq_override_building_period").on(table.buildingId, table.month, table.year),
+}));
+
+// Closing Cycle Config Schemas
+export const insertClosingCycleGlobalConfigSchema = createInsertSchema(closingCycleGlobalConfig).omit({ id: true, updatedAt: true });
+export const insertClosingCycleBuildingOverrideSchema = createInsertSchema(closingCycleBuildingOverride).omit({ id: true, createdAt: true });
+
+// Closing Cycle Config Types
+export type InsertClosingCycleGlobalConfig = z.infer<typeof insertClosingCycleGlobalConfigSchema>;
+export type ClosingCycleGlobalConfig = typeof closingCycleGlobalConfig.$inferSelect;
+export type InsertClosingCycleBuildingOverride = z.infer<typeof insertClosingCycleBuildingOverrideSchema>;
+export type ClosingCycleBuildingOverride = typeof closingCycleBuildingOverride.$inferSelect;
+
+// Effective config type (resultado del merge global + override)
+export type EffectiveClosingConfig = {
+  emissionDay: number;
+  expenseCutoffDay: number;
+  incomeCutoffDay: number;
+  preStateDay: number;
+  finalEmissionDay: number;
+  alertDaysBeforeDeadline: number;
+  alertOnMissingCycle: boolean;
+  hasOverride: boolean;
+};
 
 // Audit Logs table
 export const auditLogs = pgTable("audit_logs", {

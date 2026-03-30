@@ -7005,10 +7005,22 @@ export async function registerRoutes(
           description: txn.description,
           reference: txn.reference,
           payerRut: txn.payerRut,
+          rowIndex: txn.rowIndex,
         })).digest("hex");
 
-        const existing = await storage.getBankTransactionByHash(rowHash, buildingId);
-        if (existing) {
+        // Legacy hash (sin rowIndex) para detectar registros importados antes de este cambio.
+        // Evita re-importar transacciones existentes cuando se vuelve a subir la misma cartola.
+        const legacyHash = crypto.createHash("sha256").update(JSON.stringify({
+          date: txn.txnDate.toISOString().slice(0, 10),
+          amount: txn.amount,
+          description: txn.description,
+          reference: txn.reference,
+          payerRut: txn.payerRut,
+        })).digest("hex");
+
+        const existingNew = await storage.getBankTransactionByHash(rowHash, buildingId);
+        const existingLegacy = existingNew ? null : await storage.getBankTransactionByHash(legacyHash, buildingId);
+        if (existingNew || existingLegacy) {
           duplicates++;
           continue;
         }
@@ -7068,7 +7080,7 @@ export async function registerRoutes(
 
       const transactions = await storage.getBankTransactions({
         buildingId,
-        status: "pending",
+        status: ["pending", "suggested"],
         month: parseInt(periodMonth),
         year: parseInt(periodYear),
       });
@@ -7240,7 +7252,7 @@ export async function registerRoutes(
       if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
         return res.status(403).json({ error: "No tiene permisos" });
       }
-      const { buildingId, periodMonth, periodYear } = req.body;
+      const { buildingId, periodMonth, periodYear, minScore } = req.body;
       if (!buildingId || !periodMonth || !periodYear) {
         return res.status(400).json({ error: "Se requiere buildingId, periodMonth y periodYear" });
       }
@@ -7252,9 +7264,11 @@ export async function registerRoutes(
         year: parseInt(periodYear),
       });
 
+      const scoreThreshold = minScore !== undefined ? Number(minScore) : 0;
       let confirmed = 0;
       for (const txn of transactions) {
         if (!txn.assignedUnit) continue;
+        if ((txn.matchScore ?? 0) < scoreThreshold) continue;
         await storage.updateBankTransaction(txn.id, {
           status: "identified",
           identifiedBy: req.user!.id,
@@ -7823,7 +7837,14 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Solo gerente general o comercial pueden crear ciclos" });
       }
 
-      const body = { ...req.body, createdBy: req.user!.id };
+      // Precarga de fechas desde config global (si no vienen en el body)
+      const preload = await storage.applyGlobalConfigToNewCycle(
+        req.body.buildingId,
+        Number(req.body.month),
+        Number(req.body.year),
+      );
+
+      const body = { ...preload, ...req.body, createdBy: req.user!.id };
       if (body.cutoffExpensesDate && typeof body.cutoffExpensesDate === "string") body.cutoffExpensesDate = new Date(body.cutoffExpensesDate);
       if (body.cutoffIncomesDate && typeof body.cutoffIncomesDate === "string") body.cutoffIncomesDate = new Date(body.cutoffIncomesDate);
       if (body.preStatementDate && typeof body.preStatementDate === "string") body.preStatementDate = new Date(body.preStatementDate);
@@ -7835,6 +7856,7 @@ export async function registerRoutes(
         return res.status(409).json({ error: "Ya existe un ciclo para este edificio y período" });
       }
 
+      const hasGlobalConfig = !!(await storage.getGlobalClosingConfig());
       const cycle = await storage.createMonthlyClosingCycle(data);
 
       const defaultItems = [
@@ -7857,7 +7879,7 @@ export async function registerRoutes(
       }
 
       const checklistItems = await storage.getMonthlyClosingChecklistItems(cycle.id);
-      res.status(201).json({ ...cycle, checklistItems });
+      res.status(201).json({ ...cycle, checklistItems, preloadedFromGlobalConfig: hasGlobalConfig });
     } catch (error) {
       console.error("Error creating closing cycle:", error);
       res.status(500).json({ error: "Error interno del servidor" });
@@ -7967,6 +7989,116 @@ export async function registerRoutes(
       res.json(logs);
     } catch (error) {
       console.error("Error getting status logs:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ==========================================
+  // Closing Cycle Global Config
+  // ==========================================
+
+  app.get("/api/closing-config/global", isAuthenticated, async (req, res) => {
+    try {
+      const config = await storage.getGlobalClosingConfig();
+      res.json(config);
+    } catch (error) {
+      console.error("Error getting global closing config:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/closing-config/global", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!profile || !["gerente_general", "gerente_comercial"].includes(profile.role)) {
+        return res.status(403).json({ error: "Solo gerente general o comercial pueden modificar la configuración global" });
+      }
+      const config = await storage.upsertGlobalClosingConfig(req.body, req.user!.id);
+      res.json(config);
+    } catch (error) {
+      console.error("Error upserting global closing config:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/closing-config/effective/:buildingId/:month/:year", isAuthenticated, async (req, res) => {
+    try {
+      const { buildingId, month, year } = req.params;
+      const config = await storage.getEffectiveClosingConfig(buildingId, parseInt(month), parseInt(year));
+      res.json(config);
+    } catch (error) {
+      console.error("Error getting effective closing config:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/closing-config/override/:buildingId/:month/:year", isAuthenticated, async (req, res) => {
+    try {
+      const { buildingId, month, year } = req.params;
+      const override = await storage.getBuildingOverride(buildingId, parseInt(month), parseInt(year));
+      res.json(override);
+    } catch (error) {
+      console.error("Error getting building override:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/closing-config/overrides", isAuthenticated, async (req, res) => {
+    try {
+      const buildingId = req.query.buildingId as string | undefined;
+      const overrides = await storage.listBuildingOverrides(buildingId);
+      res.json(overrides);
+    } catch (error) {
+      console.error("Error listing building overrides:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/closing-config/override", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!profile || !["gerente_general", "gerente_comercial"].includes(profile.role)) {
+        return res.status(403).json({ error: "Solo gerente general o comercial pueden crear overrides" });
+      }
+      if (!req.body.reason?.trim()) {
+        return res.status(400).json({ error: "El campo motivo es obligatorio" });
+      }
+      const override = await storage.upsertBuildingOverride({ ...req.body, createdBy: req.user!.id });
+      res.json(override);
+    } catch (error) {
+      console.error("Error upserting building override:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/closing-config/override/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!profile || !["gerente_general", "gerente_comercial"].includes(profile.role)) {
+        return res.status(403).json({ error: "Solo gerente general o comercial pueden eliminar overrides" });
+      }
+      await storage.deleteBuildingOverride(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting building override:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/closing-cycle-alerts/check", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!profile || !["gerente_general", "gerente_comercial"].includes(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+      const { month, year } = req.body;
+      if (!month || !year) {
+        return res.status(400).json({ error: "Se requiere month y year" });
+      }
+      const result = await storage.checkClosingCycleAlerts(parseInt(month), parseInt(year));
+      res.json(result);
+    } catch (error) {
+      console.error("Error checking closing cycle alerts:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
