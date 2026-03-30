@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -170,16 +170,48 @@ export default function CierreMensual() {
 
   const { data: buildings } = useQuery<Building[]>({ queryKey: ["/api/buildings"] });
 
-  const { data: globalClosingConfig } = useQuery<{ id: string } | null>({
-    queryKey: ["/api/closing-config/global"],
+  const [preloadedFromGlobalConfig, setPreloadedFromGlobalConfig] = useState(false);
+
+  // Config efectiva: se dispara cuando el dialog está abierto y hay edificio seleccionado.
+  // Reacciona automáticamente a cambios de edificio, mes y año.
+  const { data: effectiveConfig } = useQuery<{
+    emissionDay: number;
+    expenseCutoffDay: number;
+    incomeCutoffDay: number;
+    preStateDay: number;
+    finalEmissionDay: number;
+  } | null>({
+    queryKey: ["/api/closing-config/effective", createBuildingId, createMonth, createYear],
     queryFn: async () => {
-      const res = await fetch("/api/closing-config/global", { credentials: "include" });
+      if (!createBuildingId) return null;
+      const res = await fetch(
+        `/api/closing-config/effective/${createBuildingId}/${createMonth}/${createYear}`,
+        { credentials: "include" },
+      );
       if (!res.ok) return null;
       return res.json();
     },
+    enabled: createDialogOpen && !!createBuildingId,
   });
 
-  const [preloadedFromGlobalConfig, setPreloadedFromGlobalConfig] = useState(false);
+  // Rellena los inputs cuando llega la config efectiva
+  useEffect(() => {
+    if (!effectiveConfig) {
+      setPreloadedFromGlobalConfig(false);
+      return;
+    }
+    const m = String(parseInt(createMonth)).padStart(2, "0");
+    const y = createYear;
+    const toDate = (day: number) =>
+      `${y}-${m}-${String(day).padStart(2, "0")}`;
+
+    setCreateIssueDay(String(effectiveConfig.emissionDay));
+    setCreateCutoffExpenses(toDate(effectiveConfig.expenseCutoffDay));
+    setCreateCutoffIncomes(toDate(effectiveConfig.incomeCutoffDay));
+    setCreatePreStatement(toDate(effectiveConfig.preStateDay));
+    setCreateFinalIssue(toDate(effectiveConfig.finalEmissionDay));
+    setPreloadedFromGlobalConfig(true);
+  }, [effectiveConfig]);
 
   const { data: cycles, isLoading } = useQuery<MonthlyClosingCycle[]>({
     queryKey: ["/api/monthly-closing-cycles/dashboard", selectedYear],
@@ -286,6 +318,7 @@ export default function CierreMensual() {
     setCreatePreStatement("");
     setCreateFinalIssue("");
     setCreateNotes("");
+    setPreloadedFromGlobalConfig(false);
   }
 
   function handleCreate() {
@@ -394,10 +427,7 @@ export default function CierreMensual() {
                 </Link>
               </Button>
               <Button
-                onClick={() => {
-                  setPreloadedFromGlobalConfig(!!globalClosingConfig);
-                  setCreateDialogOpen(true);
-                }}
+                onClick={() => setCreateDialogOpen(true)}
                 data-testid="button-create-cycle"
               >
                 <Plus className="h-4 w-4 mr-1" />

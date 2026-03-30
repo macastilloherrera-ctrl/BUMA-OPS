@@ -1664,8 +1664,9 @@ export type ClosingCycleStatus = "open" | "preparation" | "pending_info" | "pre_
 export type ClosingCycleRisk = "low" | "medium" | "high";
 
 // Closing Cycle Global Config (singleton — solo un registro)
+// El id fijo 'singleton' garantiza a nivel de PK que nunca puede existir más de una fila.
 export const closingCycleGlobalConfig = pgTable("closing_cycle_global_config", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: text("id").primaryKey().default("singleton"),
   emissionDay: integer("emission_day").notNull().default(25),
   expenseCutoffDay: integer("expense_cutoff_day").notNull().default(18),
   incomeCutoffDay: integer("income_cutoff_day").notNull().default(20),
