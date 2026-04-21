@@ -18,3 +18,9 @@ id = "_Wqfe_ZuYVAOPrGX6pHow"
 uri = "file://docs/analisis_financiero_completo.md"
 type = "text"
 title = "BUMA OPS — Análisis Financiero Completo: Alícuotas, GC, Cobranza y Módulos Faltantes"
+
+[[outputs]]
+id = "A0yOvaewrZghNhYkNAnjR"
+uri = "file://docs/vision_empresa_administradora.md"
+type = "text"
+title = "BUMA OPS — Visión: Sistema Completo para Empresa Administradora de Propiedades"
