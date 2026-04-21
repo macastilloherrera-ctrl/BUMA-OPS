@@ -12,3 +12,9 @@ id = "n-cGNZswZcljncnSqF_iA"
 uri = "file://docs/analisis_modulos_faltantes.md"
 type = "text"
 title = "BUMA OPS — Análisis de Módulos Faltantes vs. Competencia + Ley 21.442"
+
+[[outputs]]
+id = "_Wqfe_ZuYVAOPrGX6pHow"
+uri = "file://docs/analisis_financiero_completo.md"
+type = "text"
+title = "BUMA OPS — Análisis Financiero Completo: Alícuotas, GC, Cobranza y Módulos Faltantes"
