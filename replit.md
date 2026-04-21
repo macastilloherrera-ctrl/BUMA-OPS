@@ -24,6 +24,8 @@ Key architectural patterns include:
 - **Unit-level Payment Verification**: A tool for operations executives to verify common expense payments per unit, including anomaly detection and detailed payment history.
 - **AI-powered Chat Assistant**: An integrated chat assistant (Asistente OPS) provides legal and operational guidance based on a knowledge base, including Chilean copropiedad law and system context.
 - **Chat IA Monitoring**: Super Admin and Gerente General can monitor all users' AI chat conversations via `/monitoreo-chat`, with filtering by user, message viewing, and conversation deletion. Module key: `monitoreo_chat_ia`.
+- **Cumplimiento Legal** (`/cumplimiento-legal`): Compliance calendar per building — tracks legal items (insurance, permits, certifications, etc.) with automatic traffic-light status (vencido/por_vencer/vigente/sin_fecha), document upload, CRUD, and reminders. Module key: `cumplimiento_legal`. Table: `compliance_items`.
+- **Repositorio Documental** (`/repositorio-documentos`): Centralized document repository aggregating compliance documents + building folder files across all buildings. Filterable by building, source, and status. Module key: `repositorio_documentos`. API: `/api/repositorio-documentos`.
 
 ## External Dependencies
 - **PostgreSQL (Neon)**: Primary database for all application data.

@@ -66,6 +66,8 @@ import VerificacionGGCC from "@/pages/VerificacionGGCC";
 import GestionPermisos from "@/pages/GestionPermisos";
 import ChatIA from "@/pages/ChatIA";
 import MonitoreoChat from "@/pages/MonitoreoChat";
+import CumplimientoLegal from "@/pages/CumplimientoLegal";
+import RepositorioDocumentos from "@/pages/RepositorioDocumentos";
 
 function LoadingScreen() {
   return (
@@ -256,6 +258,14 @@ function AuthenticatedApp() {
 
                 {m.ejecutivos && (
                   <Route path="/ejecutivos" component={Executives} />
+                )}
+
+                {m.cumplimiento_legal && (
+                  <Route path="/cumplimiento-legal" component={CumplimientoLegal} />
+                )}
+
+                {m.repositorio_documentos && (
+                  <Route path="/repositorio-documentos" component={RepositorioDocumentos} />
                 )}
 
                 {m.reportes_egresos && (

@@ -1719,6 +1719,84 @@ export type EffectiveClosingConfig = {
   hasOverride: boolean;
 };
 
+// ─────────────────────────────────────────────
+// CUMPLIMIENTO LEGAL — Compliance Items
+// ─────────────────────────────────────────────
+
+export const complianceCategoryEnum = pgEnum("compliance_category", [
+  "certificacion_gas",
+  "certificacion_ascensores",
+  "certificacion_electrica",
+  "certificacion_hvac",
+  "revision_extintores",
+  "poliza_incendio",
+  "poliza_responsabilidad_civil",
+  "plan_emergencia",
+  "contrato_administracion",
+  "contrato_mantencion",
+  "permiso_edificacion",
+  "inspeccion_tecnica",
+  "otro",
+]);
+
+export type ComplianceCategory =
+  | "certificacion_gas"
+  | "certificacion_ascensores"
+  | "certificacion_electrica"
+  | "certificacion_hvac"
+  | "revision_extintores"
+  | "poliza_incendio"
+  | "poliza_responsabilidad_civil"
+  | "plan_emergencia"
+  | "contrato_administracion"
+  | "contrato_mantencion"
+  | "permiso_edificacion"
+  | "inspeccion_tecnica"
+  | "otro";
+
+export const complianceItems = pgTable("compliance_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  buildingId: varchar("building_id").notNull(),
+  category: complianceCategoryEnum("category").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  expiryDate: timestamp("expiry_date"),
+  documentUrl: text("document_url"),
+  documentName: varchar("document_name", { length: 255 }),
+  reminderDays: integer("reminder_days").notNull().default(30),
+  notes: text("notes"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const complianceItemsRelations = relations(complianceItems, ({ one }) => ({
+  building: one(buildings, {
+    fields: [complianceItems.buildingId],
+    references: [buildings.id],
+  }),
+}));
+
+export const insertComplianceItemSchema = createInsertSchema(complianceItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertComplianceItem = z.infer<typeof insertComplianceItemSchema>;
+export type ComplianceItem = typeof complianceItems.$inferSelect;
+
+// Computed status (derived from expiryDate vs today)
+export type ComplianceStatus = "vigente" | "por_vencer" | "vencido" | "sin_fecha";
+
+export type ComplianceItemWithStatus = ComplianceItem & {
+  status: ComplianceStatus;
+  daysUntilExpiry: number | null;
+  buildingName?: string;
+};
+
+// ─────────────────────────────────────────────
 // Audit Logs table
 export const auditLogs = pgTable("audit_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

@@ -144,6 +144,9 @@ import {
   auditLogs,
   type AuditLog,
   type InsertAuditLog,
+  complianceItems,
+  type ComplianceItem,
+  type InsertComplianceItem,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, gte, lte, lt, or, sql, ne, count, inArray } from "drizzle-orm";
@@ -437,6 +440,13 @@ export interface IStorage {
   getDiagnosticStats(buildingId?: string): Promise<any>;
   bulkDeleteBankTransactions(buildingId: string, periodMonth: number, periodYear: number): Promise<number>;
   clearExportFlags(buildingId: string, periodMonth: number, periodYear: number): Promise<number>;
+
+  // Compliance Items
+  getComplianceItems(buildingId?: string): Promise<ComplianceItem[]>;
+  getComplianceItem(id: string): Promise<ComplianceItem | undefined>;
+  createComplianceItem(data: InsertComplianceItem): Promise<ComplianceItem>;
+  updateComplianceItem(id: string, data: Partial<InsertComplianceItem>): Promise<ComplianceItem | undefined>;
+  deleteComplianceItem(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2188,6 +2198,46 @@ export class DatabaseStorage implements IStorage {
         ));
     }
     return db.select().from(knowledgeDocuments);
+  }
+
+  // ─────────────────────────────────────────────
+  // Compliance Items
+  // ─────────────────────────────────────────────
+  async getComplianceItems(buildingId?: string): Promise<ComplianceItem[]> {
+    if (buildingId) {
+      return db.select().from(complianceItems)
+        .where(and(eq(complianceItems.buildingId, buildingId), eq(complianceItems.isActive, true)))
+        .orderBy(complianceItems.expiryDate);
+    }
+    return db.select().from(complianceItems)
+      .where(eq(complianceItems.isActive, true))
+      .orderBy(complianceItems.expiryDate);
+  }
+
+  async getComplianceItem(id: string): Promise<ComplianceItem | undefined> {
+    const [item] = await db.select().from(complianceItems).where(eq(complianceItems.id, id));
+    return item || undefined;
+  }
+
+  async createComplianceItem(data: InsertComplianceItem): Promise<ComplianceItem> {
+    const [item] = await db.insert(complianceItems).values(data).returning();
+    return item;
+  }
+
+  async updateComplianceItem(id: string, data: Partial<InsertComplianceItem>): Promise<ComplianceItem | undefined> {
+    const [item] = await db.update(complianceItems)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(complianceItems.id, id))
+      .returning();
+    return item || undefined;
+  }
+
+  async deleteComplianceItem(id: string): Promise<boolean> {
+    const [item] = await db.update(complianceItems)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(complianceItems.id, id))
+      .returning();
+    return !!item;
   }
 }
 

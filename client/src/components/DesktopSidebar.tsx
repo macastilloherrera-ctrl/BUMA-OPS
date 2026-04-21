@@ -38,6 +38,8 @@ import {
   Bot,
   Eye,
   Settings,
+  ShieldAlert,
+  FolderOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -131,6 +133,8 @@ const allNavGroups: NavGroup[] = [
       { path: "/equipos", label: "Equipos Críticos", icon: Wrench, moduleKey: "equipos_criticos" },
       { path: "/mantenedores", label: "Proveedores", icon: HardHat, moduleKey: "mantenedores" },
       { path: "/ejecutivos", label: "Ejecutivos", icon: Users, moduleKey: "ejecutivos" },
+      { path: "/cumplimiento-legal", label: "Cumplimiento Legal", icon: ShieldAlert, moduleKey: "cumplimiento_legal" },
+      { path: "/repositorio-documentos", label: "Repositorio Documental", icon: FolderOpen, moduleKey: "repositorio_documentos" },
     ]
   },
   {

@@ -30,6 +30,8 @@ export const MODULE_KEYS = [
   "ver_costos",
   "aprobar_equipos",
   "monitoreo_chat_ia",
+  "cumplimiento_legal",
+  "repositorio_documentos",
 ] as const;
 
 export type ModuleKey = typeof MODULE_KEYS[number];
@@ -72,6 +74,8 @@ export const MODULE_DEFINITIONS: Record<ModuleKey, ModuleDefinition> = {
   ver_costos: { label: "Ver costos", group: "Permisos Especiales", routes: [] },
   aprobar_equipos: { label: "Aprobar equipos", group: "Permisos Especiales", routes: [] },
   monitoreo_chat_ia: { label: "Monitoreo Chat IA", group: "Administración", routes: ["/monitoreo-chat"] },
+  cumplimiento_legal: { label: "Cumplimiento Legal", group: "Gestión", routes: ["/cumplimiento-legal"] },
+  repositorio_documentos: { label: "Repositorio Documentos", group: "Gestión", routes: ["/repositorio-documentos"] },
 };
 
 export type RoleModulePermissions = Record<ModuleKey, boolean>;
@@ -140,6 +144,8 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissionsConfig> = {
       ver_costos: true,
       aprobar_equipos: true,
       monitoreo_chat_ia: true,
+      cumplimiento_legal: true,
+      repositorio_documentos: true,
     },
   },
   gerente_general: {
@@ -178,6 +184,8 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissionsConfig> = {
       ver_costos: true,
       aprobar_equipos: true,
       monitoreo_chat_ia: true,
+      cumplimiento_legal: true,
+      repositorio_documentos: true,
     },
   },
   gerente_operaciones: {
@@ -216,6 +224,8 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissionsConfig> = {
       ver_costos: true,
       aprobar_equipos: true,
       monitoreo_chat_ia: false,
+      cumplimiento_legal: true,
+      repositorio_documentos: true,
     },
   },
   gerente_comercial: {
@@ -254,6 +264,8 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissionsConfig> = {
       ver_costos: true,
       aprobar_equipos: true,
       monitoreo_chat_ia: false,
+      cumplimiento_legal: true,
+      repositorio_documentos: true,
     },
   },
   gerente_finanzas: {
@@ -292,6 +304,8 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissionsConfig> = {
       ver_costos: true,
       aprobar_equipos: false,
       monitoreo_chat_ia: false,
+      cumplimiento_legal: false,
+      repositorio_documentos: true,
     },
   },
   ejecutivo_operaciones: {
@@ -330,6 +344,8 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissionsConfig> = {
       ver_costos: false,
       aprobar_equipos: false,
       monitoreo_chat_ia: false,
+      cumplimiento_legal: false,
+      repositorio_documentos: false,
     },
   },
   conserjeria: {
@@ -368,6 +384,8 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissionsConfig> = {
       ver_costos: false,
       aprobar_equipos: false,
       monitoreo_chat_ia: false,
+      cumplimiento_legal: false,
+      repositorio_documentos: false,
     },
   },
 };

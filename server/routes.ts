@@ -8801,6 +8801,153 @@ export async function registerRoutes(
     }
   }
 
+  // ─────────────────────────────────────────────
+  // COMPLIANCE ITEMS
+  // ─────────────────────────────────────────────
+
+  function computeComplianceStatus(item: any) {
+    if (!item.expiryDate) return { status: "sin_fecha", daysUntilExpiry: null };
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const expiry = new Date(item.expiryDate);
+    expiry.setHours(0, 0, 0, 0);
+    const diffMs = expiry.getTime() - today.getTime();
+    const daysUntilExpiry = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    if (daysUntilExpiry < 0) return { status: "vencido", daysUntilExpiry };
+    if (daysUntilExpiry <= (item.reminderDays || 30)) return { status: "por_vencer", daysUntilExpiry };
+    return { status: "vigente", daysUntilExpiry };
+  }
+
+  app.get("/api/compliance-items", isAuthenticated, async (req, res) => {
+    try {
+      const { buildingId } = req.query;
+      const items = await storage.getComplianceItems(buildingId as string | undefined);
+      const buildings = await storage.getBuildings();
+      const buildingMap = Object.fromEntries(buildings.map((b) => [b.id, b.name]));
+      const enriched = items.map((item) => ({
+        ...item,
+        ...computeComplianceStatus(item),
+        buildingName: buildingMap[item.buildingId] || "—",
+      }));
+      res.json(enriched);
+    } catch (error) {
+      console.error("Error getting compliance items:", error);
+      res.status(500).json({ error: "Error al obtener ítems de cumplimiento" });
+    }
+  });
+
+  app.get("/api/compliance-items/:id", isAuthenticated, async (req, res) => {
+    try {
+      const item = await storage.getComplianceItem(req.params.id);
+      if (!item) return res.status(404).json({ error: "Ítem no encontrado" });
+      res.json({ ...item, ...computeComplianceStatus(item) });
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener ítem" });
+    }
+  });
+
+  app.post("/api/compliance-items", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const userId = (req as any).user?.id || (req as any).user?.claims?.sub;
+      const body = { ...req.body, createdBy: userId };
+      if (body.expiryDate) body.expiryDate = new Date(body.expiryDate);
+      const item = await storage.createComplianceItem(body);
+      res.status(201).json({ ...item, ...computeComplianceStatus(item) });
+    } catch (error) {
+      console.error("Error creating compliance item:", error);
+      res.status(500).json({ error: "Error al crear ítem" });
+    }
+  });
+
+  app.patch("/api/compliance-items/:id", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const body = { ...req.body };
+      if (body.expiryDate) body.expiryDate = new Date(body.expiryDate);
+      const item = await storage.updateComplianceItem(req.params.id, body);
+      if (!item) return res.status(404).json({ error: "Ítem no encontrado" });
+      res.json({ ...item, ...computeComplianceStatus(item) });
+    } catch (error) {
+      res.status(500).json({ error: "Error al actualizar ítem" });
+    }
+  });
+
+  app.delete("/api/compliance-items/:id", isAuthenticated, isManager, async (req, res) => {
+    try {
+      const ok = await storage.deleteComplianceItem(req.params.id);
+      if (!ok) return res.status(404).json({ error: "Ítem no encontrado" });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Error al eliminar ítem" });
+    }
+  });
+
+  // ─── Repositorio Documental Centralizado ───────────────────────────────────
+  app.get("/api/repositorio-documentos", isAuthenticated, async (req, res) => {
+    try {
+      const { buildingId } = req.query;
+      // 1. Compliance items con documento adjunto
+      const allCompliance = await storage.getComplianceItems(buildingId as string | undefined);
+      const complianceDocs = allCompliance
+        .filter((c) => c.documentUrl)
+        .map((c) => ({
+          id: c.id,
+          source: "compliance" as const,
+          buildingId: c.buildingId,
+          name: c.documentName || c.name,
+          category: c.category,
+          complianceName: c.name,
+          objectKey: c.documentUrl!,
+          expiryDate: c.expiryDate,
+          status: computeComplianceStatus(c),
+          createdAt: c.createdAt,
+        }));
+
+      // 2. Archivos de edificios (building_files) – cargar por edificio
+      const buildingsData = await storage.getBuildings();
+      const targetBuildings = buildingId
+        ? buildingsData.filter((b) => b.id === buildingId)
+        : buildingsData;
+
+      const buildingFileDocs: {
+        id: string;
+        source: "building_file";
+        buildingId: string;
+        name: string;
+        category: string;
+        complianceName: null;
+        objectKey: string;
+        expiryDate: null;
+        status: null;
+        createdAt: Date | null;
+      }[] = [];
+      for (const building of targetBuildings) {
+        const folders = await storage.getBuildingFolders(building.id);
+        for (const folder of folders) {
+          const files = await storage.getBuildingFiles(folder.id);
+          for (const file of files) {
+            buildingFileDocs.push({
+              id: file.id,
+              source: "building_file",
+              buildingId: file.buildingId,
+              name: file.fileName,
+              category: folder.name,
+              complianceName: null,
+              objectKey: file.objectStorageKey,
+              expiryDate: null,
+              status: null,
+              createdAt: file.createdAt,
+            });
+          }
+        }
+      }
+
+      res.json([...complianceDocs, ...buildingFileDocs]);
+    } catch (error) {
+      console.error("Error fetching repositorio documentos:", error);
+      res.status(500).json({ error: "Error al obtener repositorio" });
+    }
+  });
+
   // Run insurance check on server startup and schedule daily (with guard for hot reloads)
   if (!INSURANCE_CHECK_INITIALIZED) {
     (global as any).__INSURANCE_CHECK_INITIALIZED__ = true;
