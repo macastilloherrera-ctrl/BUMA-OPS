@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "NmJ9yeKAmeKQcpzZGY4w0"
+uri = "file://docs/gastos_recurrentes.md"
+type = "text"
+title = "Gastos Recurrentes — Documentación Técnica BUMA OPS"
