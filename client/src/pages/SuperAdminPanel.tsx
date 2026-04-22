@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { ObjectUploader } from "@/components/ObjectUploader";
-import { Settings, Users, Key, Shield, Building2, Save, RefreshCw, UserPlus, Pencil, ToggleLeft, Upload, FileText, Image, Download, Book, Code, Activity, Wrench, Trash2, RotateCcw, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Settings, Users, Key, Shield, Building2, Save, RefreshCw, UserPlus, Pencil, ToggleLeft, Upload, FileText, Image, Download, Book, Code, Activity, Wrench, Trash2, RotateCcw, Search, ChevronLeft, ChevronRight, Copy, CheckCheck, Eye, EyeOff, Shuffle } from "lucide-react";
 import type { UserRole } from "@shared/schema";
 
 interface SystemConfig {
@@ -77,6 +77,11 @@ export default function SuperAdminPanel() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showResetPasswordDialog, setShowResetPasswordDialog] = useState(false);
+  const [resetPasswordInput, setResetPasswordInput] = useState("");
+  const [showResetPasswordText, setShowResetPasswordText] = useState(false);
+  const [showCredentialsDialog, setShowCredentialsDialog] = useState(false);
+  const [lastCredentials, setLastCredentials] = useState<{ email: string; password: string; action: string } | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [userForm, setUserForm] = useState({
     email: "",
@@ -163,11 +168,12 @@ export default function SuperAdminPanel() {
 
   const createUserMutation = useMutation({
     mutationFn: (data: typeof userForm) => apiRequest("POST", "/api/super-admin/users", data),
-    onSuccess: () => {
+    onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
       setShowCreateDialog(false);
+      setLastCredentials({ email: vars.email, password: vars.password, action: "create" });
+      setShowCredentialsDialog(true);
       resetUserForm();
-      toast({ title: "Usuario creado exitosamente" });
     },
     onError: (error: any) => {
       toast({ title: "Error al crear usuario", description: error.message, variant: "destructive" });
@@ -200,12 +206,30 @@ export default function SuperAdminPanel() {
     },
   });
 
+  const generateTempPassword = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#";
+    return Array.from({ length: 10 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  };
+
+  const copyToClipboard = (text: string, field: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
   const resetPasswordMutation = useMutation({
-    mutationFn: (id: string) => apiRequest("POST", `/api/super-admin/users/${id}/reset-password`),
-    onSuccess: () => {
+    mutationFn: ({ id, newPassword }: { id: string; newPassword: string }) =>
+      apiRequest("POST", `/api/super-admin/users/${id}/reset-password`, { newPassword }),
+    onSuccess: (_, vars) => {
       setShowResetPasswordDialog(false);
+      setLastCredentials({
+        email: selectedUser?.email || "",
+        password: vars.newPassword,
+        action: "reset",
+      });
+      setShowCredentialsDialog(true);
+      setResetPasswordInput("");
       setSelectedUser(null);
-      toast({ title: "Contrasena reseteada. El usuario recibira un email con instrucciones." });
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -1077,24 +1101,114 @@ export default function SuperAdminPanel() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showResetPasswordDialog} onOpenChange={setShowResetPasswordDialog}>
+      <Dialog open={showResetPasswordDialog} onOpenChange={(open) => { setShowResetPasswordDialog(open); if (!open) setResetPasswordInput(""); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Resetear Contrasena</DialogTitle>
+            <DialogTitle>Resetear Contraseña</DialogTitle>
             <DialogDescription>
-              Se enviara un email al usuario {selectedUser?.email} con instrucciones para crear una nueva contrasena.
+              Ingresa una nueva contraseña temporal para <strong>{selectedUser?.email}</strong>. Deberás comunicársela manualmente.
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Input
+                  type={showResetPasswordText ? "text" : "password"}
+                  placeholder="Nueva contraseña temporal"
+                  value={resetPasswordInput}
+                  onChange={(e) => setResetPasswordInput(e.target.value)}
+                  data-testid="input-reset-password"
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowResetPasswordText(!showResetPasswordText)}
+                >
+                  {showResetPasswordText ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                title="Generar contraseña aleatoria"
+                onClick={() => { const p = generateTempPassword(); setResetPasswordInput(p); setShowResetPasswordText(true); }}
+              >
+                <Shuffle className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              El usuario deberá cambiar esta contraseña en su primer ingreso.
+            </p>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowResetPasswordDialog(false)}>
+            <Button variant="outline" onClick={() => { setShowResetPasswordDialog(false); setResetPasswordInput(""); }}>
               Cancelar
             </Button>
             <Button
               variant="destructive"
-              onClick={() => selectedUser && resetPasswordMutation.mutate(selectedUser.id)}
-              disabled={resetPasswordMutation.isPending}
+              onClick={() => selectedUser && resetPasswordInput.length >= 6 && resetPasswordMutation.mutate({ id: selectedUser.id, newPassword: resetPasswordInput })}
+              disabled={resetPasswordMutation.isPending || resetPasswordInput.length < 6}
+              data-testid="button-confirm-reset-password"
             >
-              {resetPasswordMutation.isPending ? "Enviando..." : "Resetear Contrasena"}
+              {resetPasswordMutation.isPending ? "Reseteando..." : "Resetear Contraseña"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Credentials display dialog */}
+      <Dialog open={showCredentialsDialog} onOpenChange={setShowCredentialsDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-700">
+              <CheckCheck className="h-5 w-5" />
+              {lastCredentials?.action === "reset" ? "Contraseña reseteada" : "Usuario creado"} exitosamente
+            </DialogTitle>
+            <DialogDescription>
+              Copia estas credenciales y compártelas con el usuario de forma segura (WhatsApp, llamada, etc.)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Usuario (email)</p>
+                  <p className="font-mono text-sm font-semibold">{lastCredentials?.email}</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 gap-1.5 shrink-0"
+                  onClick={() => copyToClipboard(lastCredentials?.email || "", "email")}
+                >
+                  {copiedField === "email" ? <CheckCheck className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copiedField === "email" ? "Copiado" : "Copiar"}
+                </Button>
+              </div>
+              <div className="border-t pt-3 flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Contraseña temporal</p>
+                  <p className="font-mono text-sm font-semibold tracking-wider">{lastCredentials?.password}</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 gap-1.5 shrink-0"
+                  onClick={() => copyToClipboard(lastCredentials?.password || "", "password")}
+                >
+                  {copiedField === "password" ? <CheckCheck className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copiedField === "password" ? "Copiado" : "Copiar"}
+                </Button>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground text-center">
+              El usuario deberá cambiar la contraseña al iniciar sesión por primera vez.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setShowCredentialsDialog(false)} className="w-full">
+              Listo, ya informé al usuario
             </Button>
           </DialogFooter>
         </DialogContent>
