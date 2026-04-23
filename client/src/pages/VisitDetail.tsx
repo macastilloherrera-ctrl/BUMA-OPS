@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -7,6 +8,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   ArrowLeft,
   Play,
@@ -18,6 +35,7 @@ import {
   Wrench,
   FileText,
   CheckCircle2,
+  Pencil,
 } from "lucide-react";
 import type { Visit, Building, CriticalAsset, Ticket } from "@shared/schema";
 import { format } from "date-fns";
@@ -37,6 +55,13 @@ export default function VisitDetail() {
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const { toast } = useToast();
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editForm, setEditForm] = useState({
+    scheduledDate: "",
+    type: "",
+    executiveId: "",
+    notes: "",
+  });
 
   const params = new URLSearchParams(searchString);
   const fromDashboard = params.get("from") === "dashboard";
@@ -46,8 +71,20 @@ export default function VisitDetail() {
     queryKey: ["/api/visits", id],
   });
 
+  const { data: userProfile } = useQuery<{ role: string; id: string }>({
+    queryKey: ["/api/me"],
+  });
+
+  const isManager = userProfile
+    ? ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas", "super_admin"].includes(userProfile.role)
+    : false;
+
+  const { data: executives } = useQuery<Array<{ userId: string; displayName: string }>>({
+    queryKey: ["/api/users/executives"],
+    enabled: isManager,
+  });
+
   const getExecutiveName = (): string => {
-    // Use executiveName from API response (works for all users including executives)
     if (visit?.executiveName) return visit.executiveName;
     if (visit?.executiveId) return visit.executiveId;
     return "Sin asignar";
@@ -70,6 +107,39 @@ export default function VisitDetail() {
     },
   });
 
+  const editVisitMutation = useMutation({
+    mutationFn: (data: typeof editForm) =>
+      apiRequest("PATCH", `/api/visits/${id}`, {
+        scheduledDate: data.scheduledDate,
+        type: data.type || undefined,
+        executiveId: data.executiveId || undefined,
+        notes: data.notes || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/visits"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/visits", id] });
+      setShowEditDialog(false);
+      toast({ title: "Visita actualizada correctamente" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error al actualizar", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const openEditDialog = () => {
+    if (!visit) return;
+    const dateStr = visit.scheduledDate
+      ? new Date(visit.scheduledDate).toISOString().slice(0, 16)
+      : "";
+    setEditForm({
+      scheduledDate: dateStr,
+      type: visit.type || "rutina",
+      executiveId: visit.executiveId || "",
+      notes: visit.notes || "",
+    });
+    setShowEditDialog(true);
+  };
+
   if (isLoading) {
     return (
       <div className="p-4 space-y-4">
@@ -89,6 +159,7 @@ export default function VisitDetail() {
   }
 
   const canStart = visit.status === "programada" || visit.status === "atrasada";
+  const canEdit = isManager && (visit.status === "programada" || visit.status === "atrasada");
 
   return (
     <div className="flex flex-col h-full">
@@ -102,6 +173,12 @@ export default function VisitDetail() {
           <div className="flex-1">
             <h1 className="text-lg font-semibold">Detalle de Visita</h1>
           </div>
+          {canEdit && (
+            <Button variant="outline" size="sm" onClick={openEditDialog} data-testid="button-edit-visit">
+              <Pencil className="h-4 w-4 mr-1.5" />
+              Editar
+            </Button>
+          )}
           {visit.cancellationType === "eliminada" ? (
             <Badge variant="destructive">Eliminada</Badge>
           ) : visit.cancellationType === "reagendada" ? (
@@ -342,6 +419,76 @@ export default function VisitDetail() {
           </Button>
         </div>
       )}
+
+      {/* Edit Visit Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Visita</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Fecha y hora</label>
+              <Input
+                type="datetime-local"
+                value={editForm.scheduledDate}
+                onChange={(e) => setEditForm(f => ({ ...f, scheduledDate: e.target.value }))}
+                data-testid="input-edit-visit-date"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Tipo</label>
+              <Select value={editForm.type} onValueChange={(v) => setEditForm(f => ({ ...f, type: v }))}>
+                <SelectTrigger data-testid="select-edit-visit-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="rutina">Rutina</SelectItem>
+                  <SelectItem value="urgente">Urgente</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Ejecutivo asignado</label>
+              <Select value={editForm.executiveId} onValueChange={(v) => setEditForm(f => ({ ...f, executiveId: v }))}>
+                <SelectTrigger data-testid="select-edit-visit-executive">
+                  <SelectValue placeholder="Sin asignar" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Sin asignar</SelectItem>
+                  {executives?.map((exec) => (
+                    <SelectItem key={exec.userId} value={exec.userId}>
+                      {exec.displayName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Notas</label>
+              <Textarea
+                placeholder="Notas opcionales..."
+                value={editForm.notes}
+                onChange={(e) => setEditForm(f => ({ ...f, notes: e.target.value }))}
+                rows={3}
+                data-testid="textarea-edit-visit-notes"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => editVisitMutation.mutate(editForm)}
+              disabled={editVisitMutation.isPending || !editForm.scheduledDate}
+              data-testid="button-save-visit-edit"
+            >
+              {editVisitMutation.isPending ? "Guardando..." : "Guardar cambios"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

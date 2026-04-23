@@ -1274,6 +1274,35 @@ export async function registerRoutes(
     }
   });
 
+  // Edit a scheduled visit (managers only, only programada/atrasada)
+  app.patch("/api/visits/:id", isAuthenticated, async (req, res) => {
+    try {
+      const existingVisit = await storage.getVisit(req.params.id);
+      if (!existingVisit) return res.status(404).json({ error: "Visita no encontrada" });
+
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!profile || !isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo los gerentes pueden editar visitas" });
+      }
+      if (!["programada", "atrasada"].includes(existingVisit.status)) {
+        return res.status(400).json({ error: "Solo se pueden editar visitas programadas o atrasadas" });
+      }
+
+      const { scheduledDate, type, notes, executiveId } = req.body;
+      const updateData: any = {};
+      if (scheduledDate !== undefined) updateData.scheduledDate = new Date(scheduledDate);
+      if (type !== undefined) updateData.type = type;
+      if (notes !== undefined) updateData.notes = notes;
+      if (executiveId !== undefined) updateData.executiveId = executiveId || null;
+
+      const updated = await storage.updateVisit(req.params.id, updateData);
+      res.json(updated);
+    } catch (error) {
+      console.error("Error editing visit:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   app.patch("/api/visits/:id/start", isAuthenticated, async (req, res) => {
     try {
       const existingVisit = await storage.getVisit(req.params.id);
