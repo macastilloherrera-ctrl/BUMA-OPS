@@ -36,6 +36,7 @@ import {
   FileText,
   CheckCircle2,
   Pencil,
+  History,
 } from "lucide-react";
 import type { Visit, Building, CriticalAsset, Ticket } from "@shared/schema";
 import { format } from "date-fns";
@@ -79,9 +80,21 @@ export default function VisitDetail() {
     ? ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas", "super_admin"].includes(userProfile.role)
     : false;
 
+  const isExecutive = userProfile?.role === "ejecutivo_operaciones";
+
   const { data: executives } = useQuery<Array<{ userId: string; displayName: string }>>({
     queryKey: ["/api/users/executives"],
     enabled: isManager,
+  });
+
+  const { data: history = [] } = useQuery<any[]>({
+    queryKey: ["/api/visits", id, "history"],
+    queryFn: async () => {
+      const res = await fetch(`/api/visits/${id}/history`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!id,
   });
 
   const getExecutiveName = (): string => {
@@ -118,6 +131,7 @@ export default function VisitDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/visits"] });
       queryClient.invalidateQueries({ queryKey: ["/api/visits", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/visits", id, "history"] });
       setShowEditDialog(false);
       toast({ title: "Visita actualizada correctamente" });
     },
@@ -159,7 +173,9 @@ export default function VisitDetail() {
   }
 
   const canStart = visit.status === "programada" || visit.status === "atrasada";
-  const canEdit = isManager && (visit.status === "programada" || visit.status === "atrasada");
+  const isEditableStatus = visit.status === "programada" || visit.status === "atrasada";
+  const isOwnVisit = visit.executiveId === userProfile?.id;
+  const canEdit = isEditableStatus && (isManager || (isExecutive && isOwnVisit));
 
   return (
     <div className="flex flex-col h-full">
@@ -386,6 +402,65 @@ export default function VisitDetail() {
             </CardContent>
           </Card>
         )}
+
+        {history.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <History className="h-4 w-4 text-muted-foreground" />
+                Historial de cambios
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {history.map((entry: any) => {
+                  let parsed: any = {};
+                  try { parsed = JSON.parse(entry.metadata || "{}"); } catch {}
+                  const changes = parsed.changes || {};
+                  const fieldLabels: Record<string, string> = {
+                    scheduledDate: "Fecha/hora",
+                    type: "Tipo",
+                    notes: "Notas",
+                    executiveId: "Ejecutivo",
+                  };
+                  const typeLabels: Record<string, string> = {
+                    rutina: "Rutina",
+                    urgente: "Urgente",
+                    revision_proyecto: "Revisión Proyecto",
+                  };
+                  return (
+                    <div key={entry.id} className="text-sm border-l-2 border-muted pl-3 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-foreground">{entry.userName}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {entry.createdAt && format(new Date(entry.createdAt), "dd MMM yyyy HH:mm", { locale: es })}
+                        </span>
+                      </div>
+                      <div className="text-muted-foreground space-y-0.5">
+                        {Object.entries(changes).map(([field, change]: [string, any]) => (
+                          <div key={field}>
+                            <span className="font-medium text-foreground/80">{fieldLabels[field] || field}: </span>
+                            {field === "scheduledDate" ? (
+                              <>
+                                {change.from ? format(new Date(change.from), "dd MMM yyyy HH:mm", { locale: es }) : "—"}
+                                {" → "}
+                                {change.to ? format(new Date(change.to), "dd MMM yyyy HH:mm", { locale: es }) : "—"}
+                              </>
+                            ) : field === "type" ? (
+                              <>{typeLabels[change.from] || change.from || "—"} → {typeLabels[change.to] || change.to || "—"}</>
+                            ) : (
+                              <>{String(change.from ?? "—")} → {String(change.to ?? "—")}</>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {canStart && (
@@ -448,22 +523,24 @@ export default function VisitDetail() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Ejecutivo asignado</label>
-              <Select value={editForm.executiveId} onValueChange={(v) => setEditForm(f => ({ ...f, executiveId: v }))}>
-                <SelectTrigger data-testid="select-edit-visit-executive">
-                  <SelectValue placeholder="Sin asignar" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Sin asignar</SelectItem>
-                  {executives?.map((exec) => (
-                    <SelectItem key={exec.userId} value={exec.userId}>
-                      {exec.displayName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {isManager && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Ejecutivo asignado</label>
+                <Select value={editForm.executiveId} onValueChange={(v) => setEditForm(f => ({ ...f, executiveId: v }))}>
+                  <SelectTrigger data-testid="select-edit-visit-executive">
+                    <SelectValue placeholder="Sin asignar" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Sin asignar</SelectItem>
+                    {executives?.map((exec) => (
+                      <SelectItem key={exec.userId} value={exec.userId}>
+                        {exec.displayName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Notas</label>
               <Textarea

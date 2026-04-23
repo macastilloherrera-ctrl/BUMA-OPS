@@ -1274,15 +1274,22 @@ export async function registerRoutes(
     }
   });
 
-  // Edit a scheduled visit (managers only, only programada/atrasada)
+  // Edit a scheduled visit (managers + ejecutivo for own visits, only programada/atrasada)
   app.patch("/api/visits/:id", isAuthenticated, async (req, res) => {
     try {
       const existingVisit = await storage.getVisit(req.params.id);
       if (!existingVisit) return res.status(404).json({ error: "Visita no encontrada" });
 
-      const profile = await storage.getUserProfile(req.user!.id);
-      if (!profile || !isManagerRole(profile)) {
-        return res.status(403).json({ error: "Solo los gerentes pueden editar visitas" });
+      const userId = req.user!.id;
+      const profile = await storage.getUserProfile(userId);
+      if (!profile) return res.status(403).json({ error: "Acceso denegado" });
+
+      const isManager = isManagerRole(profile);
+      const isExecutive = profile.role === "ejecutivo_operaciones";
+      const isOwnVisit = existingVisit.executiveId === userId;
+
+      if (!isManager && !(isExecutive && isOwnVisit)) {
+        return res.status(403).json({ error: "Sin permiso para editar esta visita" });
       }
       if (!["programada", "atrasada"].includes(existingVisit.status)) {
         return res.status(400).json({ error: "Solo se pueden editar visitas programadas o atrasadas" });
@@ -1290,15 +1297,89 @@ export async function registerRoutes(
 
       const { scheduledDate, type, notes, executiveId } = req.body;
       const updateData: any = {};
-      if (scheduledDate !== undefined) updateData.scheduledDate = new Date(scheduledDate);
-      if (type !== undefined) updateData.type = type;
-      if (notes !== undefined) updateData.notes = notes;
-      if (executiveId !== undefined) updateData.executiveId = executiveId || null;
+      const changes: Record<string, { from: any; to: any }> = {};
+
+      if (scheduledDate !== undefined && scheduledDate !== null) {
+        const newDate = new Date(scheduledDate);
+        if (existingVisit.scheduledDate?.toString() !== newDate.toString()) {
+          changes.scheduledDate = {
+            from: existingVisit.scheduledDate ? new Date(existingVisit.scheduledDate).toISOString() : null,
+            to: newDate.toISOString(),
+          };
+        }
+        updateData.scheduledDate = newDate;
+      }
+      if (type !== undefined && type !== existingVisit.type) {
+        changes.type = { from: existingVisit.type, to: type };
+        updateData.type = type;
+      }
+      if (notes !== undefined && notes !== existingVisit.notes) {
+        changes.notes = { from: existingVisit.notes, to: notes };
+        updateData.notes = notes;
+      }
+      // Only managers can change the assigned executive
+      if (isManager && executiveId !== undefined) {
+        const newExecId = executiveId || null;
+        if (newExecId !== existingVisit.executiveId) {
+          changes.executiveId = { from: existingVisit.executiveId, to: newExecId };
+        }
+        updateData.executiveId = newExecId;
+      }
+
+      if (Object.keys(updateData).length === 0) {
+        return res.json(existingVisit);
+      }
 
       const updated = await storage.updateVisit(req.params.id, updateData);
+
+      // Log the change to audit trail
+      if (Object.keys(changes).length > 0) {
+        try {
+          const user = await storage.getUser(userId);
+          const building = existingVisit.buildingId ? await storage.getBuilding(existingVisit.buildingId) : null;
+          await storage.createAuditLog({
+            userId,
+            userName: user ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || userId : userId,
+            userRole: profile.role,
+            action: "edit_visit",
+            entityType: "visit",
+            entityId: req.params.id,
+            buildingId: existingVisit.buildingId || null,
+            buildingName: building?.name || null,
+            metadata: JSON.stringify({ changes, visitId: req.params.id }),
+          });
+        } catch (e) {
+          console.warn("[edit-visit] Could not create audit log:", e);
+        }
+      }
+
       res.json(updated);
     } catch (error) {
       console.error("Error editing visit:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Get edit history for a visit
+  app.get("/api/visits/:id/history", isAuthenticated, async (req, res) => {
+    try {
+      const existingVisit = await storage.getVisit(req.params.id);
+      if (!existingVisit) return res.status(404).json({ error: "Visita no encontrada" });
+
+      const profile = await storage.getUserProfile(req.user!.id);
+      const hasAccess = await canAccessEntity(req.user!.id, profile, existingVisit);
+      if (!hasAccess) return res.status(403).json({ error: "Acceso denegado" });
+
+      const result = await storage.listAuditLogs({
+        entityType: "visit",
+        action: "edit_visit",
+        limit: 50,
+        offset: 0,
+      });
+      const visitHistory = result.logs.filter(l => l.entityId === req.params.id);
+      res.json(visitHistory);
+    } catch (error) {
+      console.error("Error fetching visit history:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
