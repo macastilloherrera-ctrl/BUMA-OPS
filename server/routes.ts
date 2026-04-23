@@ -853,10 +853,10 @@ export async function registerRoutes(
 
   app.post("/api/critical-assets", isAuthenticated, async (req, res) => {
     try {
-      const data = insertCriticalAssetSchema.parse({
-        ...req.body,
-        suggestedBy: req.user!.id,
-      });
+      const body = { ...req.body, suggestedBy: req.user!.id };
+      if (body.lastMaintenanceDate) body.lastMaintenanceDate = new Date(body.lastMaintenanceDate);
+      if (body.nextMaintenanceDate) body.nextMaintenanceDate = new Date(body.nextMaintenanceDate);
+      const data = insertCriticalAssetSchema.parse(body);
       const asset = await storage.createCriticalAsset(data);
       res.status(201).json(asset);
     } catch (error) {
@@ -873,7 +873,10 @@ export async function registerRoutes(
       const profile = await storage.getUserProfile(req.user!.id);
       const isManagerUser = profile && ["gerente_general", "gerente_operaciones"].includes(profile.role);
       
-      const data = insertCriticalAssetSchema.partial().parse(req.body);
+      const bodyForParse = { ...req.body };
+      if (bodyForParse.lastMaintenanceDate) bodyForParse.lastMaintenanceDate = new Date(bodyForParse.lastMaintenanceDate);
+      if (bodyForParse.nextMaintenanceDate) bodyForParse.nextMaintenanceDate = new Date(bodyForParse.nextMaintenanceDate);
+      const data = insertCriticalAssetSchema.partial().parse(bodyForParse);
       
       // Status changes require manager role
       if (data.status !== undefined) {
