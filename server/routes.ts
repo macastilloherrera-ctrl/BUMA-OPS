@@ -497,7 +497,11 @@ export async function registerRoutes(
 
   app.post("/api/buildings", isAuthenticated, isManager, async (req, res) => {
     try {
-      const data = insertBuildingSchema.parse(req.body);
+      const bodyBuilding = { ...req.body };
+      if (bodyBuilding.insuranceExpiryDate && typeof bodyBuilding.insuranceExpiryDate === "string") {
+        bodyBuilding.insuranceExpiryDate = new Date(bodyBuilding.insuranceExpiryDate);
+      }
+      const data = insertBuildingSchema.parse(bodyBuilding);
       const building = await storage.createBuilding(data);
 
       const conserjeriaUsername = generateConserjeriaUsername(building.name);
@@ -547,7 +551,11 @@ export async function registerRoutes(
 
   app.patch("/api/buildings/:id", isAuthenticated, isManager, async (req, res) => {
     try {
-      const data = insertBuildingSchema.partial().parse(req.body);
+      const bodyB = { ...req.body };
+      if (bodyB.insuranceExpiryDate && typeof bodyB.insuranceExpiryDate === "string") {
+        bodyB.insuranceExpiryDate = new Date(bodyB.insuranceExpiryDate);
+      }
+      const data = insertBuildingSchema.partial().parse(bodyB);
       const building = await storage.updateBuilding(req.params.id, data);
       if (!building) {
         return res.status(404).json({ error: "Edificio no encontrado" });
@@ -3088,6 +3096,10 @@ export async function registerRoutes(
     try {
       const { buildingIds, ...execData } = req.body;
       const insertExecutiveSchema = (await import("@shared/schema")).insertExecutiveSchema;
+      const dateFields = ["birthDate", "hireDate", "terminationDate"];
+      for (const f of dateFields) {
+        if (execData[f] && typeof execData[f] === "string") execData[f] = new Date(execData[f]);
+      }
       const data = insertExecutiveSchema.parse({
         ...execData,
         createdBy: (req.user as any).id,
@@ -3114,7 +3126,10 @@ export async function registerRoutes(
   app.patch("/api/executives/:id", isAuthenticated, async (req, res) => {
     try {
       const { buildingIds, ...updateData } = req.body;
-      
+      const dateFieldsExec = ["birthDate", "hireDate", "terminationDate"];
+      for (const f of dateFieldsExec) {
+        if (updateData[f] && typeof updateData[f] === "string") updateData[f] = new Date(updateData[f]);
+      }
       const exec = await storage.updateExecutive(req.params.id, updateData);
       if (!exec) {
         return res.status(404).json({ error: "Ejecutivo no encontrado" });
