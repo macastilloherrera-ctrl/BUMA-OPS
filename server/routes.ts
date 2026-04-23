@@ -5115,13 +5115,31 @@ export async function registerRoutes(
       });
 
       const buildingScope = role === "ejecutivo_operaciones" ? "assigned" : "all";
-      await storage.createUserProfile({
+      const newProfile = await storage.createUserProfile({
         userId: newUser.id,
         role: role || "ejecutivo_operaciones",
         buildingScope,
         phone: phone || null,
         isActive: isActive ?? true,
       });
+
+      // Auto-create executives HR record for ejecutivo_operaciones users
+      if ((role || "ejecutivo_operaciones") === "ejecutivo_operaciones") {
+        try {
+          await storage.createExecutive({
+            userProfileId: newProfile.id,
+            firstName: firstName || "",
+            lastName: lastName || "",
+            bumaEmail: email || null,
+            phone: phone || null,
+            position: "Ejecutivo de Operaciones",
+            employmentStatus: "activo",
+            createdBy: (req.user as any).id,
+          });
+        } catch (e) {
+          console.warn("[super-admin] Could not auto-create executive HR record:", e);
+        }
+      }
       
       console.log(`[super-admin] User created: ${newUser.id} with password: ${password ? "yes" : "no"}`);
 
@@ -5234,6 +5252,48 @@ export async function registerRoutes(
 
   // ========================
   // ADMIN TOOLS MODULE
+  // Super Admin: Sync ejecutivo_operaciones users → executives HR table
+  app.post("/api/super-admin/sync-executives", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || !isSuperAdminRole(profile.role)) {
+        return res.status(403).json({ error: "Acceso denegado" });
+      }
+
+      const allProfiles = await storage.getUserProfiles();
+      const execProfiles = allProfiles.filter(p => p.role === "ejecutivo_operaciones" && p.isActive);
+      const allExecs = await storage.getExecutivesList();
+      const existingProfileIds = new Set(allExecs.map(e => e.userProfileId).filter(Boolean));
+
+      let created = 0;
+      for (const prof of execProfiles) {
+        if (existingProfileIds.has(prof.id)) continue;
+        const user = await storage.getUser(prof.userId);
+        if (!user) continue;
+        try {
+          await storage.createExecutive({
+            userProfileId: prof.id,
+            firstName: user.firstName || "",
+            lastName: user.lastName || "",
+            bumaEmail: user.email || null,
+            phone: prof.phone || null,
+            position: "Ejecutivo de Operaciones",
+            employmentStatus: "activo",
+            createdBy: (req.user as any).id,
+          });
+          created++;
+        } catch (e) {
+          console.warn(`[sync-executives] Failed for profile ${prof.id}:`, e);
+        }
+      }
+
+      res.json({ synced: created, total: execProfiles.length });
+    } catch (error) {
+      console.error("Error syncing executives:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   // ========================
 
   app.get("/api/super-admin/audit-logs", isAuthenticated, async (req, res) => {

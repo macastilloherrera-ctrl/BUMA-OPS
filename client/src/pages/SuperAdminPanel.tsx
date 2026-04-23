@@ -688,6 +688,37 @@ export default function SuperAdminPanel() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Sincronización de Ejecutivos
+                  </CardTitle>
+                  <CardDescription>
+                    Crea fichas RRHH para usuarios con rol ejecutivo_operaciones que no las tengan. Necesario para que aparezcan en el módulo Ejecutivos.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      try {
+                        const res = await apiRequest("POST", "/api/super-admin/sync-executives");
+                        const data = await res.json();
+                        toast({ title: `Sincronización completa: ${data.synced} fichas creadas de ${data.total} ejecutivos` });
+                        queryClient.invalidateQueries({ queryKey: ["/api/executives"] });
+                      } catch (e: any) {
+                        toast({ title: "Error al sincronizar", description: e.message, variant: "destructive" });
+                      }
+                    }}
+                    data-testid="button-sync-executives"
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Sincronizar fichas de ejecutivos
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
                     <Activity className="h-5 w-5" />
                     Diagnostico por Edificio
                   </CardTitle>
