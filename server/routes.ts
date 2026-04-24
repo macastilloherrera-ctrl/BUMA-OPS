@@ -1416,6 +1416,15 @@ export async function registerRoutes(
       if (!["programada", "atrasada"].includes(existingVisit.status)) {
         return res.status(400).json({ error: "Solo se pueden iniciar visitas programadas o atrasadas" });
       }
+
+      // Prevent starting a visit that is scheduled for a future date
+      if (existingVisit.scheduledDate) {
+        const now = new Date();
+        const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        if (new Date(existingVisit.scheduledDate) > endOfToday) {
+          return res.status(400).json({ error: "No puedes iniciar una visita programada para el futuro" });
+        }
+      }
       
       const visit = await storage.updateVisit(req.params.id, {
         status: "en_curso",

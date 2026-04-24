@@ -111,10 +111,10 @@ export default function VisitDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/visits"] });
       setLocation(`/visitas/${id}/en-curso${fromDashboard ? '?from=dashboard' : ''}`);
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
-        title: "Error",
-        description: "No se pudo iniciar la visita",
+        title: "No se pudo iniciar la visita",
+        description: error?.message || "Error desconocido",
         variant: "destructive",
       });
     },
@@ -123,7 +123,7 @@ export default function VisitDetail() {
   const editVisitMutation = useMutation({
     mutationFn: (data: typeof editForm) =>
       apiRequest("PATCH", `/api/visits/${id}`, {
-        scheduledDate: data.scheduledDate,
+        scheduledDate: data.scheduledDate ? new Date(data.scheduledDate).toISOString() : undefined,
         type: data.type || undefined,
         executiveId: data.executiveId || undefined,
         notes: data.notes || undefined,
@@ -140,10 +140,15 @@ export default function VisitDetail() {
     },
   });
 
+  const toLocalDateTimeInput = (date: Date): string => {
+    const offset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+  };
+
   const openEditDialog = () => {
     if (!visit) return;
     const dateStr = visit.scheduledDate
-      ? new Date(visit.scheduledDate).toISOString().slice(0, 16)
+      ? toLocalDateTimeInput(new Date(visit.scheduledDate))
       : "";
     setEditForm({
       scheduledDate: dateStr,
@@ -172,7 +177,10 @@ export default function VisitDetail() {
     );
   }
 
-  const canStart = visit.status === "programada" || visit.status === "atrasada";
+  const isScheduledFuture = visit.scheduledDate
+    ? new Date(visit.scheduledDate) > new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate(), 23, 59, 59, 999)
+    : false;
+  const canStart = (visit.status === "programada" || visit.status === "atrasada") && !isScheduledFuture;
   const isEditableStatus = visit.status === "programada" || visit.status === "atrasada";
   const isOwnVisit = visit.executiveId === userProfile?.id;
   const canEdit = isEditableStatus && (isManager || (isExecutive && isOwnVisit));
