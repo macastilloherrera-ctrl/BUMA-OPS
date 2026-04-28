@@ -54,6 +54,7 @@ const roleLabels: Record<string, string> = {
   gerente_comercial: "Gerente Comercial",
   gerente_finanzas: "Ejecutivo de Apoyo",
   ejecutivo_operaciones: "Ejecutivo de Operaciones",
+  ejecutivo_apoyo: "Ejecutivo de Apoyo",
   conserjeria: "Conserjería",
 };
 
@@ -64,6 +65,7 @@ const roleColors: Record<string, string> = {
   gerente_comercial: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
   gerente_finanzas: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
   ejecutivo_operaciones: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200",
+  ejecutivo_apoyo: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
   conserjeria: "bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-200",
 };
 
@@ -211,7 +213,7 @@ export default function AdminUsers() {
 
   const usersByRole = {
     managers: filteredUsers.filter(u => ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas"].includes(u.profile?.role || "")),
-    executives: filteredUsers.filter(u => u.profile?.role === "ejecutivo_operaciones"),
+    executives: filteredUsers.filter(u => u.profile?.role === "ejecutivo_operaciones" || u.profile?.role === "ejecutivo_apoyo"),
     conserjeria: filteredUsers.filter(u => u.profile?.role === "conserjeria"),
     noProfile: filteredUsers.filter(u => !u.profile),
   };

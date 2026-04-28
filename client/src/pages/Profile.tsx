@@ -30,6 +30,8 @@ export default function Profile({ userRole = "ejecutivo_operaciones" }: ProfileP
       gerente_comercial: "Gerente Comercial",
       gerente_finanzas: "Ejecutivo de Apoyo",
       ejecutivo_operaciones: "Ejecutivo de Operaciones",
+      ejecutivo_apoyo: "Ejecutivo de Apoyo",
+      conserjeria: "Conserjería",
     };
     return labels[userRole];
   };

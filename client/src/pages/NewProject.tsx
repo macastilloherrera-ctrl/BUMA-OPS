@@ -314,7 +314,7 @@ export default function NewProject() {
                         <SelectContent>
                           <SelectItem value="none">Sin asignar</SelectItem>
                           {executives?.map((exec) => {
-                            const roleLabels: Record<string, string> = { gerente_general: "Gerente General", gerente_operaciones: "Gerente Operaciones", gerente_comercial: "Gerente Comercial", gerente_finanzas: "Ejecutivo de Apoyo", ejecutivo_operaciones: "Ejecutivo" };
+                            const roleLabels: Record<string, string> = { gerente_general: "Gerente General", gerente_operaciones: "Gerente Operaciones", gerente_comercial: "Gerente Comercial", gerente_finanzas: "Ejecutivo de Apoyo", ejecutivo_operaciones: "Ejecutivo", ejecutivo_apoyo: "Ejecutivo de Apoyo" };
                             return (
                               <SelectItem key={exec.id} value={exec.id}>
                                 {exec.firstName} {exec.lastName} ({roleLabels[exec.profile?.role] || exec.profile?.role})

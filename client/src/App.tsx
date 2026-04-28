@@ -147,6 +147,7 @@ function AuthenticatedApp() {
                   gerente_comercial: "Gerente Comercial",
                   gerente_finanzas: "Ejecutivo de Apoyo",
                   ejecutivo_operaciones: "Ejecutivo Operaciones",
+                  ejecutivo_apoyo: "Ejecutivo de Apoyo",
                   conserjeria: "Conserjería",
                 }[userRole] || userRole})
               </span>
