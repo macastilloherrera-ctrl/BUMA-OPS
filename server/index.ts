@@ -78,7 +78,6 @@ app.use((req, res, next) => {
 (async () => {
   try {
     await ensureSessionsTable();
-    console.log("[boot] sessions table ready");
   } catch (err) {
     console.error("[boot] FATAL: could not ensure sessions table:", err);
     process.exit(1);
