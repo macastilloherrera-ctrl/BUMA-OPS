@@ -4355,7 +4355,7 @@ export async function registerRoutes(
       const { startDate, endDate } = req.query;
       
       const profiles = await storage.getUserProfiles();
-      const executiveProfiles = profiles.filter(p => p.role === "ejecutivo_operaciones");
+      const executiveProfiles = profiles.filter(p => p.role === "ejecutivo_operaciones" || p.role === "ejecutivo_apoyo");
       const users = await storage.getUsers();
       const userMap = new Map(users.map(u => [u.id, u]));
       
@@ -4727,7 +4727,7 @@ export async function registerRoutes(
       const XLSX = await import("xlsx");
       
       const profiles = await storage.getUserProfiles();
-      const executiveProfiles = profiles.filter(p => p.role === "ejecutivo_operaciones");
+      const executiveProfiles = profiles.filter(p => p.role === "ejecutivo_operaciones" || p.role === "ejecutivo_apoyo");
       const users = await storage.getUsers();
       const userMap = new Map(users.map(u => [u.id, u]));
       
@@ -5472,6 +5472,23 @@ export async function registerRoutes(
         });
       }
 
+      try {
+        const adminUser = req.user as any;
+        await storage.createAuditLog({
+          userId: adminUser.id,
+          userName: `${adminUser.firstName || ""} ${adminUser.lastName || ""}`.trim(),
+          userRole: profile.role,
+          action: "super_admin_update_user",
+          entityType: "user",
+          entityId: id,
+          metadata: JSON.stringify({
+            targetUserId: id,
+            changes: { email, firstName, lastName, role, phone, isActive },
+            previousRole: existingProfile?.role,
+          }),
+        });
+      } catch(e) {}
+
       res.json({ success: true });
     } catch (error) {
       console.error("Error updating user:", error);
@@ -5495,6 +5512,24 @@ export async function registerRoutes(
       }
 
       await storage.updateUserProfile(id, { isActive: !userProfile.isActive });
+
+      try {
+        const adminUser = req.user as any;
+        await storage.createAuditLog({
+          userId: adminUser.id,
+          userName: `${adminUser.firstName || ""} ${adminUser.lastName || ""}`.trim(),
+          userRole: profile.role,
+          action: "super_admin_toggle_active",
+          entityType: "user",
+          entityId: id,
+          metadata: JSON.stringify({
+            targetUserId: id,
+            previousIsActive: userProfile.isActive,
+            newIsActive: !userProfile.isActive,
+          }),
+        });
+      } catch(e) {}
+
       res.json({ success: true, isActive: !userProfile.isActive });
     } catch (error) {
       console.error("Error toggling user status:", error);
@@ -5518,12 +5553,28 @@ export async function registerRoutes(
       }
       
       const passwordHash = await bcrypt.hash(newPassword, 10);
-      await db.update(usersTable).set({ 
-        passwordHash, 
+      await db.update(usersTable).set({
+        passwordHash,
         mustChangePassword: true,
         updatedAt: new Date()
       }).where(eq(usersTable.id, id));
-      
+
+      try {
+        const adminUser = req.user as any;
+        await storage.createAuditLog({
+          userId: adminUser.id,
+          userName: `${adminUser.firstName || ""} ${adminUser.lastName || ""}`.trim(),
+          userRole: profile.role,
+          action: "super_admin_reset_password",
+          entityType: "user",
+          entityId: id,
+          metadata: JSON.stringify({
+            targetUserId: id,
+            mustChangePassword: true,
+          }),
+        });
+      } catch(e) {}
+
       res.json({ success: true, message: "Contraseña reseteada exitosamente" });
     } catch (error) {
       console.error("Error resetting password:", error);

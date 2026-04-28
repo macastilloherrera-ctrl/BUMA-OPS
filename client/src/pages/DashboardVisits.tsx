@@ -182,15 +182,14 @@ export default function DashboardVisits() {
   const todayEnd = new Date(todayStart);
   todayEnd.setDate(todayEnd.getDate() + 1);
 
-  // Atrasada: Es el día de la visita, la hora agendada ya pasó, y NO se ha iniciado
+  // Atrasada: visita programada cuya scheduledDate < hoy (sin importar la hora).
+  // Coincide con la lógica del backend en routes.ts:1241 que marca status='atrasada'.
   const overdueVisits = visits?.filter((v) => {
-    if (v.status === "en_curso" || v.status === "realizada" || v.status === "no_realizada" || v.status === "cancelada") return false;
-    // Excluir visitas canceladas
+    if (v.status !== "programada") return false;
     if (v.cancellationType === "reagendada" || v.cancellationType === "eliminada") return false;
     if (!v.scheduledDate) return false;
     const visitDate = new Date(v.scheduledDate);
-    // Es hoy y la hora ya pasó
-    return visitDate >= todayStart && visitDate < todayEnd && visitDate < now;
+    return visitDate < todayStart;
   }) || [];
 
   const notEffectuatedVisits = visits?.filter((v) => {
