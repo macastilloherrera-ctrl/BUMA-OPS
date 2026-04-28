@@ -59,9 +59,19 @@ export const DEV_USERS = [
   },
 ];
 
+// Module-level evaluation: runs once when this module is first imported,
+// so the debug log appears in Railway boot logs even before registerRoutes runs.
+const devAuthRaw = process.env.DEV_AUTH;
+console.log("[dev-auth-debug] raw value:", JSON.stringify(devAuthRaw));
+const _isDevMode =
+  devAuthRaw !== undefined &&
+  devAuthRaw !== "" &&
+  devAuthRaw !== "false" &&
+  devAuthRaw !== "0";
+console.log("[dev-auth-debug] isDevMode:", _isDevMode);
+
 export function isDevMode(): boolean {
-  const devAuth = process.env.DEV_AUTH?.trim().toLowerCase();
-  return process.env.NODE_ENV === "development" || devAuth === "true";
+  return _isDevMode;
 }
 
 function getRedirectForRole(role: string): string {
