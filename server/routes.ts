@@ -3052,6 +3052,58 @@ export async function registerRoutes(
       if (!quote) {
         return res.status(404).json({ error: "Cotizacion no encontrada" });
       }
+
+      // Cascada al aprobar una cotización:
+      // 1) Marcar las hermanas como 'rechazada'
+      // 2) Si el ticket aún está sin trabajar (pendiente), pasarlo a 'en_curso'
+      //    Nota: el enum de estado del ticket no tiene 'asignado'; pendiente cubre ambos
+      //    casos (sin asignar / asignado pero sin iniciar).
+      // 3) Audit log
+      if (quote.status === "aceptada") {
+        const ticketId = req.params.ticketId;
+
+        try {
+          const siblings = await storage.getTicketQuotes(ticketId);
+          for (const s of siblings) {
+            if (s.id !== quote.id && s.status !== "rechazada") {
+              await storage.updateTicketQuote(s.id, { status: "rechazada" });
+            }
+          }
+        } catch (e) {
+          console.error("Error rejecting sibling quotes:", e);
+        }
+
+        let previousStatus: string | undefined;
+        let newStatus: string | undefined;
+        try {
+          const ticket = await storage.getTicket(ticketId);
+          if (ticket && ticket.status === "pendiente") {
+            previousStatus = ticket.status;
+            newStatus = "en_curso";
+            await storage.updateTicket(ticketId, { status: "en_curso" });
+          }
+        } catch (e) {
+          console.error("Error transitioning ticket to en_curso:", e);
+        }
+
+        try {
+          const user = req.user as any;
+          await storage.createAuditLog({
+            userId: user.id,
+            userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+            action: "ticket_quote_approved",
+            entityType: "ticket",
+            entityId: ticketId,
+            metadata: JSON.stringify({
+              quoteId: quote.id,
+              previousStatus,
+              newStatus,
+              autoTransitioned: !!newStatus,
+            }),
+          });
+        } catch(e) {}
+      }
+
       res.json(quote);
     } catch (error) {
       console.error("Error updating ticket quote:", error);
@@ -5882,12 +5934,49 @@ export async function registerRoutes(
       if (!profile || !canManageProjects(profile.role)) {
         return res.status(403).json({ error: "No tiene permisos para editar proyectos" });
       }
-      
-      const updated = await storage.updateProject(req.params.id, req.body);
+
+      const existingProject = await storage.getProject(req.params.id);
+      if (!existingProject) {
+        return res.status(404).json({ error: "Proyecto no encontrado" });
+      }
+
+      const updateData: any = { ...req.body };
+
+      // Convertir fecha si viene como string
+      if (updateData.actualEndDate && typeof updateData.actualEndDate === "string") {
+        updateData.actualEndDate = new Date(updateData.actualEndDate);
+      }
+
+      // Auto-set actualEndDate al completar el proyecto si no viene en el body
+      const transitioningToCompleted =
+        updateData.status === "completado" && existingProject.status !== "completado";
+      if (transitioningToCompleted && !updateData.actualEndDate) {
+        updateData.actualEndDate = new Date();
+      }
+
+      const updated = await storage.updateProject(req.params.id, updateData);
       if (!updated) {
         return res.status(404).json({ error: "Proyecto no encontrado" });
       }
-      
+
+      if (transitioningToCompleted) {
+        try {
+          const user = req.user as any;
+          await storage.createAuditLog({
+            userId: user.id,
+            userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+            action: "project_completed",
+            entityType: "project",
+            entityId: updated.id,
+            buildingId: updated.buildingId,
+            metadata: JSON.stringify({
+              previousStatus: existingProject.status,
+              actualEndDate: updateData.actualEndDate,
+            }),
+          });
+        } catch(e) {}
+      }
+
       res.json(updated);
     } catch (error) {
       console.error("Error updating project:", error);
@@ -6066,7 +6155,47 @@ export async function registerRoutes(
           console.error("Error auto-creating expense from project milestone:", expError);
         }
       }
-      
+
+      // Auto-completar el proyecto cuando se completa el último hito pendiente
+      if (
+        updated.status === "completado" &&
+        existingMilestone.status !== "completado"
+      ) {
+        try {
+          const allMilestones = await storage.getProjectMilestones(req.params.projectId);
+          const allCompleted = allMilestones.length > 0 && allMilestones.every(m => m.status === "completado");
+          if (allCompleted) {
+            const project = await storage.getProject(req.params.projectId);
+            if (project && project.status !== "completado") {
+              const completedAt = new Date();
+              await storage.updateProject(req.params.projectId, {
+                status: "completado",
+                actualEndDate: completedAt,
+              });
+              try {
+                const user = req.user as any;
+                await storage.createAuditLog({
+                  userId: user.id,
+                  userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+                  action: "project_auto_completed",
+                  entityType: "project",
+                  entityId: project.id,
+                  buildingId: project.buildingId,
+                  metadata: JSON.stringify({
+                    previousStatus: project.status,
+                    triggeredByMilestoneId: updated.id,
+                    actualEndDate: completedAt,
+                    totalMilestones: allMilestones.length,
+                  }),
+                });
+              } catch(e) {}
+            }
+          }
+        } catch (autoCompleteErr) {
+          console.error("Error auto-completing project:", autoCompleteErr);
+        }
+      }
+
       res.json(updated);
     } catch (error) {
       console.error("Error updating milestone:", error);
