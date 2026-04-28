@@ -10,45 +10,35 @@ export function serveStatic(app: Express) {
     );
   }
 
-  // Estrategia de cache para SPA con bundles hasheados:
+  // Estrategia: setear Cache-Control en un middleware ANTES de que
+  // express.static y res.sendFile entren a actuar. El módulo `send` solo
+  // setea su default 'public, max-age=0' cuando NO hay Cache-Control
+  // previo en la response — si lo seteamos primero acá, no lo sobrescribe.
+  // Adicionalmente pasamos `cacheControl: false` a send para deshabilitar
+  // ese default por completo (defensa en profundidad).
   //
-  // - `index.html` → no-cache: el HTML referencia los chunks JS/CSS por su
-  //   nombre hasheado. Cuando hacemos un nuevo deploy, los hashes cambian,
-  //   por lo tanto el HTML cambia. Si el browser cachea el HTML viejo,
-  //   sigue pidiendo los chunks viejos. Para que descubra los nuevos hashes
-  //   tras cada deploy, el HTML debe revalidarse contra el server siempre.
-  //
-  // - `/assets/*` (chunks hasheados de Vite) → immutable: el contenido del
-  //   chunk nunca cambia para un mismo nombre — si cambia el contenido,
-  //   cambia el hash y cambia el nombre. Así que se puede cachear forever.
-  //
-  // Esto resuelve el caso de Firefox: si el browser tenía el index.html
-  // viejo cacheado, ahora con el redeploy va a recargarlo y descubrir los
-  // chunks nuevos. Sin esto, Firefox podía servir indefinidamente bundle
-  // viejo aunque hubiera deploy nuevo.
-  app.use(
-    express.static(distPath, {
-      setHeaders: (res, filePath) => {
-        if (filePath.endsWith("index.html")) {
-          res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-          res.setHeader("Pragma", "no-cache");
-          res.setHeader("Expires", "0");
-          return;
-        }
-        const assetsDir = `${path.sep}assets${path.sep}`;
-        if (filePath.includes(assetsDir)) {
-          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-        }
-      },
-    }),
-  );
+  // Reglas:
+  // - /assets/*  → immutable (chunks hasheados de Vite, contenido eterno)
+  // - cualquier otra ruta no-API → no-cache, no-store, must-revalidate
+  //   (cubre index.html y la fallback de SPA en cada ruta del cliente)
+  app.use((req, res, next) => {
+    if (req.path.startsWith("/api/")) return next();
 
-  // SPA fallback — sirve index.html para cualquier ruta no-API.
-  // También aplica no-cache porque es el mismo HTML.
+    if (req.path.startsWith("/assets/")) {
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    } else {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
+    }
+    next();
+  });
+
+  app.use(express.static(distPath, { cacheControl: false }));
+
+  // SPA fallback. cacheControl:false impide que sendFile reintroduzca el
+  // default; el middleware previo ya setteó los headers correctos.
   app.use("*", (_req, res) => {
-    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
-    res.sendFile(path.resolve(distPath, "index.html"));
+    res.sendFile(path.resolve(distPath, "index.html"), { cacheControl: false });
   });
 }
