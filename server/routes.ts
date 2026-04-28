@@ -9821,14 +9821,16 @@ export async function registerRoutes(
       await checkOverdueMaintenanceTickets();
     }, 10000);
 
-    // Schedule daily check at 8:00 AM
+    // Schedule daily check at 12:00 UTC = 8:00 AM hora Chile (UTC-4).
+    // Mismo patrón que scheduleMaintenanceDaily — Date.UTC fija la hora
+    // contra UTC, no contra la timezone local del host (Railway = UTC).
     const scheduleDaily = () => {
       const now = new Date();
-      const next8AM = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 0, 0, 0);
-      if (now >= next8AM) {
-        next8AM.setDate(next8AM.getDate() + 1);
+      const nextRun = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0, 0));
+      if (now.getTime() >= nextRun.getTime()) {
+        nextRun.setUTCDate(nextRun.getUTCDate() + 1);
       }
-      const msUntilNext8AM = next8AM.getTime() - now.getTime();
+      const msUntilNext = nextRun.getTime() - now.getTime();
 
       setTimeout(async () => {
         console.log("[Insurance Check] Running scheduled daily insurance policy check...");
@@ -9842,9 +9844,10 @@ export async function registerRoutes(
           console.log("[Closing Cycle Alerts] Running scheduled daily closing cycle alert check...");
           await checkClosingCycleAlerts();
         }, 24 * 60 * 60 * 1000);
-      }, msUntilNext8AM);
+      }, msUntilNext);
 
-      console.log(`[Insurance Check] Next scheduled check at ${next8AM.toLocaleString()}`);
+      console.log(`[Insurance Check] Next scheduled check at ${nextRun.toISOString()} UTC (08:00 hora Chile)`);
+      console.log(`[Closing Cycle Alerts] Next scheduled check at ${nextRun.toISOString()} UTC (08:00 hora Chile)`);
     };
     scheduleDaily();
 
