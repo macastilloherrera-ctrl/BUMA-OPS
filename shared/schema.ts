@@ -1251,6 +1251,7 @@ export const expenses = pgTable("expenses", {
   deferredFromYear: integer("deferred_from_year"),
   notes: text("notes"),
   createdBy: varchar("created_by").notNull(),
+  exportedAt: timestamp("exported_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

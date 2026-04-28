@@ -6460,6 +6460,20 @@ export async function registerRoutes(
       if (!income) {
         return res.status(404).json({ error: "Ingreso no encontrado" });
       }
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "update_income",
+          entityType: "income",
+          entityId: income.id,
+          buildingId: income.buildingId,
+          metadata: JSON.stringify({ changes: data, amount: income.amount }),
+        });
+      } catch(e) {}
+
       res.json(income);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -6476,10 +6490,29 @@ export async function registerRoutes(
       if (!isManagerRole(profile)) {
         return res.status(403).json({ error: "Solo gerentes pueden eliminar ingresos" });
       }
+      const existing = await storage.getIncome(req.params.id);
       const deleted = await storage.deleteIncome(req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: "Ingreso no encontrado" });
       }
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "delete_income",
+          entityType: "income",
+          entityId: req.params.id,
+          buildingId: existing?.buildingId,
+          metadata: JSON.stringify({
+            amount: existing?.amount,
+            department: existing?.department,
+            paymentDate: existing?.paymentDate,
+          }),
+        });
+      } catch(e) {}
+
       res.json({ success: true });
     } catch (error) {
       console.error("Error eliminando ingreso:", error);
@@ -6851,6 +6884,20 @@ export async function registerRoutes(
       if (!expense) {
         return res.status(404).json({ error: "Egreso no encontrado" });
       }
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "update_expense",
+          entityType: "expense",
+          entityId: expense.id,
+          buildingId: expense.buildingId,
+          metadata: JSON.stringify({ changes: data, amount: expense.amount }),
+        });
+      } catch(e) {}
+
       res.json(expense);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -6867,10 +6914,29 @@ export async function registerRoutes(
       if (!isManagerRole(profile)) {
         return res.status(403).json({ error: "Solo gerentes pueden eliminar egresos" });
       }
+      const existingExp = await storage.getExpense(req.params.id);
       const deleted = await storage.deleteExpense(req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: "Egreso no encontrado" });
       }
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "delete_expense",
+          entityType: "expense",
+          entityId: req.params.id,
+          buildingId: existingExp?.buildingId,
+          metadata: JSON.stringify({
+            amount: existingExp?.amount,
+            description: existingExp?.description,
+            vendorName: existingExp?.vendorName,
+          }),
+        });
+      } catch(e) {}
+
       res.json({ success: true });
     } catch (error) {
       console.error("Error eliminando egreso:", error);
@@ -7125,6 +7191,12 @@ export async function registerRoutes(
       const paidExpenses = await storage.getExpenses({ buildingId, month, year, paymentStatus: "paid" });
       const filtered = paidExpenses.filter(e => e.inclusionStatus !== "postponed");
       const allExpensesForGeneric = await storage.getExpenses({ buildingId, month, year });
+      const onlyNew = req.query.onlyNew === "true";
+      const exportedSourceList = format === "generico" ? allExpensesForGeneric : filtered;
+      const expensesToMark = onlyNew
+        ? exportedSourceList.filter(e => !e.exportedAt)
+        : exportedSourceList;
+      const expenseIdsToMark = expensesToMark.map(e => e.id);
       const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
       const monthName = monthNames[month - 1] || "";
       const paymentMethodMap: Record<string, string> = {
@@ -7188,6 +7260,8 @@ export async function registerRoutes(
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.send(buf);
+
+      await storage.markExpensesExported(expenseIdsToMark);
     } catch (error) {
       console.error("Error exportando egresos:", error);
       res.status(500).json({ error: "Error interno del servidor" });
@@ -7496,6 +7570,23 @@ export async function registerRoutes(
         }
       }
 
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "assign_bank_transaction",
+          entityType: "bank_transaction",
+          entityId: id,
+          buildingId: txn.buildingId,
+          metadata: JSON.stringify({
+            unit,
+            amount: txn.amount,
+            previousStatus: txn.status,
+          }),
+        });
+      } catch(e) {}
+
       res.json(updated);
     } catch (error) {
       console.error("Error assigning bank transaction:", error);
@@ -7638,6 +7729,23 @@ export async function registerRoutes(
         identifiedAt: new Date(),
       });
 
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "confirm_bank_transaction",
+          entityType: "bank_transaction",
+          entityId: id,
+          buildingId: txn.buildingId,
+          metadata: JSON.stringify({
+            unit: txn.assignedUnit,
+            amount: txn.amount,
+            matchScore: txn.matchScore,
+          }),
+        });
+      } catch(e) {}
+
       res.json(updated);
     } catch (error) {
       console.error("Error confirming bank transaction:", error);
@@ -7663,6 +7771,23 @@ export async function registerRoutes(
         ignoreReason: reason || null,
       });
 
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "ignore_bank_transaction",
+          entityType: "bank_transaction",
+          entityId: id,
+          buildingId: txn.buildingId,
+          metadata: JSON.stringify({
+            previousStatus: txn.status,
+            amount: txn.amount,
+            reason: reason || null,
+          }),
+        });
+      } catch(e) {}
+
       res.json(updated);
     } catch (error) {
       console.error("Error ignoring bank transaction:", error);
@@ -7681,13 +7806,16 @@ export async function registerRoutes(
       if (!txn) {
         return res.status(404).json({ error: "Transacción no encontrada" });
       }
-      if (txn.status !== "ignored") {
-        return res.status(400).json({ error: "Solo se pueden reactivar transacciones ignoradas" });
+      if (txn.status !== "ignored" && txn.status !== "identified") {
+        return res.status(400).json({
+          error: "Solo se pueden reactivar transacciones con estado 'ignorada' o 'identificada'",
+        });
       }
 
       const updated = await storage.updateBankTransaction(id, {
         status: "pending",
         assignedUnit: null,
+        assignedUnitsSplit: null,
         ignoreReason: null,
         matchScore: null,
         matchReason: null,
@@ -7695,6 +7823,23 @@ export async function registerRoutes(
         identifiedAt: null,
         exportedAt: null,
       });
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "reactivate_bank_transaction",
+          entityType: "bank_transaction",
+          entityId: id,
+          buildingId: txn.buildingId,
+          metadata: JSON.stringify({
+            previousStatus: txn.status,
+            previousUnit: txn.assignedUnit,
+            amount: txn.amount,
+          }),
+        });
+      } catch(e) {}
 
       res.json(updated);
     } catch (error) {
@@ -7733,6 +7878,23 @@ export async function registerRoutes(
         identifiedAt: new Date(),
         matchReason: "División manual",
       });
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "split_bank_transaction",
+          entityType: "bank_transaction",
+          entityId: id,
+          buildingId: txn.buildingId,
+          metadata: JSON.stringify({
+            totalAmount: txn.amount,
+            splitsCount: splits.length,
+            splits,
+          }),
+        });
+      } catch(e) {}
 
       res.json(updated);
     } catch (error) {
@@ -8162,6 +8324,28 @@ export async function registerRoutes(
       }
 
       if (updateData.status && updateData.status !== cycle.status) {
+        // Validar orden legal de transiciones del cierre mensual.
+        // Forward: solo +1. Backward: hasta 'preparation', no a 'open'.
+        const ORDER = ["open", "preparation", "pre_ready", "under_review", "approved", "issued"] as const;
+        const fromIdx = ORDER.indexOf(cycle.status as typeof ORDER[number]);
+        const toIdx = ORDER.indexOf(updateData.status as typeof ORDER[number]);
+
+        if (fromIdx === -1 || toIdx === -1) {
+          return res.status(409).json({
+            error: `Estado fuera del flujo legal del cierre. Permitidos: ${ORDER.join(" → ")}`,
+          });
+        }
+        if (toIdx > fromIdx + 1) {
+          return res.status(409).json({
+            error: `No se puede saltar etapas. De '${cycle.status}' debes pasar primero por '${ORDER[fromIdx + 1]}' antes de llegar a '${updateData.status}'`,
+          });
+        }
+        if (toIdx < fromIdx && toIdx === 0) {
+          return res.status(409).json({
+            error: `No se puede retroceder a 'open'. El estado mínimo permitido al retroceder es 'preparation'`,
+          });
+        }
+
         await storage.createMonthlyClosingStatusLog({
           cycleId: cycle.id,
           previousStatus: cycle.status,
