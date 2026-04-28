@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -124,6 +125,9 @@ export default function CriticalAssets() {
   
   const [buildingFilter, setBuildingFilter] = useState(params.get("building") || "all");
   const [maintenanceFilter, setMaintenanceFilter] = useState(params.get("maintenance") || "all");
+  const [activeTab, setActiveTab] = useState<"todos" | "vencidos">(
+    params.get("tab") === "vencidos" ? "vencidos" : "todos"
+  );
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingAsset, setEditingAsset] = useState<CriticalAsset | null>(null);
   const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false);
@@ -308,9 +312,23 @@ export default function CriticalAssets() {
     form.reset();
   };
 
+  // Equipos vencidos según el criterio del fix: nextMaintenanceDate < hoy
+  // y status='aprobado'. La tab "Vencidos" usa estrictamente este filtro.
+  const overdueApprovedAssets = assets?.filter(a => {
+    if (a.status !== "aprobado") return false;
+    if (!a.nextMaintenanceDate) return false;
+    return new Date(a.nextMaintenanceDate) < new Date();
+  }) || [];
+
   const filteredAssets = assets?.filter((a) => {
+    if (activeTab === "vencidos") {
+      if (a.status !== "aprobado") return false;
+      if (!a.nextMaintenanceDate) return false;
+      if (new Date(a.nextMaintenanceDate) >= new Date()) return false;
+    }
+
     if (buildingFilter !== "all" && a.buildingId !== buildingFilter) return false;
-    
+
     if (maintenanceFilter !== "all") {
       const status = getMaintenanceStatus(a.nextMaintenanceDate);
       if (maintenanceFilter === "vencida" && status?.status !== "vencida") return false;
@@ -607,6 +625,26 @@ export default function CriticalAssets() {
           )}
         </div>
         
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as "todos" | "vencidos")}
+          className="mt-3"
+        >
+          <TabsList>
+            <TabsTrigger value="todos" data-testid="tab-todos">
+              Todos
+            </TabsTrigger>
+            <TabsTrigger value="vencidos" data-testid="tab-vencidos">
+              Vencidos
+              {overdueApprovedAssets.length > 0 && (
+                <Badge className="ml-2 bg-red-600 text-white hover:bg-red-600">
+                  {overdueApprovedAssets.length}
+                </Badge>
+              )}
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+
         <div className="flex gap-2 mt-3">
           <Select
             value={buildingFilter}

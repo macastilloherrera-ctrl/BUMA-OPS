@@ -901,9 +901,25 @@ export async function registerRoutes(
     }
   });
 
-  // === Building Files (Manager only) ===
-  app.get("/api/building-folders/:id/files", isAuthenticated, isManager, async (req, res) => {
+  // === Building Files ===
+  app.get("/api/building-folders/:id/files", isAuthenticated, async (req, res) => {
     try {
+      const folder = await storage.getBuildingFolder(req.params.id);
+      if (!folder) {
+        return res.status(404).json({ error: "Carpeta no encontrada" });
+      }
+      const profile = await storage.getUserProfile(req.user!.id);
+      const isManagerUser = isManagerRole(profile);
+      let allowed = isManagerUser;
+      if (!allowed && isConserjeriaRole(profile)) {
+        const building = await storage.getBuilding(folder.buildingId);
+        if (building && building.conserjeriaUserId === req.user!.id) {
+          allowed = true;
+        }
+      }
+      if (!allowed) {
+        return res.status(403).json({ error: "No tiene permiso para ver estos archivos" });
+      }
       const files = await storage.getBuildingFiles(req.params.id);
       res.json(files);
     } catch (error) {
@@ -912,12 +928,30 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/building-folders/:id/files", isAuthenticated, isManager, async (req, res) => {
+  app.post("/api/building-folders/:id/files", isAuthenticated, async (req, res) => {
     try {
       const folder = await storage.getBuildingFolder(req.params.id);
       if (!folder) {
         return res.status(404).json({ error: "Carpeta no encontrada" });
       }
+
+      // Permisos: gerente sube en cualquier edificio; conserjería solo en
+      // SU edificio asignado (buildings.conserjeriaUserId === user.id).
+      const profile = await storage.getUserProfile(req.user!.id);
+      const isManagerUser = isManagerRole(profile);
+      let allowed = isManagerUser;
+      if (!allowed && isConserjeriaRole(profile)) {
+        const building = await storage.getBuilding(folder.buildingId);
+        if (building && building.conserjeriaUserId === req.user!.id) {
+          allowed = true;
+        }
+      }
+      if (!allowed) {
+        return res.status(403).json({
+          error: "No tiene permiso para subir documentos en este edificio",
+        });
+      }
+
       const data = insertBuildingFileSchema.omit({ folderId: true, buildingId: true, uploadedBy: true }).parse(req.body);
       const file = await storage.createBuildingFile({
         ...data,
@@ -2191,6 +2225,34 @@ export async function registerRoutes(
       if (req.body.status === "resuelto") {
         if (!isManagerRole(profile)) {
           return res.status(403).json({ error: "Solo gerentes pueden cerrar tickets" });
+        }
+      }
+
+      // Validar orden de transiciones de status. Solo se aplica si el body
+      // intenta cambiar el status hacia adelante; transiciones laterales
+      // (vencido, reprogramado) o retrocesos manuales quedan permitidas.
+      if (req.body.status && req.body.status !== existingTicket.status) {
+        const target = req.body.status;
+        if (target === "en_curso") {
+          const quotes = await storage.getTicketQuotes(req.params.id);
+          const hasApproved = quotes.some(q => q.status === "aceptada");
+          if (!hasApproved) {
+            return res.status(409).json({
+              error: "No se puede pasar a 'en_curso' sin al menos una cotización aceptada",
+            });
+          }
+        } else if (target === "trabajo_completado") {
+          if (existingTicket.status !== "en_curso") {
+            return res.status(409).json({
+              error: `No se puede pasar a 'trabajo_completado' desde '${existingTicket.status}'. Debe estar primero en 'en_curso'`,
+            });
+          }
+        } else if (target === "resuelto") {
+          if (existingTicket.status !== "trabajo_completado") {
+            return res.status(409).json({
+              error: `No se puede pasar a 'resuelto' desde '${existingTicket.status}'. Debe estar primero en 'trabajo_completado'`,
+            });
+          }
         }
       }
 
@@ -6882,6 +6944,54 @@ export async function registerRoutes(
       res.json(vendor);
     } catch (error) {
       console.error("Error creando proveedor:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.patch("/api/vendors/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden editar proveedores" });
+      }
+      const { name, rut } = req.body;
+      const updateData: { name?: string; rut?: string | null } = {};
+      if (name !== undefined) {
+        if (!String(name).trim()) {
+          return res.status(400).json({ error: "El nombre del proveedor no puede estar vacío" });
+        }
+        updateData.name = String(name).trim();
+      }
+      if (rut !== undefined) {
+        updateData.rut = rut === null || rut === "" ? null : String(rut).trim();
+      }
+      if (Object.keys(updateData).length === 0) {
+        return res.status(400).json({ error: "Nada que actualizar" });
+      }
+      const updated = await storage.updateVendor(req.params.id, updateData as any);
+      if (!updated) {
+        return res.status(404).json({ error: "Proveedor no encontrado" });
+      }
+      res.json(updated);
+    } catch (error) {
+      console.error("Error actualizando proveedor:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/vendors/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden eliminar proveedores" });
+      }
+      const ok = await storage.softDeleteVendor(req.params.id);
+      if (!ok) {
+        return res.status(404).json({ error: "Proveedor no encontrado" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error eliminando proveedor:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });

@@ -1563,6 +1563,25 @@ export class DatabaseStorage implements IStorage {
     return vendor || undefined;
   }
 
+  async getVendor(id: string): Promise<Vendor | undefined> {
+    const [vendor] = await db.select().from(vendors).where(eq(vendors.id, id));
+    return vendor || undefined;
+  }
+
+  async updateVendor(id: string, data: Partial<InsertVendor>): Promise<Vendor | undefined> {
+    const sanitized: any = { ...data };
+    if (sanitized.name) {
+      sanitized.name = String(sanitized.name).toUpperCase().trim();
+    }
+    const [updated] = await db.update(vendors).set(sanitized).where(eq(vendors.id, id)).returning();
+    return updated || undefined;
+  }
+
+  async softDeleteVendor(id: string): Promise<boolean> {
+    const [updated] = await db.update(vendors).set({ isActive: false }).where(eq(vendors.id, id)).returning();
+    return !!updated;
+  }
+
   async createVendor(vendor: InsertVendor): Promise<Vendor> {
     const [newVendor] = await db.insert(vendors).values({
       ...vendor,
