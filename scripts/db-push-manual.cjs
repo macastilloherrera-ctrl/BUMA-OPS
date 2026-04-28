@@ -17,25 +17,33 @@ if (!process.env.DATABASE_URL) {
   process.exit(1);
 }
 
+// Neon expone dos endpoints: el "-pooler" (pgbouncer, no acepta startup
+// parameters como options=-c) y el directo (sí los acepta y permite
+// SET session-level). Para este script forzamos conexión directa
+// reemplazando "-pooler." por ".", sólo en memoria. Esto NO modifica
+// la DATABASE_URL del runtime de la app.
+const directUrl = process.env.DATABASE_URL.replace("-pooler.", ".");
+
 let target;
 try {
-  const u = new URL(process.env.DATABASE_URL);
+  const u = new URL(directUrl);
   target = `${u.host}/${u.pathname.slice(1)} as ${u.username}`;
   console.log(`[db-push-manual] target: ${target}`);
   console.log(`[db-push-manual] sslmode query param: ${u.searchParams.get("sslmode") || "(none)"}`);
+  if (process.env.DATABASE_URL.includes("-pooler.")) {
+    console.log(`[db-push-manual] note: original URL apuntaba al pooler; usando endpoint directo para este script`);
+  }
 } catch {
   console.error("[db-push-manual] DATABASE_URL malformada");
   process.exit(1);
 }
 
-// search_path=public asegura que cada conexión nueva apunte al schema público
-// de Neon. Sin esto, Neon puede dejar el search_path vacío y queries como
-// 'ALTER TABLE expenses ...' fallan con "relation does not exist" aunque la
-// tabla sí esté en public.
+// Conexión directa (no pooler). El search_path se setea explícitamente vía
+// SET al inicio de cada conexión usada (ver main()), porque pgbouncer en
+// modo transaction de Neon no soporta el startup parameter "options".
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: directUrl,
   ssl: { rejectUnauthorized: false },
-  options: "-c search_path=public",
 });
 
 // Cada step es { label, sql }. Los IF NOT EXISTS hacen que sea idempotente.
