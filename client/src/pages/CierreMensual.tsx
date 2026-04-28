@@ -170,7 +170,31 @@ export default function CierreMensual() {
 
   const { data: buildings } = useQuery<Building[]>({ queryKey: ["/api/buildings"] });
 
+  // Config global del cierre (singleton). Habilita el tooltip "sin ciclo definido".
+  const { data: globalClosingConfig } = useQuery<{
+    emissionDay: number;
+    expenseCutoffDay: number;
+    incomeCutoffDay: number;
+    preStateDay: number;
+    finalEmissionDay: number;
+    alertDaysBeforeDeadline: number;
+    alertOnMissingCycle: boolean;
+  } | null>({
+    queryKey: ["/api/closing-config/global"],
+    queryFn: async () => {
+      const res = await fetch("/api/closing-config/global", { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+  });
+
   const [preloadedFromGlobalConfig, setPreloadedFromGlobalConfig] = useState(false);
+
+  // Estado del dialog de creación. Declarado aquí (antes de la query
+  // de effectiveConfig) para evitar uso antes de declaración (TS2448).
+  const [createBuildingId, setCreateBuildingId] = useState("");
+  const [createMonth, setCreateMonth] = useState(String(new Date().getMonth() + 1));
+  const [createYear, setCreateYear] = useState(String(currentYear));
 
   // Config efectiva: se dispara cuando el dialog está abierto y hay edificio seleccionado.
   // Reacciona automáticamente a cambios de edificio, mes y año.
@@ -230,9 +254,6 @@ export default function CierreMensual() {
     enabled: !!selectedCycleId,
   });
 
-  const [createBuildingId, setCreateBuildingId] = useState("");
-  const [createMonth, setCreateMonth] = useState(String(new Date().getMonth() + 1));
-  const [createYear, setCreateYear] = useState(String(currentYear));
   const [createIssueDay, setCreateIssueDay] = useState("10");
   const [createCutoffExpenses, setCreateCutoffExpenses] = useState("");
   const [createCutoffIncomes, setCreateCutoffIncomes] = useState("");

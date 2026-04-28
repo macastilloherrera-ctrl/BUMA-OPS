@@ -286,6 +286,10 @@ export const criticalAssets = pgTable("critical_assets", {
   lastMaintenanceDate: timestamp("last_maintenance_date"),
   nextMaintenanceDate: timestamp("next_maintenance_date"),
   maintainerName: varchar("maintainer_name", { length: 255 }),
+  assignedMaintainerId: varchar("assigned_maintainer_id"),
+  brand: varchar("brand", { length: 255 }),
+  model: varchar("model", { length: 255 }),
+  cost: decimal("cost", { precision: 12, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -387,6 +391,8 @@ export const tickets = pgTable("tickets", {
   isEscalated: boolean("is_escalated").default(false),
   escalatedAt: timestamp("escalated_at"),
   escalatedBy: varchar("escalated_by"),
+  escalatedTo: varchar("escalated_to"),
+  escalationReason: text("escalation_reason"),
   scheduledDate: timestamp("scheduled_date"),
   startDate: timestamp("start_date"),
   endDate: timestamp("end_date"),
@@ -407,6 +413,11 @@ export const tickets = pgTable("tickets", {
   closedBy: varchar("closed_by"),
   committedCompletionAt: timestamp("committed_completion_at"),
   currentCycleNumber: integer("current_cycle_number").default(1),
+  title: varchar("title", { length: 255 }),
+  cost: decimal("cost", { precision: 12, scale: 2 }),
+  dueDate: timestamp("due_date"),
+  resolvedAt: timestamp("resolved_at"),
+  assignmentHistory: text("assignment_history"),
   createdBy: varchar("created_by").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -1382,6 +1393,7 @@ export const bankTransactions = pgTable("bank_transactions", {
   importedAt: timestamp("imported_at").defaultNow(),
   exportedAt: timestamp("exported_at"),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const payerDirectory = pgTable("payer_directory", {

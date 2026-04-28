@@ -3,6 +3,7 @@ import type { UserRole } from "@shared/schema";
 export const roleHomeRoutes: Record<UserRole, string> = {
   super_admin: "/super-admin",
   ejecutivo_operaciones: "/visitas?view=today",
+  ejecutivo_apoyo: "/visitas?view=today",
   gerente_operaciones: "/dashboard/tickets",
   gerente_comercial: "/dashboard/tickets",
   gerente_finanzas: "/dashboard/tickets",
@@ -176,6 +177,29 @@ export const rolePermissions: Record<UserRole, {
     buildingScope: "assigned",
   },
   ejecutivo_operaciones: {
+    allowedRoutes: [
+      "/visitas",
+      "/visitas/programar",
+      "/tickets",
+      "/tickets/nuevo",
+      "/calendario",
+      "/edificios",
+      "/equipos",
+      "/proyectos",
+      "/proyectos/semaforo",
+      "/proyectos/calendario",
+      "/consulta-operacional",
+      "/verificacion-ggcc",
+      "/historial-pagos",
+      "/reportes/cumplimiento",
+      "/chat-ia",
+      "/perfil",
+    ],
+    canViewCosts: false,
+    canApproveAssets: false,
+    buildingScope: "assigned",
+  },
+  ejecutivo_apoyo: {
     allowedRoutes: [
       "/visitas",
       "/visitas/programar",

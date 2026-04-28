@@ -78,11 +78,12 @@ async function canNonManagerAccessObject(
     return await allowedForBuilding(ticket.buildingId);
   }
 
-  // 4) executive_documents → solo si el ejecutivo es el propio user
+  // 4) executive_documents → solo si el ejecutivo es el propio user.
+  // Note: tabla usa fileKey, no objectStorageKey.
   const [ed] = await db
     .select({ executiveId: executiveDocuments.executiveId })
     .from(executiveDocuments)
-    .where(eq(executiveDocuments.objectStorageKey, objectPath))
+    .where(eq(executiveDocuments.fileKey, objectPath))
     .limit(1);
   if (ed) {
     const exec = await storage.getExecutive(ed.executiveId);

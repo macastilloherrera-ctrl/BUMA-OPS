@@ -179,7 +179,7 @@ export default function ProjectDetail() {
     const map = new Map<string, Vendor>();
     maintainersList?.forEach(m => {
       const key = m.companyName.toUpperCase();
-      if (!map.has(key)) map.set(key, { id: m.id, name: m.companyName, rut: null, isActive: true, createdAt: "" } as Vendor);
+      if (!map.has(key)) map.set(key, { id: m.id, name: m.companyName, rut: null, isActive: true, createdAt: null } as unknown as Vendor);
     });
     rawVendors?.forEach(v => {
       const key = v.name.toUpperCase();

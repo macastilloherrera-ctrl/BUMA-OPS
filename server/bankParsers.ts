@@ -10,7 +10,7 @@ export interface ParsedTransaction {
   sourceBank: string;
   bankName: string;
   rawRowJson: string;
-  rowIndex: number;
+  rowIndex?: number;
 }
 
 export interface ParseResult {

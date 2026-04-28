@@ -8,15 +8,17 @@ async function loadRegulationText(): Promise<string> {
   if (regulationText) return regulationText;
 
   try {
-    const pdfParse = (await import("pdf-parse")).default;
+    const pdfParseModule: any = await import("pdf-parse");
+    const pdfParse = pdfParseModule.default || pdfParseModule;
     const pdfPath = path.join(process.cwd(), "attached_assets", "Reglamento-de-la-ley-21442_1772404575947.pdf");
 
     if (fs.existsSync(pdfPath)) {
       const dataBuffer = fs.readFileSync(pdfPath);
       const data = await pdfParse(dataBuffer);
-      regulationText = data.text;
-      console.log(`[Gemini] Loaded regulation text: ${regulationText.length} chars`);
-      return regulationText;
+      const text: string = data.text || "";
+      regulationText = text;
+      console.log(`[Gemini] Loaded regulation text: ${text.length} chars`);
+      return text;
     }
   } catch (err) {
     console.error("[Gemini] Error loading PDF:", err);
@@ -169,7 +171,7 @@ export async function sendChatMessage(
   const systemPrompt = buildSystemPrompt(truncatedRegulation, buildingDocs);
   const model = genAI.getGenerativeModel({
     model: "gemini-2.5-flash",
-    systemInstruction: { parts: [{ text: systemPrompt }] },
+    systemInstruction: { role: "system", parts: [{ text: systemPrompt }] },
   });
 
   const validHistory = messages.slice(0, -1).filter(msg => msg.content && msg.content.trim());

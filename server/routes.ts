@@ -144,31 +144,31 @@ function stripCostFields<T extends { cost?: string | null }>(items: T[], canSeeC
 }
 
 // Helper to check if user is a manager role
-function isManagerRole(profile: UserProfile | null): boolean {
+function isManagerRole(profile: UserProfile | null | undefined): boolean {
   if (!profile) return false;
   return ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas"].includes(profile.role);
 }
 
-function isConserjeriaRole(profile: UserProfile | null): boolean {
+function isConserjeriaRole(profile: UserProfile | null | undefined): boolean {
   return !!profile && profile.role === "conserjeria";
 }
 
-function isOperationsRole(profile: UserProfile | null): boolean {
+function isOperationsRole(profile: UserProfile | null | undefined): boolean {
   return !!profile && ["gerente_operaciones", "ejecutivo_operaciones"].includes(profile.role);
 }
 
-function canAccessFinancial(profile: UserProfile | null): boolean {
+function canAccessFinancial(profile: UserProfile | null | undefined): boolean {
   return !!profile && ["gerente_general", "gerente_comercial", "gerente_finanzas", "gerente_operaciones"].includes(profile.role);
 }
 
-function canExportFinancial(profile: UserProfile | null): boolean {
+function canExportFinancial(profile: UserProfile | null | undefined): boolean {
   return canAccessFinancial(profile);
 }
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 // Helper to check if user can access a building (based on buildingScope)
-async function canAccessBuilding(userId: string, buildingId: string, profile: UserProfile | null): Promise<boolean> {
+async function canAccessBuilding(userId: string, buildingId: string, profile: UserProfile | null | undefined): Promise<boolean> {
   if (isManagerRole(profile)) return true;
   if (profile?.buildingScope === "all") return true;
   
@@ -179,7 +179,7 @@ async function canAccessBuilding(userId: string, buildingId: string, profile: Us
 // Helper to check if user can view/edit entity based on assignment
 async function canAccessEntity(
   userId: string,
-  profile: UserProfile | null,
+  profile: UserProfile | null | undefined,
   entity: { 
     executiveId?: string; 
     assignedExecutiveId?: string | null; 
@@ -1192,9 +1192,9 @@ export async function registerRoutes(
         const existingTickets = await storage.getTickets();
         const hasOpenTicket = existingTickets.some(
           (t) =>
-            t.type === "mantencion" &&
+            t.ticketType === "mantencion" &&
             t.buildingId === asset.buildingId &&
-            t.title.includes(asset.name) &&
+            (t.title || "").includes(asset.name) &&
             !["resuelto", "vencido"].includes(t.status)
         );
 
@@ -1211,10 +1211,10 @@ export async function registerRoutes(
           buildingId: asset.buildingId,
           title: `Mantención vencida: ${asset.name}`,
           description: `La mantención del equipo "${asset.name}" (${asset.type}) está vencida hace ${daysOverdue} días. Frecuencia requerida: ${asset.maintenanceFrequency || "No especificada"}.`,
-          type: "mantencion",
+          ticketType: "mantencion",
           priority: daysOverdue > 30 ? "rojo" : daysOverdue > 14 ? "amarillo" : "verde",
           status: "pendiente",
-          assignedTo: building.assignedExecutiveId,
+          assignedExecutiveId: building.assignedExecutiveId,
           createdBy: req.user!.id,
         });
 
@@ -2335,7 +2335,6 @@ export async function registerRoutes(
               documentNumber: invoiceNum || null,
               documentKey: invoiceDoc,
               paymentDate: new Date(),
-              validationStatus: "pendiente",
               createdBy: req.user!.id,
             });
           }
@@ -2774,7 +2773,7 @@ export async function registerRoutes(
   // Helper to check access to parent entity for attachments
   async function canAccessAttachmentEntity(
     userId: string,
-    profile: UserProfile | null,
+    profile: UserProfile | null | undefined,
     entityType: string,
     entityId: string
   ): Promise<boolean> {
@@ -4028,13 +4027,13 @@ export async function registerRoutes(
       
       if (startDate) {
         const start = new Date(startDate as string);
-        tickets = tickets.filter(t => new Date(t.createdAt) >= start);
+        tickets = tickets.filter(t => new Date(t.createdAt!) >= start);
       }
       
       if (endDate) {
         const end = new Date(endDate as string);
         end.setHours(23, 59, 59, 999);
-        tickets = tickets.filter(t => new Date(t.createdAt) <= end);
+        tickets = tickets.filter(t => new Date(t.createdAt!) <= end);
       }
       
       if (status && status !== "all") {
@@ -4082,7 +4081,7 @@ export async function registerRoutes(
         if (!resolutionByType[type]) {
           resolutionByType[type] = { count: 0, totalDays: 0 };
         }
-        const created = new Date(t.createdAt);
+        const created = new Date(t.createdAt!);
         const resolved = new Date(t.resolvedAt!);
         const days = Math.max(0, (resolved.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
         resolutionByType[type].count++;
@@ -4108,15 +4107,19 @@ export async function registerRoutes(
         escalationReasons[reason] = (escalationReasons[reason] || 0) + 1;
       });
       
-      // Assignment history (derivations)
-      const ticketsWithHistory = tickets.filter(t => t.assignmentHistory && Array.isArray(t.assignmentHistory) && t.assignmentHistory.length > 1);
+      // Assignment history (derivations) — la columna es text JSON, parseamos.
+      const parseHistory = (raw: string | null): any[] => {
+        if (!raw) return [];
+        try { const v = JSON.parse(raw); return Array.isArray(v) ? v : []; } catch { return []; }
+      };
+      const ticketsWithHistory = tickets.filter(t => parseHistory(t.assignmentHistory).length > 1);
       const derivationsCount = ticketsWithHistory.reduce((sum, t) => {
-        const history = t.assignmentHistory as any[];
-        return sum + (history.length - 1); // Number of reassignments
+        const history = parseHistory(t.assignmentHistory);
+        return sum + (history.length - 1);
       }, 0);
       
       const data = tickets.map(t => {
-        const history = (t.assignmentHistory as any[]) || [];
+        const history = parseHistory(t.assignmentHistory);
         return {
           id: t.id,
           edificio: buildingMap.get(t.buildingId) || t.buildingId,
@@ -4132,7 +4135,7 @@ export async function registerRoutes(
           escaladoA: t.escalatedTo ? userMap.get(t.escalatedTo) || "-" : null,
           derivaciones: history.length > 1 ? history.length - 1 : 0,
           diasResolucion: t.resolvedAt && t.createdAt 
-            ? Math.round((new Date(t.resolvedAt).getTime() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60 * 24))
+            ? Math.round((new Date(t.resolvedAt).getTime() - new Date(t.createdAt!).getTime()) / (1000 * 60 * 60 * 24))
             : null,
         };
       });
@@ -4381,7 +4384,7 @@ export async function registerRoutes(
           tipo: e.type,
           marca: e.brand || "-",
           modelo: e.model || "-",
-          estado: e.status === "operativo" ? "Operativo" : e.status === "en_mantencion" ? "En Mantención" : e.status === "fuera_servicio" ? "Fuera de Servicio" : e.status === "por_aprobar" ? "Por Aprobar" : e.status,
+          estado: ((status: string) => status === "operativo" ? "Operativo" : status === "en_mantencion" ? "En Mantención" : status === "fuera_servicio" ? "Fuera de Servicio" : status === "por_aprobar" ? "Por Aprobar" : status)(e.status as string),
           mantenedor: e.assignedMaintainerId ? maintainerMap.get(e.assignedMaintainerId) || "-" : "-",
           ultimaMantencion: e.lastMaintenanceDate,
           proximaMantencion: e.nextMaintenanceDate,
@@ -4391,7 +4394,7 @@ export async function registerRoutes(
       });
       
       // Equipment pending approval (all equipment, not filtered)
-      const pendingApproval = allEquipment.filter(e => e.status === "por_aprobar");
+      const pendingApproval = allEquipment.filter(e => (e.status as string) === "por_aprobar");
       
       // Investment by building
       const investmentByBuilding: Record<string, { name: string, total: number, count: number }> = {};
@@ -4479,14 +4482,14 @@ export async function registerRoutes(
       if (startDate) {
         const start = new Date(startDate as string);
         visits = visits.filter(v => new Date(v.scheduledDate) >= start);
-        tickets = tickets.filter(t => new Date(t.createdAt) >= start);
+        tickets = tickets.filter(t => new Date(t.createdAt!) >= start);
       }
       
       if (endDate) {
         const end = new Date(endDate as string);
         end.setHours(23, 59, 59, 999);
         visits = visits.filter(v => new Date(v.scheduledDate) <= end);
-        tickets = tickets.filter(t => new Date(t.createdAt) <= end);
+        tickets = tickets.filter(t => new Date(t.createdAt!) <= end);
       }
       
       const buildings = await storage.getBuildings();
@@ -4666,11 +4669,11 @@ export async function registerRoutes(
       let tickets = await storage.getTickets();
       
       if (buildingId && buildingId !== "all") tickets = tickets.filter(t => t.buildingId === buildingId);
-      if (startDate) tickets = tickets.filter(t => new Date(t.createdAt) >= new Date(startDate as string));
+      if (startDate) tickets = tickets.filter(t => new Date(t.createdAt!) >= new Date(startDate as string));
       if (endDate) {
         const end = new Date(endDate as string);
         end.setHours(23, 59, 59, 999);
-        tickets = tickets.filter(t => new Date(t.createdAt) <= end);
+        tickets = tickets.filter(t => new Date(t.createdAt!) <= end);
       }
       if (status && status !== "all") tickets = tickets.filter(t => t.status === status);
       if (priority && priority !== "all") tickets = tickets.filter(t => t.priority === priority);
@@ -4690,9 +4693,9 @@ export async function registerRoutes(
           t.ticketType === "urgencia" ? "Urgencia" : t.ticketType === "mantencion" ? "Mantención" : "Planificado",
           t.description,
           t.priority === "rojo" ? "Alta" : t.priority === "amarillo" ? "Media" : "Baja",
-          t.status === "resuelto" ? "Resuelto" : t.status === "abierto" ? "Abierto" : t.status === "en_progreso" ? "En Progreso" : t.status,
+          ((s: string) => s === "resuelto" ? "Resuelto" : s === "abierto" ? "Abierto" : s === "en_progreso" ? "En Progreso" : s)(t.status as string),
           userMap.get(t.assignedExecutiveId || "") || "-",
-          t.createdAt ? new Date(t.createdAt).toLocaleDateString("es-CL") : "",
+          t.createdAt ? new Date(t.createdAt!).toLocaleDateString("es-CL") : "",
           t.closedAt ? new Date(t.closedAt).toLocaleDateString("es-CL") : "",
           t.invoiceAmount ? `$${parseFloat(t.invoiceAmount).toLocaleString("es-CL")}` : "",
         ]);
@@ -4749,7 +4752,7 @@ export async function registerRoutes(
           t.ticketType === "urgencia" ? "Urgencia" : t.ticketType === "mantencion" ? "Mantención" : "Planificado",
           t.maintainerId ? maintainerMap.get(t.maintainerId) || "-" : "-",
           t.invoiceNumber || "-",
-          parseFloat(t.invoiceAmount || "0"),
+          String(parseFloat(t.invoiceAmount || "0")),
           t.closedAt ? new Date(t.closedAt).toLocaleDateString("es-CL") : "",
         ]);
       });
@@ -4808,7 +4811,7 @@ export async function registerRoutes(
           e.type,
           e.brand || "-",
           e.model || "-",
-          e.status === "operativo" ? "Operativo" : e.status === "en_mantencion" ? "En Mantención" : "Fuera de Servicio",
+          ((s: string) => s === "operativo" ? "Operativo" : s === "en_mantencion" ? "En Mantención" : "Fuera de Servicio")(e.status as string),
           e.assignedMaintainerId ? maintainerMap.get(e.assignedMaintainerId) || "-" : "-",
           e.lastMaintenanceDate ? new Date(e.lastMaintenanceDate).toLocaleDateString("es-CL") : "-",
           e.nextMaintenanceDate ? new Date(e.nextMaintenanceDate).toLocaleDateString("es-CL") : "-",
@@ -4851,13 +4854,13 @@ export async function registerRoutes(
       if (startDate) {
         const start = new Date(startDate as string);
         visits = visits.filter(v => new Date(v.scheduledDate) >= start);
-        tickets = tickets.filter(t => new Date(t.createdAt) >= start);
+        tickets = tickets.filter(t => new Date(t.createdAt!) >= start);
       }
       if (endDate) {
         const end = new Date(endDate as string);
         end.setHours(23, 59, 59, 999);
         visits = visits.filter(v => new Date(v.scheduledDate) <= end);
-        tickets = tickets.filter(t => new Date(t.createdAt) <= end);
+        tickets = tickets.filter(t => new Date(t.createdAt!) <= end);
       }
       
       const buildings = await storage.getBuildings();
@@ -4873,7 +4876,7 @@ export async function registerRoutes(
         const assignedBuildings = buildings.filter(b => b.assignedExecutiveId === ep.userId);
         
         wsData.push([
-          user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email : ep.userId,
+          user ? (`${user.firstName || ''} ${user.lastName || ''}`.trim() || user.email || ep.userId) : ep.userId,
           user?.email || "-",
           String(assignedBuildings.length),
           String(execVisits.length),
@@ -6208,7 +6211,6 @@ export async function registerRoutes(
                 documentNumber: updated.invoiceNumber || null,
                 documentKey: updated.invoiceDocumentKey || null,
                 paymentDate: new Date(),
-                validationStatus: "pendiente",
                 createdBy: (req.user as any).id,
               });
             }
@@ -8139,7 +8141,7 @@ export async function registerRoutes(
           if (a.month !== b.month) return b.month - a.month;
           return new Date(b.date).getTime() - new Date(a.date).getTime();
         }),
-        months: [...new Set(payments.map(p => `${p.year}-${p.month}`))].length,
+        months: Array.from(new Set(payments.map(p => `${p.year}-${p.month}`))).length,
       }));
 
       units.sort((a, b) => a.unit.localeCompare(b.unit, "es", { numeric: true }));
@@ -8398,7 +8400,7 @@ export async function registerRoutes(
       }
       const history = Object.entries(grouped).map(([key, txns]) => {
         const [yr, mo] = key.split("-").map(Number);
-        const dates = txns.map(t => t.transactionDate ? new Date(t.transactionDate).getTime() : 0).filter(d => d > 0);
+        const dates = txns.map(t => t.txnDate ? new Date(t.txnDate).getTime() : 0).filter(d => d > 0);
         const minDate = dates.length > 0 ? new Date(Math.min(...dates)).toISOString() : null;
         const maxDate = dates.length > 0 ? new Date(Math.max(...dates)).toISOString() : null;
         const identified = txns.filter(t => t.status === "identified").length;
@@ -8793,14 +8795,15 @@ export async function registerRoutes(
           });
         }
 
+        const adminUser = await storage.getUser(req.user!.id);
         await storage.createMonthlyClosingStatusLog({
           cycleId: cycle.id,
           previousStatus: cycle.status,
           newStatus: updateData.status,
           changedBy: req.user!.id,
-          changedByName: profile.firstName && profile.lastName
-            ? `${profile.firstName} ${profile.lastName}`
-            : profile.email || "Usuario",
+          changedByName: adminUser?.firstName && adminUser?.lastName
+            ? `${adminUser.firstName} ${adminUser.lastName}`
+            : adminUser?.email || "Usuario",
         });
       }
 
@@ -9116,7 +9119,7 @@ export async function registerRoutes(
         transactionId: string;
       }>> = {};
 
-      function extractPayments(txns: any[], target: typeof unitPaymentsThisMonth) {
+      const extractPayments = (txns: any[], target: typeof unitPaymentsThisMonth) => {
         for (const txn of txns) {
           let splitUnits: Array<{ unit: string; amount: number }> | null = null;
           if (txn.assignedUnitsSplit) {
@@ -9201,7 +9204,7 @@ export async function registerRoutes(
         alerts: Array<{ type: string; message: string }>;
       }> = [];
 
-      for (const unit of allKnownUnits) {
+      for (const unit of Array.from(allKnownUnits)) {
         const payments = unitPaymentsThisMonth[unit] || [];
         const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
         const historicMonths = historicUnitMonths[unit]?.size || 0;
@@ -9482,7 +9485,7 @@ export async function registerRoutes(
   // Check insurance policies and generate tickets for expiring ones
   app.post("/api/system/check-insurance-policies", isAuthenticated, async (req, res) => {
     try {
-      const profile = await storage.getProfileByUserId(req.user!.id);
+      const profile = await storage.getUserProfile(req.user!.id);
       // Only super_admin or gerente_general can trigger this manually
       if (!profile || !["super_admin", "gerente_general"].includes(profile.role)) {
         return res.status(403).json({ error: "No autorizado" });
@@ -9711,7 +9714,7 @@ export async function registerRoutes(
           const hasRecentOpen = allTickets.some(t =>
             t.buildingId === asset.buildingId &&
             (t.description || "").includes(ticketTag) &&
-            t.createdAt && new Date(t.createdAt) >= sevenDaysAgo &&
+            t.createdAt && new Date(t.createdAt!) >= sevenDaysAgo &&
             !CLOSED_STATUSES.includes(t.status)
           );
           if (hasRecentOpen) {

@@ -42,7 +42,7 @@ import {
 
 type PermissionsData = Record<string, RolePermissionsConfig>;
 
-const MODULE_GROUPS = [...new Set(MODULE_KEYS.map(k => MODULE_DEFINITIONS[k].group))];
+const MODULE_GROUPS = Array.from(new Set(MODULE_KEYS.map(k => MODULE_DEFINITIONS[k].group)));
 
 export default function GestionPermisos() {
   const { user } = useAuth();

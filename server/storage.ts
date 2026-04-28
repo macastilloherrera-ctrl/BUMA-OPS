@@ -465,6 +465,21 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(userData)
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          ...userData,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return user;
+  }
+
   async createUser(user: UpsertUser): Promise<User> {
     const [created] = await db.insert(users).values(user).returning();
     return created;

@@ -70,12 +70,12 @@ async function runAuthorizationTests() {
   {
     const ticketInOtherBuilding = await storage.createTicket({
       buildingId: "bldg-2",
-      category: "limpieza",
+      categoryId: "limpieza",
       description: "Ticket en edificio de B",
       priority: "verde",
       assignedExecutiveId: "exec-b-001",
       createdBy: "manager-001",
-      responsibleType: "ejecutivo",
+      receiverType: "ejecutivo",
       dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
     const canAccess = await canAccessEntity("exec-a-001", execA, ticketInOtherBuilding);
@@ -92,12 +92,12 @@ async function runAuthorizationTests() {
   {
     const newTicket = await storage.createTicket({
       buildingId: "bldg-3",
-      category: "limpieza",
+      categoryId: "limpieza",
       description: "Ticket test B4 en edificio sin ejecutivo asignado",
       priority: "verde",
       assignedExecutiveId: "exec-a-001",
       createdBy: "manager-001",
-      responsibleType: "ejecutivo",
+      receiverType: "ejecutivo",
       dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
     const canAccess = await canAccessEntity("exec-a-001", execA, newTicket);
@@ -144,12 +144,12 @@ async function runAuthorizationTests() {
   {
     const ticketForCostTest = await storage.createTicket({
       buildingId: "bldg-1",
-      category: "limpieza",
+      categoryId: "limpieza",
       description: "Ticket para test de cost",
       priority: "verde",
       assignedExecutiveId: "exec-a-001",
       createdBy: "exec-a-001",
-      responsibleType: "ejecutivo",
+      receiverType: "ejecutivo",
       dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
     

@@ -10,8 +10,8 @@ interface LogoProps {
 export function Logo({ className = "", size = "md" }: LogoProps) {
   const { theme } = useTheme();
   
-  const isDark = theme === "dark" || 
-    (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const isDark = theme === "dark" ||
+    ((theme as string) === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   
   const sizeClasses = {
     sm: "h-6",
@@ -32,8 +32,8 @@ export function Logo({ className = "", size = "md" }: LogoProps) {
 export function LogoIcon({ className = "" }: { className?: string }) {
   const { theme } = useTheme();
   
-  const isDark = theme === "dark" || 
-    (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+  const isDark = theme === "dark" ||
+    ((theme as string) === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 
   return (
     <div 

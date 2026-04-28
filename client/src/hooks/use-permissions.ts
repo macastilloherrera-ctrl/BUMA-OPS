@@ -31,7 +31,7 @@ function buildAllowedRoutes(modules: Record<ModuleKey, boolean>): string[] {
   if (modules.panel_super_admin || modules.admin_usuarios) {
     routes.push("/gestion-permisos");
   }
-  return [...new Set(routes)];
+  return Array.from(new Set(routes));
 }
 
 export function usePermissions(userRole: UserRole): UserPermissions {
