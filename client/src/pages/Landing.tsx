@@ -11,7 +11,10 @@ export default function Landing() {
     retry: false,
   });
 
-  const isDevMode = devStatus?.enabled;
+  // En producción no mostramos badge ni botón de "Modo Desarrollo" aunque
+  // DEV_AUTH=true en el server (necesario en Railway por arquitectura del
+  // login). Vite expone import.meta.env.PROD=true en builds de producción.
+  const isDevMode = !import.meta.env.PROD && devStatus?.enabled;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
