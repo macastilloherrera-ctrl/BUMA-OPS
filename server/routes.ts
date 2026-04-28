@@ -213,6 +213,72 @@ function sanitizeCostFields(body: any, isManager: boolean): any {
   return sanitized;
 }
 
+// Vincula automáticamente una transacción bancaria identificada con su
+// income correspondiente cuando hay un único match (mismo edificio, mismo
+// monto, mismo periodo y sin bankOperationId previo). Para splits y casos
+// ambiguos se hace manualmente.
+async function tryLinkBankTxnToIncome(txn: {
+  id: string;
+  buildingId: string;
+  amount: string;
+  periodMonth: number;
+  periodYear: number;
+  assignedUnitsSplit?: string | null;
+}): Promise<void> {
+  if (txn.assignedUnitsSplit) return;
+  try {
+    const candidates = await storage.getIncomes({
+      buildingId: txn.buildingId,
+      month: txn.periodMonth,
+      year: txn.periodYear,
+    });
+    const txnAmount = parseFloat(txn.amount);
+    const matches = candidates.filter(
+      (i) => Math.abs(parseFloat(i.amount) - txnAmount) < 0.01 && !i.bankOperationId,
+    );
+    if (matches.length === 1) {
+      await storage.updateIncome(matches[0].id, { bankOperationId: txn.id });
+    }
+  } catch (e) {
+    console.error("[bank-link] error linking bank txn to income:", e);
+  }
+}
+
+async function unlinkBankTxnFromIncome(bankTxnId: string): Promise<void> {
+  try {
+    const linked = await storage.getIncomeByBankOperationId(bankTxnId);
+    if (linked) {
+      await storage.updateIncome(linked.id, { bankOperationId: null });
+    }
+  } catch (e) {
+    console.error("[bank-unlink] error clearing income link:", e);
+  }
+}
+
+// Bloquea modificaciones a entidades cuyo periodo de cierre ya está
+// 'approved' o 'issued'. Devuelve { locked: true, reason } cuando hay que
+// rechazar la operación; locked: false en caso contrario (incluyendo cuando
+// no existe ciclo para el periodo).
+async function assertCycleNotLocked(
+  buildingId: string,
+  periodMonth: number,
+  periodYear: number,
+): Promise<{ locked: boolean; reason?: string }> {
+  if (!buildingId || !periodMonth || !periodYear) return { locked: false };
+  const cycle = await storage.getMonthlyClosingCycleByBuildingAndPeriod(
+    buildingId,
+    periodMonth,
+    periodYear,
+  );
+  if (cycle && (cycle.status === "approved" || cycle.status === "issued")) {
+    return {
+      locked: true,
+      reason: "El cierre de este periodo ya fue aprobado y no permite modificaciones",
+    };
+  }
+  return { locked: false };
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -4015,104 +4081,111 @@ export async function registerRoutes(
       }
 
       const { buildingId, startDate, endDate } = req.query;
-      
-      let allTickets = await storage.getTickets();
-      
-      // Paid tickets (resuelto with invoice)
-      let paidTickets = allTickets.filter(t => t.status === "resuelto" && t.invoiceAmount && parseFloat(t.invoiceAmount) > 0);
-      
-      // Pending invoices - work completed but not resolved (before filtering)
-      let pendingInvoices = allTickets.filter(t => 
-        t.status === "trabajo_completado" && 
-        (!t.invoiceStatus || t.invoiceStatus !== "pagada")
-      );
-      
-      // Apply same filters to both paid and pending invoices
+
+      const incomeFilters: { buildingId?: string } = {};
+      const expenseFilters: { buildingId?: string } = {};
       if (buildingId && buildingId !== "all") {
-        paidTickets = paidTickets.filter(t => t.buildingId === buildingId);
-        pendingInvoices = pendingInvoices.filter(t => t.buildingId === buildingId);
+        incomeFilters.buildingId = buildingId as string;
+        expenseFilters.buildingId = buildingId as string;
       }
-      
+
+      let allIncomes = await storage.getIncomes(incomeFilters);
+      let allExpenses = await storage.getExpenses(expenseFilters);
+
+      // Filtrar por rango de fechas sobre paymentDate (compat con el contrato anterior)
       if (startDate) {
         const start = new Date(startDate as string);
-        paidTickets = paidTickets.filter(t => t.closedAt && new Date(t.closedAt) >= start);
-        pendingInvoices = pendingInvoices.filter(t => new Date(t.createdAt) >= start);
+        allIncomes = allIncomes.filter(i => i.paymentDate && new Date(i.paymentDate) >= start);
+        allExpenses = allExpenses.filter(e => e.paymentDate && new Date(e.paymentDate) >= start);
       }
-      
       if (endDate) {
         const end = new Date(endDate as string);
         end.setHours(23, 59, 59, 999);
-        paidTickets = paidTickets.filter(t => t.closedAt && new Date(t.closedAt) <= end);
-        pendingInvoices = pendingInvoices.filter(t => new Date(t.createdAt) <= end);
+        allIncomes = allIncomes.filter(i => i.paymentDate && new Date(i.paymentDate) <= end);
+        allExpenses = allExpenses.filter(e => e.paymentDate && new Date(e.paymentDate) <= end);
       }
-      
+
+      // Egresos válidos: excluir cancelados y postergados
+      const validExpenses = allExpenses.filter(e =>
+        e.paymentStatus !== "cancelled" && e.inclusionStatus !== "postponed"
+      );
+      const pendingExpenses = allExpenses.filter(e => e.paymentStatus === "pending");
+
       const buildings = await storage.getBuildings();
       const buildingMap = new Map(buildings.map(b => [b.id, b.name]));
-      const maintainers = await storage.getMaintainers();
-      const maintainerMap = new Map(maintainers.map(m => [m.id, m.companyName]));
-      
-      const data = paidTickets.map(t => ({
-        id: t.id,
-        edificio: buildingMap.get(t.buildingId) || t.buildingId,
-        descripcion: t.description,
-        tipo: t.ticketType === "urgencia" ? "Urgencia" : t.ticketType === "mantencion" ? "Mantención" : "Planificado",
-        proveedor: t.maintainerId ? maintainerMap.get(t.maintainerId) || "-" : "-",
-        numeroFactura: t.invoiceNumber || "-",
-        monto: parseFloat(t.invoiceAmount || "0"),
-        fechaEgreso: t.closedAt,
+      const vendors = await storage.getVendors();
+      const vendorMap = new Map(vendors.map(v => [v.id, v.name]));
+
+      // `data` mantiene la forma del contrato anterior: ahora es la lista de egresos válidos
+      const data = validExpenses.map(e => ({
+        id: e.id,
+        edificio: buildingMap.get(e.buildingId) || e.buildingId,
+        descripcion: e.description,
+        tipo: e.category || "Otros",
+        proveedor: e.vendorId ? (vendorMap.get(e.vendorId) || e.vendorName || "-") : (e.vendorName || "-"),
+        numeroFactura: e.documentNumber || "-",
+        monto: parseFloat(e.amount || "0"),
+        fechaEgreso: e.paymentDate,
       }));
-      
-      // Group by building
+
+      const totalIngresos = allIncomes.reduce((sum, i) => sum + parseFloat(i.amount || "0"), 0);
+      const totalEgresos = validExpenses.reduce((sum, e) => sum + parseFloat(e.amount || "0"), 0);
+      const balanceNeto = totalIngresos - totalEgresos;
+
+      // Agrupaciones de egresos
       const byBuilding: Record<string, { total: number; count: number }> = {};
-      data.forEach(item => {
-        if (!byBuilding[item.edificio]) {
-          byBuilding[item.edificio] = { total: 0, count: 0 };
-        }
-        byBuilding[item.edificio].total += item.monto;
-        byBuilding[item.edificio].count++;
-      });
-      
-      // Group by ticket type
-      const byType: Record<string, { total: number; count: number }> = {};
-      data.forEach(item => {
-        if (!byType[item.tipo]) {
-          byType[item.tipo] = { total: 0, count: 0 };
-        }
-        byType[item.tipo].total += item.monto;
-        byType[item.tipo].count++;
-      });
-      
-      // Group by month
+      const byCategory: Record<string, { total: number; count: number }> = {};
       const byMonth: Record<string, { total: number; count: number }> = {};
       data.forEach(item => {
+        if (!byBuilding[item.edificio]) byBuilding[item.edificio] = { total: 0, count: 0 };
+        byBuilding[item.edificio].total += item.monto;
+        byBuilding[item.edificio].count++;
+        if (!byCategory[item.tipo]) byCategory[item.tipo] = { total: 0, count: 0 };
+        byCategory[item.tipo].total += item.monto;
+        byCategory[item.tipo].count++;
         if (item.fechaEgreso) {
           const date = new Date(item.fechaEgreso);
-          const monthKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
-          if (!byMonth[monthKey]) {
-            byMonth[monthKey] = { total: 0, count: 0 };
-          }
+          const monthKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+          if (!byMonth[monthKey]) byMonth[monthKey] = { total: 0, count: 0 };
           byMonth[monthKey].total += item.monto;
           byMonth[monthKey].count++;
         }
       });
-      
+
+      // Ingresos por mes
+      const incomesByMonth: Record<string, { total: number; count: number }> = {};
+      allIncomes.forEach(i => {
+        if (!i.paymentDate) return;
+        const date = new Date(i.paymentDate);
+        const monthKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+        if (!incomesByMonth[monthKey]) incomesByMonth[monthKey] = { total: 0, count: 0 };
+        incomesByMonth[monthKey].total += parseFloat(i.amount || "0");
+        incomesByMonth[monthKey].count++;
+      });
+
       const summary = {
-        totalMonto: data.reduce((sum, t) => sum + t.monto, 0),
+        // Compat: totalMonto y totalFacturas reflejan egresos (mismo significado que antes)
+        totalMonto: totalEgresos,
         totalFacturas: data.length,
-        promedioFactura: data.length > 0 ? Math.round(data.reduce((sum, t) => sum + t.monto, 0) / data.length) : 0,
+        promedioFactura: data.length > 0 ? Math.round(totalEgresos / data.length) : 0,
         porEdificio: Object.entries(byBuilding).map(([edificio, stats]) => ({
           edificio,
           total: stats.total,
           count: stats.count,
         })).sort((a, b) => b.total - a.total),
+        // Nuevos: totales reales del informe financiero
+        totalIngresos,
+        totalEgresos,
+        balanceNeto,
       };
-      
+
       const analytics = {
+        // pendingInvoices ahora representa egresos en estado 'pending'
         pendingInvoices: {
-          count: pendingInvoices.length,
-          estimatedAmount: pendingInvoices.reduce((sum, t) => sum + parseFloat(t.invoiceAmount || "0"), 0),
+          count: pendingExpenses.length,
+          estimatedAmount: pendingExpenses.reduce((sum, e) => sum + parseFloat(e.amount || "0"), 0),
         },
-        byType: Object.entries(byType).map(([type, stats]) => ({
+        byType: Object.entries(byCategory).map(([type, stats]) => ({
           type,
           total: stats.total,
           count: stats.count,
@@ -4128,8 +4201,19 @@ export async function registerRoutes(
           total: stats.total,
           count: stats.count,
         })).sort((a, b) => b.total - a.total).slice(0, 5),
+        // Nuevos: desglose explícito de egresos por categoría e ingresos por mes
+        expensesByCategory: Object.entries(byCategory).map(([category, stats]) => ({
+          category,
+          total: stats.total,
+          count: stats.count,
+        })).sort((a, b) => b.total - a.total),
+        incomesByMonth: Object.entries(incomesByMonth).map(([month, stats]) => ({
+          month,
+          total: stats.total,
+          count: stats.count,
+        })).sort((a, b) => a.month.localeCompare(b.month)),
       };
-      
+
       res.json({ data, summary, analytics });
     } catch (error) {
       console.error("Error fetching financial report:", error);
@@ -6451,6 +6535,17 @@ export async function registerRoutes(
       if (!isManagerRole(profile)) {
         return res.status(403).json({ error: "Solo gerentes pueden modificar ingresos" });
       }
+      const existingIncome = await storage.getIncome(req.params.id);
+      if (!existingIncome) {
+        return res.status(404).json({ error: "Ingreso no encontrado" });
+      }
+      if (existingIncome.paymentDate) {
+        const d = new Date(existingIncome.paymentDate);
+        const lockCheck = await assertCycleNotLocked(existingIncome.buildingId, d.getMonth() + 1, d.getFullYear());
+        if (lockCheck.locked) {
+          return res.status(409).json({ error: lockCheck.reason });
+        }
+      }
       const incomeUpdates: any = { ...req.body };
       if (incomeUpdates.paymentDate && typeof incomeUpdates.paymentDate === "string") {
         incomeUpdates.paymentDate = new Date(incomeUpdates.paymentDate);
@@ -6491,6 +6586,13 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Solo gerentes pueden eliminar ingresos" });
       }
       const existing = await storage.getIncome(req.params.id);
+      if (existing?.paymentDate) {
+        const d = new Date(existing.paymentDate);
+        const lockCheck = await assertCycleNotLocked(existing.buildingId, d.getMonth() + 1, d.getFullYear());
+        if (lockCheck.locked) {
+          return res.status(409).json({ error: lockCheck.reason });
+        }
+      }
       const deleted = await storage.deleteIncome(req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: "Ingreso no encontrado" });
@@ -6837,6 +6939,27 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Egreso no encontrado" });
       }
 
+      {
+        const expChargeMonth = (existingExpense as any).chargeMonth;
+        const expChargeYear = (existingExpense as any).chargeYear;
+        let lockMonth: number | undefined;
+        let lockYear: number | undefined;
+        if (expChargeMonth && expChargeYear) {
+          lockMonth = expChargeMonth;
+          lockYear = expChargeYear;
+        } else if (existingExpense.paymentDate) {
+          const d = new Date(existingExpense.paymentDate);
+          lockMonth = d.getMonth() + 1;
+          lockYear = d.getFullYear();
+        }
+        if (lockMonth && lockYear) {
+          const lockCheck = await assertCycleNotLocked(existingExpense.buildingId, lockMonth, lockYear);
+          if (lockCheck.locked) {
+            return res.status(409).json({ error: lockCheck.reason });
+          }
+        }
+      }
+
       const docType = updates.documentType !== undefined ? updates.documentType : (existingExpense as any).documentType;
       const docNumber = updates.documentNumber !== undefined ? updates.documentNumber : existingExpense.documentNumber;
       const vName = updates.vendorName !== undefined ? updates.vendorName : existingExpense.vendorName;
@@ -6915,6 +7038,26 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Solo gerentes pueden eliminar egresos" });
       }
       const existingExp = await storage.getExpense(req.params.id);
+      if (existingExp) {
+        const expChargeMonth = (existingExp as any).chargeMonth;
+        const expChargeYear = (existingExp as any).chargeYear;
+        let lockMonth: number | undefined;
+        let lockYear: number | undefined;
+        if (expChargeMonth && expChargeYear) {
+          lockMonth = expChargeMonth;
+          lockYear = expChargeYear;
+        } else if (existingExp.paymentDate) {
+          const d = new Date(existingExp.paymentDate);
+          lockMonth = d.getMonth() + 1;
+          lockYear = d.getFullYear();
+        }
+        if (lockMonth && lockYear) {
+          const lockCheck = await assertCycleNotLocked(existingExp.buildingId, lockMonth, lockYear);
+          if (lockCheck.locked) {
+            return res.status(409).json({ error: lockCheck.reason });
+          }
+        }
+      }
       const deleted = await storage.deleteExpense(req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: "Egreso no encontrado" });
@@ -7545,6 +7688,13 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Transacción no encontrada" });
       }
 
+      {
+        const lockCheck = await assertCycleNotLocked(txn.buildingId, txn.periodMonth, txn.periodYear);
+        if (lockCheck.locked) {
+          return res.status(409).json({ error: lockCheck.reason });
+        }
+      }
+
       const updated = await storage.updateBankTransaction(id, {
         status: "identified",
         assignedUnit: unit,
@@ -7622,6 +7772,7 @@ export async function registerRoutes(
           identifiedBy: req.user!.id,
           identifiedAt: new Date(),
         });
+        await tryLinkBankTxnToIncome(txn);
         confirmed++;
       }
 
@@ -7729,6 +7880,8 @@ export async function registerRoutes(
         identifiedAt: new Date(),
       });
 
+      await tryLinkBankTxnToIncome(txn);
+
       try {
         const user = req.user as any;
         await storage.createAuditLog({
@@ -7811,6 +7964,8 @@ export async function registerRoutes(
           error: "Solo se pueden reactivar transacciones con estado 'ignorada' o 'identificada'",
         });
       }
+
+      await unlinkBankTxnFromIncome(id);
 
       const updated = await storage.updateBankTransaction(id, {
         status: "pending",

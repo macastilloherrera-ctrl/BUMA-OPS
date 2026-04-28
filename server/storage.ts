@@ -1513,6 +1513,11 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
+  async getIncomeByBankOperationId(bankOperationId: string): Promise<Income | undefined> {
+    const [income] = await db.select().from(incomes).where(eq(incomes.bankOperationId, bankOperationId));
+    return income || undefined;
+  }
+
   // Expenses
   async getExpenses(filters?: { buildingId?: string; sourceType?: string; paymentStatus?: string; inclusionStatus?: string; month?: number; year?: number }): Promise<Expense[]> {
     const conditions = [];
