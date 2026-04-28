@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import { ensureSessionsTable } from "./db";
 
 const REQUIRED_ENVS = ["DATABASE_URL", "SESSION_SECRET"] as const;
 const OPTIONAL_ENVS = ["GEMINI_API_KEY", "REPL_ID", "ISSUER_URL"] as const;
@@ -75,6 +76,14 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  try {
+    await ensureSessionsTable();
+    console.log("[boot] sessions table ready");
+  } catch (err) {
+    console.error("[boot] FATAL: could not ensure sessions table:", err);
+    process.exit(1);
+  }
+
   await registerRoutes(httpServer, app);
 
   app.use((err: any, req: Request, res: Response, _next: NextFunction) => {

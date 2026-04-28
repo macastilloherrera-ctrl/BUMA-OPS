@@ -22,3 +22,18 @@ pool.on("error", (err) => {
 });
 
 export const db = drizzle(pool, { schema });
+
+// Garantiza que la tabla de sesiones de connect-pg-simple existe.
+// Necesario en Neon/Railway porque getSession() está configurado con
+// createTableIfMissing: false.
+export async function ensureSessionsTable(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      sid varchar NOT NULL COLLATE "default",
+      sess json NOT NULL,
+      expire timestamp(6) NOT NULL,
+      CONSTRAINT sessions_pkey PRIMARY KEY (sid) NOT DEFERRABLE INITIALLY IMMEDIATE
+    );
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON sessions (expire);
+  `);
+}
