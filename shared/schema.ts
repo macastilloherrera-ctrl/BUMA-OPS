@@ -742,7 +742,10 @@ export const insertBuildingFileSchema = createInsertSchema(buildingFiles).omit({
   createdAt: true,
 });
 
-export const insertCriticalAssetSchema = createInsertSchema(criticalAssets).omit({
+export const insertCriticalAssetSchema = createInsertSchema(criticalAssets, {
+  lastMaintenanceDate: z.coerce.date().optional().nullable(),
+  nextMaintenanceDate: z.coerce.date().optional().nullable(),
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -769,7 +772,13 @@ export const insertMaintainerCategoryLinkSchema = createInsertSchema(maintainerC
   createdAt: true,
 });
 
-export const insertVisitSchema = createInsertSchema(visits).omit({
+export const insertVisitSchema = createInsertSchema(visits, {
+  scheduledDate: z.coerce.date(),
+  startedAt: z.coerce.date().optional().nullable(),
+  completedAt: z.coerce.date().optional().nullable(),
+  cancelledAt: z.coerce.date().optional().nullable(),
+  originalScheduledDate: z.coerce.date().optional().nullable(),
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true,

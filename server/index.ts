@@ -3,6 +3,21 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 
+const REQUIRED_ENVS = ["DATABASE_URL", "SESSION_SECRET"] as const;
+const OPTIONAL_ENVS = ["GEMINI_API_KEY", "REPL_ID", "ISSUER_URL"] as const;
+
+for (const k of REQUIRED_ENVS) {
+  if (!process.env[k]) {
+    console.error(`[boot] FATAL: missing env ${k}`);
+    process.exit(1);
+  }
+}
+for (const k of OPTIONAL_ENVS) {
+  if (!process.env[k]) {
+    console.warn(`[boot] optional env ${k} not set`);
+  }
+}
+
 const app = express();
 const httpServer = createServer(app);
 
@@ -62,12 +77,12 @@ app.use((req, res, next) => {
 (async () => {
   await registerRoutes(httpServer, app);
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
+    console.error(`[${req.method} ${req.path}]`, err);
     res.status(status).json({ message });
-    throw err;
   });
 
   // importantly only setup vite in development and after
