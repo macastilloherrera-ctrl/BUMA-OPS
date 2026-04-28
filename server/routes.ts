@@ -262,6 +262,13 @@ export async function registerRoutes(
   }
 
   // Setup Dev Auth (active in development OR when DEV_AUTH=true)
+  const devAuthRaw = process.env.DEV_AUTH;
+  const devAuthNormalized = devAuthRaw?.trim().toLowerCase();
+  const shouldRegisterDevAuth =
+    process.env.NODE_ENV === "development" || devAuthNormalized === "true";
+  console.log(
+    `[dev-auth] DEV_AUTH=${JSON.stringify(devAuthRaw)} (normalized=${JSON.stringify(devAuthNormalized)}), NODE_ENV=${JSON.stringify(process.env.NODE_ENV)}, registering routes: ${shouldRegisterDevAuth}`
+  );
   registerDevAuthRoutes(app);
   
   // Setup Object Storage routes

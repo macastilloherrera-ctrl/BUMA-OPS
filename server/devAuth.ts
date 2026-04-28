@@ -60,7 +60,8 @@ export const DEV_USERS = [
 ];
 
 export function isDevMode(): boolean {
-  return process.env.NODE_ENV === "development" || process.env.DEV_AUTH === "true";
+  const devAuth = process.env.DEV_AUTH?.trim().toLowerCase();
+  return process.env.NODE_ENV === "development" || devAuth === "true";
 }
 
 function getRedirectForRole(role: string): string {
