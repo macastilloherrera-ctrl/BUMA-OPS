@@ -14,6 +14,7 @@ export const userRoleEnum = pgEnum("user_role", [
   "gerente_comercial",
   "gerente_finanzas",
   "ejecutivo_operaciones",
+  "ejecutivo_apoyo",
   "conserjeria"
 ]);
 
@@ -1115,7 +1116,7 @@ export type InsertKnowledgeDocument = z.infer<typeof insertKnowledgeDocumentSche
 export type KnowledgeDocument = typeof knowledgeDocuments.$inferSelect;
 
 // Helper types for frontend
-export type UserRole = "super_admin" | "gerente_general" | "gerente_operaciones" | "gerente_comercial" | "gerente_finanzas" | "ejecutivo_operaciones" | "conserjeria";
+export type UserRole = "super_admin" | "gerente_general" | "gerente_operaciones" | "gerente_comercial" | "gerente_finanzas" | "ejecutivo_operaciones" | "ejecutivo_apoyo" | "conserjeria";
 export type VisitType = "rutina" | "urgente";
 export type TicketPriority = "rojo" | "amarillo" | "verde";
 export type TicketStatus = "pendiente" | "en_curso" | "trabajo_completado" | "vencido" | "resuelto" | "reprogramado";

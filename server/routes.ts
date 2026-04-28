@@ -5542,7 +5542,9 @@ export async function registerRoutes(
       }
 
       const allProfiles = await storage.getUserProfiles();
-      const execProfiles = allProfiles.filter(p => p.role === "ejecutivo_operaciones" && p.isActive);
+      const execProfiles = allProfiles.filter(
+        p => (p.role === "ejecutivo_operaciones" || p.role === "ejecutivo_apoyo") && p.isActive
+      );
       const allExecs = await storage.getExecutivesList();
       const existingProfileIds = new Set(allExecs.map(e => e.userProfileId).filter(Boolean));
 
@@ -5558,7 +5560,7 @@ export async function registerRoutes(
             lastName: user.lastName || "",
             bumaEmail: user.email || null,
             phone: prof.phone || null,
-            position: "Ejecutivo de Operaciones",
+            position: prof.role === "ejecutivo_apoyo" ? "Ejecutivo de Apoyo" : "Ejecutivo de Operaciones",
             employmentStatus: "activo",
             createdBy: (req.user as any).id,
           });
