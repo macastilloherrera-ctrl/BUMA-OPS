@@ -1212,15 +1212,29 @@ export async function registerRoutes(
       const checklistItems = await storage.getVisitChecklistItems(visit.id);
       const criticalAssets = await storage.getCriticalAssets(visit.buildingId);
       
-      // Get executive name from DEV_USERS
+      // Resolve executive name: real user_profiles + users → DEV_USERS → ID
       const { DEV_USERS } = await import("./devAuth");
-      const getExecutiveName = (executiveId: string | null | undefined): string | null => {
+      const getExecutiveName = async (executiveId: string | null | undefined): Promise<string | null> => {
         if (!executiveId) return null;
+        // 1. Try real profile + user record
+        try {
+          const execProfile = await storage.getUserProfile(executiveId);
+          if (execProfile) {
+            const execUser = await storage.getUser(executiveId);
+            if (execUser) {
+              const displayName = `${execUser.firstName || ""} ${execUser.lastName || ""}`.trim() || execUser.email || "";
+              if (displayName) return displayName;
+            }
+          }
+        } catch (e) {
+          console.error("[visit-detail] error resolving executive from DB:", e);
+        }
+        // 2. Fallback: DEV_USERS
         const devUser = DEV_USERS.find((u) => u.id === executiveId);
         if (devUser) {
           return `${devUser.firstName} ${devUser.lastName}`.trim();
         }
-        // Fallback: try to extract a readable name from the ID
+        // 3. Last resort: the ID
         return executiveId.includes("-") ? executiveId.split("-").slice(-1)[0] : executiveId;
       };
       
@@ -1259,7 +1273,7 @@ export async function registerRoutes(
         checklistItems,
         criticalAssets,
         relatedTickets,
-        executiveName: getExecutiveName(visit.executiveId),
+        executiveName: await getExecutiveName(visit.executiveId),
       });
     } catch (error) {
       console.error("Error getting visit:", error);

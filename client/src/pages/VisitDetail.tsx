@@ -37,6 +37,7 @@ import {
   CheckCircle2,
   Pencil,
   History,
+  ClipboardList,
 } from "lucide-react";
 import type { Visit, Building, CriticalAsset, Ticket } from "@shared/schema";
 import { format } from "date-fns";
@@ -482,6 +483,22 @@ export default function VisitDetail() {
           >
             <Play className="h-5 w-5 mr-2" />
             {startVisitMutation.isPending ? "Iniciando..." : "Iniciar Visita"}
+          </Button>
+        </div>
+      )}
+
+      {visit.status === "en_curso" && (
+        <div className="fixed bottom-16 md:bottom-0 left-0 right-0 p-4 bg-background border-t border-border md:relative">
+          <Button
+            className="w-full"
+            size="lg"
+            asChild
+            data-testid="button-continue-visit"
+          >
+            <Link href={`/visitas/${id}/en-curso${fromDashboard ? '?from=dashboard' : ''}`}>
+              <ClipboardList className="h-5 w-5 mr-2" />
+              Continuar Visita
+            </Link>
           </Button>
         </div>
       )}

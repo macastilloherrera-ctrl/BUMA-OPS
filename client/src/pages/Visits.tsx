@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/StatusBadge";
 import { CancelVisitDialog } from "@/components/CancelVisitDialog";
-import { Plus, Calendar, MapPin, Clock, CheckCircle2, XCircle, AlertTriangle, MoreVertical, Trash2, User, FileText } from "lucide-react";
+import { Plus, Calendar, MapPin, Clock, CheckCircle2, XCircle, AlertTriangle, MoreVertical, Trash2, User, FileText, PlayCircle } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { Visit, Building } from "@shared/schema";
 import { format, isToday, isTomorrow, isBefore, startOfDay, parseISO, compareAsc } from "date-fns";
@@ -29,7 +29,7 @@ export default function Visits() {
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   
   useEffect(() => {
-    if (tabFromUrl && ["agendadas", "atrasadas", "no_efectuadas", "efectuadas"].includes(tabFromUrl)) {
+    if (tabFromUrl && ["agendadas", "atrasadas", "no_efectuadas", "efectuadas", "en_curso"].includes(tabFromUrl)) {
       setActiveTab(tabFromUrl);
     }
   }, [tabFromUrl]);
@@ -77,6 +77,27 @@ export default function Visits() {
     const visitDate = new Date(v.scheduledDate);
     return visitDate < todayStart;
   }).sort((a, b) => compareAsc(new Date(b.scheduledDate!), new Date(a.scheduledDate!))) || [];
+
+  // En Curso: Visitas iniciadas pero no completadas
+  const inProgressVisits = visits?.filter((v) => v.status === "en_curso")
+    .sort((a, b) => {
+      if (!a.startedAt || !b.startedAt) return 0;
+      return compareAsc(new Date(b.startedAt), new Date(a.startedAt));
+    }) || [];
+
+  // Auto-switch: si hay visitas en curso y el usuario abrió /visitas sin tab, posicionar en "en_curso".
+  // Solo dispara una vez por carga de página para no atrapar al usuario en la tab.
+  const autoSwitchedRef = useRef(false);
+  useEffect(() => {
+    if (autoSwitchedRef.current) return;
+    if (!tabFromUrl && inProgressVisits.length > 0) {
+      autoSwitchedRef.current = true;
+      setActiveTab("en_curso");
+    } else if (visits !== undefined) {
+      // Datos ya cargados y no había visitas en curso → no volver a auto-switchear
+      autoSwitchedRef.current = true;
+    }
+  }, [inProgressVisits.length, tabFromUrl, visits]);
 
   // Efectuadas: Visitas completadas
   const completedVisits = visits?.filter((v) => v.status === "realizada")
@@ -195,7 +216,15 @@ export default function Visits() {
       <div className="flex-1 overflow-auto pb-20 md:pb-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <div className="sticky top-0 bg-background px-4 pt-3 z-10">
-            <TabsList className="w-full grid grid-cols-4 h-10">
+            <TabsList className="w-full grid grid-cols-5 h-10">
+              <TabsTrigger value="en_curso" data-testid="tab-en-curso" className="text-xs sm:text-sm">
+                En Curso
+                {inProgressVisits.length > 0 && (
+                  <Badge className="ml-1 text-xs bg-blue-600">
+                    {inProgressVisits.length}
+                  </Badge>
+                )}
+              </TabsTrigger>
               <TabsTrigger value="agendadas" data-testid="tab-agendadas" className="text-xs sm:text-sm">
                 Agendadas
                 {scheduledVisits.length > 0 && (
@@ -230,6 +259,73 @@ export default function Visits() {
               </TabsTrigger>
             </TabsList>
           </div>
+
+          <TabsContent value="en_curso" className="px-4 mt-4">
+            {isLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <Skeleton key={i} className="h-32 w-full" />
+                ))}
+              </div>
+            ) : inProgressVisits.length === 0 ? (
+              <div className="text-center py-12">
+                <PlayCircle className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground">No hay visitas en curso</p>
+                <p className="text-sm text-muted-foreground mt-1">Las visitas que inicies aparecerán aquí</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {inProgressVisits.map((visit) => (
+                  <Link key={visit.id} href={`/visitas/${visit.id}/en-curso`}>
+                    <Card className="hover-elevate cursor-pointer border-blue-500/60" data-testid={`card-visit-in-progress-${visit.id}`}>
+                      <CardContent className="p-4">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <h3 className="font-medium truncate">
+                              {visit.building?.name || "Edificio"}
+                            </h3>
+                            <Badge className="text-xs bg-blue-600 animate-pulse">
+                              En Curso
+                            </Badge>
+                            {visit.type === "urgente" ? (
+                              <Badge variant="destructive" className="text-xs">Urgente</Badge>
+                            ) : visit.type === "revision_proyecto" ? (
+                              <Badge variant="outline" className="text-xs">Rev. Proyecto</Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs">Rutina</Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 text-sm text-muted-foreground mb-1">
+                            <MapPin className="h-3.5 w-3.5 shrink-0" />
+                            <span className="truncate">{visit.building?.address || "Direccion"}</span>
+                          </div>
+                          <div className="flex items-center gap-4 text-sm flex-wrap">
+                            {visit.startedAt && (
+                              <div className="flex items-center gap-1 text-blue-600">
+                                <Clock className="h-3.5 w-3.5 shrink-0" />
+                                <span>
+                                  Iniciada {format(new Date(visit.startedAt), "dd MMM, HH:mm", { locale: es })}
+                                </span>
+                              </div>
+                            )}
+                            {visit.executiveName && (
+                              <div className="flex items-center gap-1 text-muted-foreground">
+                                <User className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">{visit.executiveName}</span>
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-sm font-medium text-blue-600 mt-2">
+                            Toca para continuar →
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </TabsContent>
 
           <TabsContent value="agendadas" className="px-4 mt-4">
             {isLoading ? (
