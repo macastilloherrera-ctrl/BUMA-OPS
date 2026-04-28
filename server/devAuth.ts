@@ -59,15 +59,12 @@ export const DEV_USERS = [
   },
 ];
 
-// Module-level evaluation: runs once when this module is first imported,
-// so the debug log appears in Railway boot logs even before registerRoutes runs.
-const devAuthRaw = process.env.DEV_AUTH;
-console.log("[dev-auth-debug] raw value:", JSON.stringify(devAuthRaw));
-const _isDevMode =
-  devAuthRaw !== undefined &&
-  devAuthRaw !== "" &&
-  devAuthRaw !== "false" &&
-  devAuthRaw !== "0";
+// Gate de dev-auth: solo se registran las rutas /api/dev-auth/* fuera de
+// producción. Antes el gate dependía de DEV_AUTH=true, pero el server lo
+// requiere siempre por arquitectura del login → no servía como filtro real.
+const nodeEnv = process.env.NODE_ENV;
+console.log("[dev-auth-debug] NODE_ENV:", JSON.stringify(nodeEnv));
+const _isDevMode = nodeEnv !== "production";
 console.log("[dev-auth-debug] isDevMode:", _isDevMode);
 
 export function isDevMode(): boolean {

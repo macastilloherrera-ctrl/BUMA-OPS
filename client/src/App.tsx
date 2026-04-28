@@ -333,7 +333,9 @@ function AppRouter() {
     if (location === "/login") {
       return <Login />;
     }
-    if (location === "/dev-login") {
+    // /dev-login solo accesible en builds de desarrollo. En producción
+    // (vite build) no se renderiza aunque alguien navegue manualmente.
+    if (!import.meta.env.PROD && location === "/dev-login") {
       return <DevLogin />;
     }
     return <Landing />;
