@@ -162,6 +162,55 @@ const STEPS = [
       );
     `,
   },
+  // Columnas agregadas en el sweep de TypeScript (commit d8498f2).
+  {
+    label: "critical_assets.assigned_maintainer_id column",
+    sql: `ALTER TABLE critical_assets ADD COLUMN IF NOT EXISTS assigned_maintainer_id varchar;`,
+  },
+  {
+    label: "critical_assets.brand column",
+    sql: `ALTER TABLE critical_assets ADD COLUMN IF NOT EXISTS brand varchar(255);`,
+  },
+  {
+    label: "critical_assets.model column",
+    sql: `ALTER TABLE critical_assets ADD COLUMN IF NOT EXISTS model varchar(255);`,
+  },
+  {
+    label: "critical_assets.cost column",
+    sql: `ALTER TABLE critical_assets ADD COLUMN IF NOT EXISTS cost decimal(12,2);`,
+  },
+  {
+    label: "tickets.title column",
+    sql: `ALTER TABLE tickets ADD COLUMN IF NOT EXISTS title varchar(255);`,
+  },
+  {
+    label: "tickets.cost column",
+    sql: `ALTER TABLE tickets ADD COLUMN IF NOT EXISTS cost decimal(12,2);`,
+  },
+  {
+    label: "tickets.due_date column",
+    sql: `ALTER TABLE tickets ADD COLUMN IF NOT EXISTS due_date timestamp;`,
+  },
+  {
+    label: "tickets.resolved_at column",
+    sql: `ALTER TABLE tickets ADD COLUMN IF NOT EXISTS resolved_at timestamp;`,
+  },
+  {
+    label: "tickets.assignment_history column",
+    sql: `ALTER TABLE tickets ADD COLUMN IF NOT EXISTS assignment_history text;`,
+  },
+  {
+    label: "tickets.escalation_reason column",
+    sql: `ALTER TABLE tickets ADD COLUMN IF NOT EXISTS escalation_reason text;`,
+  },
+  {
+    label: "tickets.escalated_to column",
+    sql: `ALTER TABLE tickets ADD COLUMN IF NOT EXISTS escalated_to varchar;`,
+  },
+  {
+    label: "bank_transactions.updated_at column",
+    sql: `ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS updated_at timestamp;`,
+  },
 ];
 
 // Verificaciones a correr al final (read-only) para confirmar que el schema
@@ -193,6 +242,55 @@ const VERIFICATIONS = [
   {
     label: "closing_cycle_building_override",
     sql: `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='closing_cycle_building_override';`,
+  },
+  // Columnas del sweep de TypeScript (d8498f2)
+  {
+    label: "critical_assets.assigned_maintainer_id",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='critical_assets' AND column_name='assigned_maintainer_id';`,
+  },
+  {
+    label: "critical_assets.brand",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='critical_assets' AND column_name='brand';`,
+  },
+  {
+    label: "critical_assets.model",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='critical_assets' AND column_name='model';`,
+  },
+  {
+    label: "critical_assets.cost",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='critical_assets' AND column_name='cost';`,
+  },
+  {
+    label: "tickets.title",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='tickets' AND column_name='title';`,
+  },
+  {
+    label: "tickets.cost",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='tickets' AND column_name='cost';`,
+  },
+  {
+    label: "tickets.due_date",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='tickets' AND column_name='due_date';`,
+  },
+  {
+    label: "tickets.resolved_at",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='tickets' AND column_name='resolved_at';`,
+  },
+  {
+    label: "tickets.assignment_history",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='tickets' AND column_name='assignment_history';`,
+  },
+  {
+    label: "tickets.escalation_reason",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='tickets' AND column_name='escalation_reason';`,
+  },
+  {
+    label: "tickets.escalated_to",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='tickets' AND column_name='escalated_to';`,
+  },
+  {
+    label: "bank_transactions.updated_at",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='bank_transactions' AND column_name='updated_at';`,
   },
 ];
 
