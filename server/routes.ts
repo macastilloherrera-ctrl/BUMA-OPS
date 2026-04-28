@@ -9579,6 +9579,87 @@ export async function registerRoutes(
     }
   }
 
+  // ========== OVERDUE MAINTENANCE CHECK ==========
+  // Crea automáticamente un ticket de mantención por cada equipo crítico
+  // 'aprobado' con nextMaintenanceDate < hoy, evitando duplicados (no crea
+  // si ya existe un ticket abierto para el mismo asset en los últimos 7 días).
+  async function checkOverdueMaintenanceTickets(): Promise<{ created: number; skipped: number; errors: number }> {
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    let created = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    try {
+      const overdueAssets = await storage.getAssetsWithOverdueMaintenance();
+      const allTickets = await storage.getTickets();
+
+      for (const asset of overdueAssets) {
+        try {
+          const ticketTag = `[MANTENCIÓN VENCIDA] asset:${asset.id}`;
+          const hasRecentOpen = allTickets.some(t =>
+            t.buildingId === asset.buildingId &&
+            (t.description || "").includes(ticketTag) &&
+            t.createdAt && new Date(t.createdAt) >= sevenDaysAgo &&
+            !CLOSED_STATUSES.includes(t.status)
+          );
+          if (hasRecentOpen) {
+            skipped++;
+            continue;
+          }
+
+          const building = await storage.getBuilding(asset.buildingId);
+          if (!building) {
+            errors++;
+            continue;
+          }
+
+          const daysOverdue = asset.nextMaintenanceDate
+            ? Math.floor((now.getTime() - new Date(asset.nextMaintenanceDate).getTime()) / (1000 * 60 * 60 * 24))
+            : 0;
+
+          const priority: "rojo" | "amarillo" | "verde" =
+            daysOverdue > 30 ? "rojo" : daysOverdue > 14 ? "amarillo" : "verde";
+
+          let creatorId = building.assignedExecutiveId;
+          if (!creatorId) {
+            const profiles = await storage.getUserProfiles();
+            const adminProfile = profiles.find(p => p.role === "gerente_general" || p.role === "super_admin");
+            creatorId = adminProfile?.userId || "SYSTEM";
+          }
+
+          const description = `${ticketTag}\n\nEquipo: ${asset.name} (${asset.type})\nEdificio: ${building.name}\nVencido hace ${daysOverdue} día(s).\nFrecuencia requerida: ${asset.maintenanceFrequency || "No especificada"}\n\nGenerado automáticamente por el chequeo diario de mantenciones.`;
+
+          await storage.createTicket({
+            buildingId: building.id,
+            ticketType: "mantencion",
+            description,
+            priority,
+            status: "pendiente",
+            assignedExecutiveId: building.assignedExecutiveId || null,
+            requiresMaintainerVisit: true,
+            requiresExecutiveVisit: false,
+            requiresInvoice: true,
+            createdBy: creatorId,
+          });
+
+          created++;
+          console.log(`[Maintenance Check] Created ticket for asset ${asset.name} at ${building.name} - ${daysOverdue} days overdue`);
+        } catch (assetErr) {
+          console.error(`[Maintenance Check] Error processing asset ${asset.id}:`, assetErr);
+          errors++;
+        }
+      }
+    } catch (err) {
+      console.error("[Maintenance Check] Fatal error:", err);
+      errors++;
+    }
+
+    console.log(`[Maintenance Check] Complete: ${created} created, ${skipped} skipped, ${errors} errors`);
+    return { created, skipped, errors };
+  }
+
   // ─────────────────────────────────────────────
   // COMPLIANCE ITEMS
   // ─────────────────────────────────────────────
@@ -9729,13 +9810,15 @@ export async function registerRoutes(
   // Run insurance check on server startup and schedule daily (with guard for hot reloads)
   if (!INSURANCE_CHECK_INITIALIZED) {
     (global as any).__INSURANCE_CHECK_INITIALIZED__ = true;
-    
+
     // Initial check 10 seconds after startup
     setTimeout(async () => {
       console.log("[Insurance Check] Running initial insurance policy check...");
       await checkAndCreateInsuranceTickets();
       console.log("[Closing Cycle Alerts] Running initial closing cycle alert check...");
       await checkClosingCycleAlerts();
+      console.log("[Maintenance Check] Running initial overdue maintenance check...");
+      await checkOverdueMaintenanceTickets();
     }, 10000);
 
     // Schedule daily check at 8:00 AM
@@ -9746,7 +9829,7 @@ export async function registerRoutes(
         next8AM.setDate(next8AM.getDate() + 1);
       }
       const msUntilNext8AM = next8AM.getTime() - now.getTime();
-      
+
       setTimeout(async () => {
         console.log("[Insurance Check] Running scheduled daily insurance policy check...");
         await checkAndCreateInsuranceTickets();
@@ -9760,10 +9843,32 @@ export async function registerRoutes(
           await checkClosingCycleAlerts();
         }, 24 * 60 * 60 * 1000);
       }, msUntilNext8AM);
-      
+
       console.log(`[Insurance Check] Next scheduled check at ${next8AM.toLocaleString()}`);
     };
     scheduleDaily();
+
+    // Scheduler propio para Maintenance Check: 12:00 UTC = 8:00 AM hora Chile (UTC-4).
+    const scheduleMaintenanceDaily = () => {
+      const now = new Date();
+      const nextRun = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0, 0));
+      if (now.getTime() >= nextRun.getTime()) {
+        nextRun.setUTCDate(nextRun.getUTCDate() + 1);
+      }
+      const msUntilNext = nextRun.getTime() - now.getTime();
+
+      setTimeout(async () => {
+        console.log("[Maintenance Check] Running scheduled daily overdue maintenance check...");
+        await checkOverdueMaintenanceTickets();
+        setInterval(async () => {
+          console.log("[Maintenance Check] Running scheduled daily overdue maintenance check...");
+          await checkOverdueMaintenanceTickets();
+        }, 24 * 60 * 60 * 1000);
+      }, msUntilNext);
+
+      console.log(`[Maintenance Check] Next scheduled check at ${nextRun.toISOString()} UTC (08:00 hora Chile)`);
+    };
+    scheduleMaintenanceDaily();
   } else {
     console.log("[Insurance Check] Scheduler already initialized, skipping...");
   }
