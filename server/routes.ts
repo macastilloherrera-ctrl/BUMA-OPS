@@ -6,8 +6,8 @@ import * as crypto from "crypto";
 import * as bcrypt from "bcryptjs";
 import * as XLSX from "xlsx";
 import multer from "multer";
+import passport from "passport";
 import { storage } from "./storage";
-import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { registerDevAuthRoutes, isDevMode } from "./devAuth";
 import { parseBankFile } from "./bankParsers";
@@ -218,11 +218,50 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
-  // Setup Replit Auth (must be first!)
-  await setupAuth(app);
-  registerAuthRoutes(app);
-  
-  // Setup Dev Auth (only in development)
+  // Setup Auth (must be first!)
+  // Replit OIDC is opt-in via REPL_ID; otherwise we init session+passport
+  // ourselves so devAuth (req.login) keeps working in Railway/prod.
+  if (process.env.REPL_ID) {
+    const { setupAuth, registerAuthRoutes } = await import("./replit_integrations/auth");
+    await setupAuth(app);
+    registerAuthRoutes(app);
+  } else {
+    console.log("[auth] REPL_ID not set — Replit OIDC disabled, using devAuth");
+    const { getSession } = await import("./replit_integrations/auth/replitAuth");
+    const { authStorage } = await import("./replit_integrations/auth/storage");
+
+    app.set("trust proxy", 1);
+    app.use(getSession());
+    app.use(passport.initialize());
+    app.use(passport.session());
+    passport.serializeUser((user: Express.User, cb) => cb(null, user));
+    passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+
+    app.get("/api/auth/user", async (req: Request, res: Response) => {
+      if (!req.isAuthenticated() || !req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      try {
+        const u = req.user as any;
+        const userId = u.id || u.claims?.sub;
+        const user = userId ? await authStorage.getUser(userId) : null;
+        res.json(user || req.user);
+      } catch (error) {
+        console.error("[auth] Error fetching user:", error);
+        res.status(500).json({ message: "Failed to fetch user" });
+      }
+    });
+
+    app.get("/api/logout", (req: Request, res: Response) => {
+      req.logout(() => {
+        req.session?.destroy(() => {
+          res.redirect("/");
+        });
+      });
+    });
+  }
+
+  // Setup Dev Auth (active in development OR when DEV_AUTH=true)
   registerDevAuthRoutes(app);
   
   // Setup Object Storage routes
