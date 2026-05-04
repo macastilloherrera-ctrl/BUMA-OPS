@@ -54,7 +54,7 @@ export const MODULE_DEFINITIONS: Record<ModuleKey, ModuleDefinition> = {
   equipos_criticos: { label: "Equipos Críticos", group: "Consulta", routes: ["/equipos"] },
   proyectos: { label: "Proyectos", group: "Proyectos", routes: ["/proyectos", "/proyectos/semaforo", "/proyectos/calendario"] },
   conciliacion_bancaria: { label: "Conciliación Bancaria", group: "Finanzas", routes: ["/conciliacion-bancaria"] },
-  cierre_mensual: { label: "Cierre Mensual", group: "Finanzas", routes: ["/cierre-mensual"] },
+  cierre_mensual: { label: "Cierre Mensual", group: "Finanzas", routes: ["/cierre-mensual", "/configuracion-ciclo"] },
   ingresos: { label: "Ingresos", group: "Finanzas", routes: ["/ingresos"] },
   egresos: { label: "Egresos", group: "Finanzas", routes: ["/egresos"] },
   consumos_recurrentes: { label: "Consumos Recurrentes", group: "Finanzas", routes: ["/consumos-recurrentes"] },
