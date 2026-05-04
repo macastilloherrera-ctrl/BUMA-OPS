@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,19 +17,38 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Building, Ticket as TicketType, Visit } from "@shared/schema";
 
-export default function DashboardOverview() {
-  const overdueCheckDone = useRef(false);
+const OVERDUE_CHECK_STORAGE_KEY = "buma:overdue-visits-check:last-run";
+const OVERDUE_CHECK_THROTTLE_MS = 5 * 60 * 1000;
+let overdueCheckInFlight = false;
 
+export default function DashboardOverview() {
   useEffect(() => {
-    if (!overdueCheckDone.current) {
-      overdueCheckDone.current = true;
-      apiRequest("POST", "/api/notifications/check-overdue-visits")
-        .then(() => {
-          queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
-          queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
-        })
-        .catch(() => {});
-    }
+    if (overdueCheckInFlight) return;
+
+    let lastRun = 0;
+    try {
+      const raw = sessionStorage.getItem(OVERDUE_CHECK_STORAGE_KEY);
+      if (raw) lastRun = parseInt(raw, 10) || 0;
+    } catch {}
+
+    if (Date.now() - lastRun < OVERDUE_CHECK_THROTTLE_MS) return;
+
+    overdueCheckInFlight = true;
+    try {
+      sessionStorage.setItem(OVERDUE_CHECK_STORAGE_KEY, String(Date.now()));
+    } catch {}
+
+    apiRequest("POST", "/api/notifications/check-overdue-visits")
+      .then(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
+      })
+      .catch((err) => {
+        console.error("check-overdue-visits failed:", err);
+      })
+      .finally(() => {
+        overdueCheckInFlight = false;
+      });
   }, []);
 
   const { data: tickets, isLoading: ticketsLoading } = useQuery<TicketType[]>({
