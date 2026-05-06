@@ -259,8 +259,11 @@ export default function CriticalAssets() {
         cost: data.cost ? parseFloat(data.cost) : null,
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/critical-assets"] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["/api/critical-assets"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/critical-assets", selectedAssetForMaintenance?.id, "maintenance-records"] }),
+      ]);
       toast({
         title: "Mantención registrada",
         description: "La mantención ha sido registrada y la próxima fecha actualizada",
@@ -269,10 +272,10 @@ export default function CriticalAssets() {
       setSelectedAssetForMaintenance(null);
       maintenanceForm.reset();
     },
-    onError: () => {
+    onError: (err: any) => {
       toast({
         title: "Error",
-        description: "No se pudo registrar la mantención",
+        description: err?.message || "No se pudo registrar la mantención",
         variant: "destructive",
       });
     },

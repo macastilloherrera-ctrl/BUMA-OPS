@@ -1128,19 +1128,51 @@ export async function registerRoutes(
   });
 
   // Register a new maintenance record
+  // Authorized roles: super_admin, gerente_general, gerente_operaciones,
+  // gerente_comercial, gerente_finanzas, ejecutivo_operaciones (anyone with
+  // equipos_criticos module access). Conserjería is excluded.
   app.post("/api/critical-assets/:id/maintenance-records", isAuthenticated, async (req, res) => {
     try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      const allowedRoles = [
+        "super_admin",
+        "gerente_general",
+        "gerente_operaciones",
+        "gerente_comercial",
+        "gerente_finanzas",
+        "ejecutivo_operaciones",
+      ];
+      if (!profile || !allowedRoles.includes(profile.role)) {
+        return res.status(403).json({ error: "Tu rol no puede registrar mantenciones" });
+      }
+
       const asset = await storage.getCriticalAsset(req.params.id);
       if (!asset) {
         return res.status(404).json({ error: "Equipo no encontrado" });
       }
 
       const { performedAt, maintainerName, observations, cost } = req.body;
-      
+      if (!performedAt) {
+        return res.status(400).json({ error: "La fecha de mantención es requerida" });
+      }
+
+      // Parse YYYY-MM-DD as a calendar date in local time, not UTC midnight,
+      // so the saved value matches what the user picked even in tz < 0.
+      const parsePerformedAt = (val: string | Date): Date => {
+        if (val instanceof Date) return val;
+        const m = String(val).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+        return new Date(val);
+      };
+      const performedAtDate = parsePerformedAt(performedAt);
+      if (isNaN(performedAtDate.getTime())) {
+        return res.status(400).json({ error: "Fecha de mantención inválida" });
+      }
+
       // Create the maintenance record
       const record = await storage.createMaintenanceRecord({
         assetId: req.params.id,
-        performedAt: new Date(performedAt),
+        performedAt: performedAtDate,
         performedBy: req.user!.id,
         maintainerName,
         observations,
@@ -1150,7 +1182,6 @@ export async function registerRoutes(
       // Calculate next maintenance date based on frequency
       let nextDate: Date | null = null;
       if (asset.maintenanceFrequency) {
-        const baseDate = new Date(performedAt);
         const frequencyMonths: Record<string, number> = {
           mensual: 1,
           bimestral: 2,
@@ -1159,18 +1190,18 @@ export async function registerRoutes(
           anual: 12,
         };
         const months = frequencyMonths[asset.maintenanceFrequency] || 1;
-        nextDate = new Date(baseDate);
+        nextDate = new Date(performedAtDate);
         nextDate.setMonth(nextDate.getMonth() + months);
       }
 
       // Update asset with new maintenance dates
-      await storage.updateCriticalAsset(req.params.id, {
-        lastMaintenanceDate: new Date(performedAt),
+      const updatedAsset = await storage.updateCriticalAsset(req.params.id, {
+        lastMaintenanceDate: performedAtDate,
         nextMaintenanceDate: nextDate,
         maintainerName: maintainerName || asset.maintainerName,
       });
 
-      res.status(201).json(record);
+      res.status(201).json({ ...record, asset: updatedAsset });
     } catch (error) {
       console.error("Error creating maintenance record:", error);
       res.status(500).json({ error: "Error interno del servidor" });
@@ -1968,18 +1999,25 @@ export async function registerRoutes(
       
       // Get tickets delegated to current user
       const delegatedTicketIds = await storage.getTicketsDelegatedToUser(req.user!.id);
-      
-      // Get user names from DEV_USERS (includes executives AND managers)
+
+      // Build name map: real users from DB first, then DEV_USERS as fallback
+      // for legacy IDs that don't exist in users table.
       const { DEV_USERS } = await import("./devAuth");
-      
+      const allUsers = await storage.getUsers();
+      const userMap = new Map<string, string>(
+        allUsers.map((u) => {
+          const name = `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email || u.id;
+          return [u.id, name];
+        })
+      );
+
       const getUserDisplayName = (userId: string | null | undefined): string | null => {
         if (!userId) return null;
+        const fromDb = userMap.get(userId);
+        if (fromDb) return fromDb;
         const devUser = DEV_USERS.find((u) => u.id === userId);
-        if (devUser) {
-          return `${devUser.firstName} ${devUser.lastName}`.trim();
-        }
-        // Fallback: try to get from executives HR table
-        return userId.split("-")[0] || null;
+        if (devUser) return `${devUser.firstName} ${devUser.lastName}`.trim();
+        return null;
       };
       
       const ticketsWithBuilding = tickets.map((t) => ({
