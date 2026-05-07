@@ -177,8 +177,12 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 // Helper to check if user can access a building (based on buildingScope)
 async function canAccessBuilding(userId: string, buildingId: string, profile: UserProfile | null | undefined): Promise<boolean> {
   if (isManagerRole(profile)) return true;
+  // ejecutivo_apoyo es rol de soporte transversal: asiste a TODOS los
+  // ejecutivos, por lo que tiene acceso a cualquier edificio sin importar
+  // el buildingScope almacenado en su perfil.
+  if (profile?.role === "ejecutivo_apoyo") return true;
   if (profile?.buildingScope === "all") return true;
-  
+
   const building = await storage.getBuilding(buildingId);
   return building?.assignedExecutiveId === userId;
 }
@@ -187,27 +191,29 @@ async function canAccessBuilding(userId: string, buildingId: string, profile: Us
 async function canAccessEntity(
   userId: string,
   profile: UserProfile | null | undefined,
-  entity: { 
-    executiveId?: string; 
-    assignedExecutiveId?: string | null; 
+  entity: {
+    executiveId?: string;
+    assignedExecutiveId?: string | null;
     createdBy?: string;
     buildingId: string;
   }
 ): Promise<boolean> {
   if (isManagerRole(profile)) return true;
-  
+  // ejecutivo_apoyo: misma justificación que canAccessBuilding (soporte transversal).
+  if (profile?.role === "ejecutivo_apoyo") return true;
+
   // User with "all" scope can access any entity
   if (profile?.buildingScope === "all") return true;
-  
+
   // User is directly assigned to the entity
   if (entity.executiveId === userId) return true;
   if (entity.assignedExecutiveId === userId) return true;
   if (entity.createdBy === userId) return true;
-  
+
   // User is assigned to the building
   const building = await storage.getBuilding(entity.buildingId);
   if (building?.assignedExecutiveId === userId) return true;
-  
+
   return false;
 }
 
@@ -458,18 +464,25 @@ export async function registerRoutes(
   app.get("/api/users/assignable", isAuthenticated, async (req, res) => {
     try {
       const allProfiles = await db.select().from(userProfiles);
-      
+
       const { DEV_USERS } = await import("./devAuth");
+      const dbUsers = await storage.getUsers();
+      const userById = new Map(dbUsers.map((u) => [u.id, u]));
+
       const usersWithNames = allProfiles.map((profile) => {
-        const devUser = DEV_USERS.find((u) => u.id === profile.userId);
+        const dbU = userById.get(profile.userId);
+        const devU = DEV_USERS.find((u) => u.id === profile.userId);
+        const firstName = dbU?.firstName || devU?.firstName || "";
+        const lastName = dbU?.lastName || devU?.lastName || "";
+        const fallback = (dbU?.email || "").split("@")[0] || "Usuario";
         return {
           id: profile.userId,
-          firstName: devUser?.firstName || profile.userId.split("-")[0] || "Usuario",
-          lastName: devUser?.lastName || "",
+          firstName: firstName || fallback,
+          lastName,
           role: profile.role,
         };
       });
-      
+
       res.json(usersWithNames);
     } catch (error) {
       console.error("Error getting assignable users:", error);
@@ -486,21 +499,24 @@ export async function registerRoutes(
           eq(userProfiles.role, "gerente_operaciones"),
           eq(userProfiles.role, "gerente_comercial")
         ));
-      
+
       const { DEV_USERS } = await import("./devAuth");
+      const dbUsers = await storage.getUsers();
+      const userById = new Map(dbUsers.map((u) => [u.id, u]));
+
       const roleLabels: Record<string, string> = {
         gerente_general: "Gerente General",
         gerente_operaciones: "Gerente de Operaciones",
         gerente_comercial: "Gerente Comercial",
       };
       const managersWithNames = allProfiles.map((profile) => {
-        const devUser = DEV_USERS.find((u) => u.id === profile.userId);
+        const dbU = userById.get(profile.userId);
+        const devU = DEV_USERS.find((u) => u.id === profile.userId);
+        const fullName = `${dbU?.firstName || devU?.firstName || ""} ${dbU?.lastName || devU?.lastName || ""}`.trim();
         return {
           userId: profile.userId,
           role: profile.role,
-          displayName: devUser 
-            ? `${devUser.firstName} ${devUser.lastName}` 
-            : profile.userId.split("@")[0] || profile.userId,
+          displayName: fullName || (dbU?.email || "").split("@")[0] || profile.userId,
           roleName: roleLabels[profile.role] || profile.role,
         };
       });
@@ -2251,7 +2267,10 @@ export async function registerRoutes(
   app.patch("/api/tickets/:id", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      const isManagerUser = profile && ["gerente_general", "gerente_operaciones"].includes(profile.role);
+      // Tratar gerente_general/operaciones/comercial/finanzas como managers
+      // para edición de tickets (era bug: comercial/finanzas quedaban afuera).
+      const isManagerUser = !!profile && isManagerRole(profile);
+      const isApoyo = profile?.role === "ejecutivo_apoyo";
       
       // Check ownership for non-managers
       const existingTicket = await storage.getTicket(req.params.id);
@@ -2280,12 +2299,17 @@ export async function registerRoutes(
       if (req.body.status && req.body.status !== existingTicket.status) {
         const target = req.body.status;
         if (target === "en_curso") {
+          // Si el ticket tiene cotizaciones registradas, exigir al menos una
+          // aceptada. Si no tiene cotizaciones (no requiere cotizar), se
+          // permite pasar a en_curso directamente.
           const quotes = await storage.getTicketQuotes(req.params.id);
-          const hasApproved = quotes.some(q => q.status === "aceptada");
-          if (!hasApproved) {
-            return res.status(409).json({
-              error: "No se puede pasar a 'en_curso' sin al menos una cotización aceptada",
-            });
+          if (quotes.length > 0) {
+            const hasApproved = quotes.some(q => q.status === "aceptada");
+            if (!hasApproved) {
+              return res.status(409).json({
+                error: "El ticket tiene cotizaciones cargadas; debe aceptar al menos una antes de pasar a 'en_curso'",
+              });
+            }
           }
         } else if (target === "trabajo_completado") {
           if (existingTicket.status !== "en_curso") {
@@ -2302,7 +2326,7 @@ export async function registerRoutes(
         }
       }
 
-      if (!isManagerUser && !isConserjeriaRole(profile)) {
+      if (!isManagerUser && !isConserjeriaRole(profile) && !isApoyo) {
         if (existingTicket.createdBy !== req.user!.id && existingTicket.assignedExecutiveId !== req.user!.id) {
           return res.status(403).json({ error: "No tienes permiso para modificar este ticket" });
         }
@@ -5062,7 +5086,7 @@ export async function registerRoutes(
         mustChangePassword: !!passwordHash,
       });
       
-      const scope = buildingScope || (["ejecutivo_operaciones", "ejecutivo_apoyo", "conserjeria"].includes(role) ? "assigned" : "all");
+      const scope = buildingScope || (["ejecutivo_operaciones", "conserjeria"].includes(role) ? "assigned" : "all");
       const newProfile = await storage.createUserProfile({
         userId: newUser.id,
         role,
@@ -5559,7 +5583,7 @@ export async function registerRoutes(
       });
 
       const effectiveRole = role || "ejecutivo_operaciones";
-      const buildingScope = ["ejecutivo_operaciones", "ejecutivo_apoyo", "conserjeria"].includes(effectiveRole) ? "assigned" : "all";
+      const buildingScope = ["ejecutivo_operaciones", "conserjeria"].includes(effectiveRole) ? "assigned" : "all";
       const newProfile = await storage.createUserProfile({
         userId: newUser.id,
         role: effectiveRole,
@@ -5627,7 +5651,7 @@ export async function registerRoutes(
 
       const existingProfile = await storage.getUserProfile(id);
       if (existingProfile) {
-        const buildingScope = ["ejecutivo_operaciones", "ejecutivo_apoyo", "conserjeria"].includes(role) ? "assigned" : "all";
+        const buildingScope = ["ejecutivo_operaciones", "conserjeria"].includes(role) ? "assigned" : "all";
         await storage.updateUserProfile(id, {
           role,
           buildingScope,

@@ -353,7 +353,8 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissionsConfig> = {
   ejecutivo_apoyo: {
     role: "ejecutivo_apoyo",
     homeRoute: "/visitas?view=today",
-    buildingScope: "assigned",
+    // Soporte administrativo transversal a todos los ejecutivos → scope "all"
+    buildingScope: "all",
     modules: {
       panel_super_admin: false,
       dashboard_overview: true,

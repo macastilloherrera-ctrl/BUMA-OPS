@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, useLocation, useSearch } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -76,6 +76,8 @@ import {
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
+// Fallback estático para entornos dev. En producción los nombres se
+// resuelven contra la query /api/users/assignable (ver makeUserNameLookup).
 const DEV_USERS_MAP: Record<string, string> = {
   "dev-gerente-general": "Carlos Mendoza",
   "dev-gerente-operaciones": "Roberto Silva",
@@ -85,10 +87,24 @@ const DEV_USERS_MAP: Record<string, string> = {
   "dev-ejecutivo-3": "Pedro Rodríguez",
 };
 
-const getUserName = (userId: string | null | undefined): string => {
-  if (!userId) return "Desconocido";
-  return DEV_USERS_MAP[userId] || userId;
-};
+function makeUserNameLookup(
+  users: Array<{ userId: string; firstName?: string; lastName?: string; email?: string; displayName?: string }> | undefined,
+): (userId: string | null | undefined) => string {
+  const map = new Map<string, string>();
+  for (const u of users || []) {
+    const full = `${u.firstName || ""} ${u.lastName || ""}`.trim();
+    const name = u.displayName || full || u.email || u.userId;
+    if (u.userId && name) map.set(u.userId, name);
+  }
+  return (userId) => {
+    if (!userId) return "Desconocido";
+    const fromDb = map.get(userId);
+    if (fromDb) return fromDb;
+    if (DEV_USERS_MAP[userId]) return DEV_USERS_MAP[userId];
+    // Último recurso: ID corto, no UUID completo, para no exponer ruido.
+    return userId.length > 8 ? `${userId.substring(0, 8)}…` : userId;
+  };
+}
 
 interface TicketWithDetails {
   id: string;
@@ -300,6 +316,18 @@ export default function TicketDetail() {
   const { data: assignableUsers } = useQuery<AssignableUser[]>({
     queryKey: ["/api/users/assignable"],
   });
+
+  const getUserName = useMemo(
+    () =>
+      makeUserNameLookup(
+        assignableUsers?.map((u) => ({
+          userId: u.id,
+          firstName: u.firstName,
+          lastName: u.lastName,
+        })),
+      ),
+    [assignableUsers],
+  );
 
   const [avisoAudience, setAvisoAudience] = useState<"comunidad" | "conserjeria" | "comite">("comunidad");
   const [avisoSubject, setAvisoSubject] = useState("");
