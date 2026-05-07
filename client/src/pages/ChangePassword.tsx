@@ -19,13 +19,16 @@ function getRedirectByRole(role: string): string {
     case "super_admin":
       return "/super-admin";
     case "gerente_general":
+      return "/dashboard/overview";
     case "gerente_operaciones":
     case "gerente_comercial":
-      return "/dashboard/tickets";
     case "gerente_finanzas":
       return "/dashboard/tickets";
     case "ejecutivo_operaciones":
-      return "/visitas";
+    case "ejecutivo_apoyo":
+      return "/visitas?view=today";
+    case "conserjeria":
+      return "/tickets";
     default:
       return "/dashboard/tickets";
   }

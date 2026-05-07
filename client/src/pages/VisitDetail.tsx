@@ -81,7 +81,7 @@ export default function VisitDetail() {
     ? ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas", "super_admin"].includes(userProfile.role)
     : false;
 
-  const isExecutive = userProfile?.role === "ejecutivo_operaciones";
+  const isExecutive = userProfile?.role === "ejecutivo_operaciones" || userProfile?.role === "ejecutivo_apoyo";
 
   const { data: executives } = useQuery<Array<{ userId: string; displayName: string }>>({
     queryKey: ["/api/users/executives"],

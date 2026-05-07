@@ -714,7 +714,7 @@ function UserTable({
                     )}
                   </td>
                   <td className="p-4">
-                    {["ejecutivo_operaciones", "conserjeria"].includes(user.profile?.role || "") ? (
+                    {["ejecutivo_operaciones", "ejecutivo_apoyo", "conserjeria"].includes(user.profile?.role || "") ? (
                       <div className="flex items-center gap-2">
                         <span className="text-sm">{user.assignedBuildings.length} edificio(s)</span>
                         <Button 

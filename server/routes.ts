@@ -154,7 +154,14 @@ function isConserjeriaRole(profile: UserProfile | null | undefined): boolean {
 }
 
 function isOperationsRole(profile: UserProfile | null | undefined): boolean {
-  return !!profile && ["gerente_operaciones", "ejecutivo_operaciones"].includes(profile.role);
+  return !!profile && ["gerente_operaciones", "ejecutivo_operaciones", "ejecutivo_apoyo"].includes(profile.role);
+}
+
+// Roles que trabajan en terreno con scope "assigned" por defecto.
+// ejecutivo_apoyo se comporta igual que ejecutivo_operaciones salvo
+// decisiones explícitas (dashboards extra habilitados).
+function isFieldExecutiveRole(profile: UserProfile | null | undefined): boolean {
+  return !!profile && ["ejecutivo_operaciones", "ejecutivo_apoyo"].includes(profile.role);
 }
 
 function canAccessFinancial(profile: UserProfile | null | undefined): boolean {
@@ -1141,6 +1148,7 @@ export async function registerRoutes(
         "gerente_comercial",
         "gerente_finanzas",
         "ejecutivo_operaciones",
+        "ejecutivo_apoyo",
       ];
       if (!profile || !allowedRoles.includes(profile.role)) {
         return res.status(403).json({ error: "Tu rol no puede registrar mantenciones" });
@@ -1487,7 +1495,7 @@ export async function registerRoutes(
       if (!profile) return res.status(403).json({ error: "Acceso denegado" });
 
       const isManager = isManagerRole(profile);
-      const isExecutive = profile.role === "ejecutivo_operaciones";
+      const isExecutive = isFieldExecutiveRole(profile);
       const isOwnVisit = existingVisit.executiveId === userId;
 
       if (!isManager && !(isExecutive && isOwnVisit)) {
@@ -5054,7 +5062,7 @@ export async function registerRoutes(
         mustChangePassword: !!passwordHash,
       });
       
-      const scope = buildingScope || (["ejecutivo_operaciones", "conserjeria"].includes(role) ? "assigned" : "all");
+      const scope = buildingScope || (["ejecutivo_operaciones", "ejecutivo_apoyo", "conserjeria"].includes(role) ? "assigned" : "all");
       const newProfile = await storage.createUserProfile({
         userId: newUser.id,
         role,
@@ -5550,17 +5558,18 @@ export async function registerRoutes(
         mustChangePassword: true,
       });
 
-      const buildingScope = role === "ejecutivo_operaciones" ? "assigned" : "all";
+      const effectiveRole = role || "ejecutivo_operaciones";
+      const buildingScope = ["ejecutivo_operaciones", "ejecutivo_apoyo", "conserjeria"].includes(effectiveRole) ? "assigned" : "all";
       const newProfile = await storage.createUserProfile({
         userId: newUser.id,
-        role: role || "ejecutivo_operaciones",
+        role: effectiveRole,
         buildingScope,
         phone: phone || null,
         isActive: isActive ?? true,
       });
 
-      // Auto-create executives HR record for ejecutivo_operaciones users
-      if ((role || "ejecutivo_operaciones") === "ejecutivo_operaciones") {
+      // Auto-create executives HR record for ejecutivo_operaciones / ejecutivo_apoyo
+      if (effectiveRole === "ejecutivo_operaciones" || effectiveRole === "ejecutivo_apoyo") {
         try {
           await storage.createExecutive({
             userProfileId: newProfile.id,
@@ -5568,7 +5577,7 @@ export async function registerRoutes(
             lastName: lastName || "",
             bumaEmail: email || null,
             phone: phone || null,
-            position: "Ejecutivo de Operaciones",
+            position: effectiveRole === "ejecutivo_apoyo" ? "Ejecutivo de Apoyo" : "Ejecutivo de Operaciones",
             employmentStatus: "activo",
             createdBy: (req.user as any).id,
           });
@@ -5618,7 +5627,7 @@ export async function registerRoutes(
 
       const existingProfile = await storage.getUserProfile(id);
       if (existingProfile) {
-        const buildingScope = role === "ejecutivo_operaciones" ? "assigned" : "all";
+        const buildingScope = ["ejecutivo_operaciones", "ejecutivo_apoyo", "conserjeria"].includes(role) ? "assigned" : "all";
         await storage.updateUserProfile(id, {
           role,
           buildingScope,
@@ -5903,8 +5912,8 @@ export async function registerRoutes(
       if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
       if (req.query.status) filters.status = req.query.status as string;
       
-      // Ejecutivos solo ven proyectos de sus edificios asignados
-      if (profile.role === "ejecutivo_operaciones") {
+      // Ejecutivos (operaciones y apoyo) solo ven proyectos de sus edificios asignados
+      if (profile.role === "ejecutivo_operaciones" || profile.role === "ejecutivo_apoyo") {
         filters.executiveId = (req.user as any).id;
       }
       
@@ -6164,8 +6173,8 @@ export async function registerRoutes(
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
       const isManager = profile && canManageProjects(profile.role);
-      const isExecutive = profile?.role === "ejecutivo_operaciones";
-      
+      const isExecutive = profile?.role === "ejecutivo_operaciones" || profile?.role === "ejecutivo_apoyo";
+
       if (!isManager && !isExecutive) {
         return res.status(403).json({ error: "No tiene permisos" });
       }

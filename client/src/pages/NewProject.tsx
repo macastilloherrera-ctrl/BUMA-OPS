@@ -90,7 +90,7 @@ export default function NewProject() {
 
   const [showManualContractor, setShowManualContractor] = useState(false);
 
-  const assignableRoles = ["ejecutivo_operaciones", "gerente_operaciones", "gerente_general", "gerente_comercial", "gerente_finanzas"];
+  const assignableRoles = ["ejecutivo_operaciones", "ejecutivo_apoyo", "gerente_operaciones", "gerente_general", "gerente_comercial", "gerente_finanzas"];
   const executives = users?.filter(u => assignableRoles.includes(u.profile?.role) && u.profile?.isActive) || [];
 
   const form = useForm<ProjectFormData>({

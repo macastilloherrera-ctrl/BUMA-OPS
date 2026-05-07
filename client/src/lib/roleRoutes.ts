@@ -250,5 +250,5 @@ export function isFinanceRole(role: UserRole): boolean {
 }
 
 export function isExecutiveRole(role: UserRole): boolean {
-  return role === "ejecutivo_operaciones";
+  return role === "ejecutivo_operaciones" || role === "ejecutivo_apoyo";
 }
