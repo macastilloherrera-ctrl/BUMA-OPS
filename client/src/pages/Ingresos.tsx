@@ -48,6 +48,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DollarSign,
   Plus,
@@ -133,8 +134,24 @@ const incomeFormSchema = z.object({
     "RUT inválido. Formato: 12.345.678-9 o 12345678-9",
   ),
   payerName: z.string().optional(),
+  // Imputación a GGCC: solo se persisten si useCustomChargePeriod=true.
+  // Si false, la API recibe null y el sistema usa el mes/año de paymentDate.
+  useCustomChargePeriod: z.boolean().default(false),
+  chargeMonth: z.string().optional(),
+  chargeYear: z.string().optional(),
   status: z.enum(["pending", "identified", "rejected"]),
   notes: z.string().optional(),
+}).superRefine((v, ctx) => {
+  if (v.useCustomChargePeriod) {
+    const m = Number(v.chargeMonth);
+    const y = Number(v.chargeYear);
+    if (!v.chargeMonth || isNaN(m) || m < 1 || m > 12) {
+      ctx.addIssue({ code: "custom", path: ["chargeMonth"], message: "Seleccione mes" });
+    }
+    if (!v.chargeYear || isNaN(y) || y < 2000 || y > 2100) {
+      ctx.addIssue({ code: "custom", path: ["chargeYear"], message: "Año inválido" });
+    }
+  }
 });
 
 type IncomeFormValues = z.infer<typeof incomeFormSchema>;
@@ -196,6 +213,9 @@ export default function Ingresos() {
       bankOperationId: "",
       payerRut: "",
       payerName: "",
+      useCustomChargePeriod: false,
+      chargeMonth: "",
+      chargeYear: "",
       status: "pending",
       notes: "",
     },
@@ -203,6 +223,8 @@ export default function Ingresos() {
 
   const createMutation = useMutation({
     mutationFn: async (data: IncomeFormValues) => {
+      const chargeMonth = data.useCustomChargePeriod && data.chargeMonth ? Number(data.chargeMonth) : null;
+      const chargeYear = data.useCustomChargePeriod && data.chargeYear ? Number(data.chargeYear) : null;
       await apiRequest("POST", "/api/incomes", {
         ...data,
         amount: data.amount,
@@ -211,6 +233,8 @@ export default function Ingresos() {
         bankOperationId: data.bankOperationId || null,
         payerRut: data.payerRut?.trim() || null,
         payerName: data.payerName?.trim() || null,
+        chargeMonth,
+        chargeYear,
         notes: data.notes || null,
         createdBy: user?.id || "",
       });
@@ -227,6 +251,8 @@ export default function Ingresos() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: IncomeFormValues }) => {
+      const chargeMonth = data.useCustomChargePeriod && data.chargeMonth ? Number(data.chargeMonth) : null;
+      const chargeYear = data.useCustomChargePeriod && data.chargeYear ? Number(data.chargeYear) : null;
       await apiRequest("PATCH", `/api/incomes/${id}`, {
         ...data,
         amount: data.amount,
@@ -235,6 +261,8 @@ export default function Ingresos() {
         bankOperationId: data.bankOperationId || null,
         payerRut: data.payerRut?.trim() || null,
         payerName: data.payerName?.trim() || null,
+        chargeMonth,
+        chargeYear,
         notes: data.notes || null,
       });
     },
@@ -359,6 +387,9 @@ export default function Ingresos() {
       bankOperationId: "",
       payerRut: "",
       payerName: "",
+      useCustomChargePeriod: false,
+      chargeMonth: "",
+      chargeYear: "",
       status: "pending",
       notes: "",
     });
@@ -376,6 +407,9 @@ export default function Ingresos() {
       bankOperationId: "",
       payerRut: "",
       payerName: "",
+      useCustomChargePeriod: false,
+      chargeMonth: "",
+      chargeYear: "",
       status: "pending",
       notes: "",
     });
@@ -385,6 +419,7 @@ export default function Ingresos() {
   function openEdit(income: Income) {
     setEditingIncome(income);
     const paymentDate = income.paymentDate ? new Date(income.paymentDate).toISOString().split("T")[0] : "";
+    const hasCustomCharge = income.chargeMonth != null && income.chargeYear != null;
     form.reset({
       buildingId: income.buildingId,
       amount: String(income.amount),
@@ -395,6 +430,9 @@ export default function Ingresos() {
       bankOperationId: income.bankOperationId || "",
       payerRut: income.payerRut || "",
       payerName: income.payerName || "",
+      useCustomChargePeriod: hasCustomCharge,
+      chargeMonth: hasCustomCharge ? String(income.chargeMonth) : "",
+      chargeYear: hasCustomCharge ? String(income.chargeYear) : "",
       status: income.status as "pending" | "identified" | "rejected",
       notes: income.notes || "",
     });
@@ -837,6 +875,92 @@ export default function Ingresos() {
                   </FormItem>
                 )}
               />
+
+              <FormField
+                control={form.control}
+                name="useCustomChargePeriod"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-start gap-3 space-y-0 rounded-md border p-3">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={(checked) => {
+                          const isOn = checked === true;
+                          field.onChange(isOn);
+                          if (isOn) {
+                            // Al activar, auto-derivar del paymentDate como sugerencia
+                            const pd = form.getValues("paymentDate");
+                            if (pd) {
+                              const [yy, mm] = pd.split("-");
+                              if (!form.getValues("chargeMonth")) form.setValue("chargeMonth", String(Number(mm)));
+                              if (!form.getValues("chargeYear")) form.setValue("chargeYear", yy);
+                            }
+                          } else {
+                            form.setValue("chargeMonth", "");
+                            form.setValue("chargeYear", "");
+                          }
+                        }}
+                        data-testid="checkbox-custom-charge-period"
+                      />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel className="cursor-pointer">Imputar a un mes distinto al de pago</FormLabel>
+                      <p className="text-xs text-muted-foreground">
+                        Mes al que corresponde el gasto común. Por defecto usa el mes de la fecha de pago.
+                      </p>
+                    </div>
+                  </FormItem>
+                )}
+              />
+
+              {form.watch("useCustomChargePeriod") && (
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name="chargeMonth"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Mes GGCC</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                          <FormControl>
+                            <SelectTrigger data-testid="input-charge-month">
+                              <SelectValue placeholder="Seleccionar mes" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {months.map((m) => (
+                              <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="chargeYear"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Año GGCC</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                          <FormControl>
+                            <SelectTrigger data-testid="input-charge-year">
+                              <SelectValue placeholder="Año" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {years.map((y) => (
+                              <SelectItem key={y.value} value={y.value}>{y.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
 
               <FormField
                 control={form.control}

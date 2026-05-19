@@ -344,6 +344,21 @@ function consumeWebhookRateLimit(keyHash: string, now = Date.now()): { ok: boole
   return { ok: true, resetMs: 0 };
 }
 
+// Resuelve el periodo (mes, año) efectivo de un income: prioriza
+// charge_month/year cuando están seteados, sino cae al mes/año del
+// payment_date. Mantiene una sola fuente de verdad para los call sites.
+function resolveIncomePeriod(income: {
+  chargeMonth?: number | null;
+  chargeYear?: number | null;
+  paymentDate: Date | string;
+}): { month: number; year: number } {
+  if (income.chargeMonth != null && income.chargeYear != null) {
+    return { month: income.chargeMonth, year: income.chargeYear };
+  }
+  const d = income.paymentDate instanceof Date ? income.paymentDate : new Date(income.paymentDate);
+  return { month: d.getMonth() + 1, year: d.getFullYear() };
+}
+
 // Bloquea modificaciones a entidades cuyo periodo de cierre ya está
 // 'approved' o 'issued'. Devuelve { locked: true, reason } cuando hay que
 // rechazar la operación; locked: false en caso contrario (incluyendo cuando
@@ -6999,13 +7014,15 @@ export async function registerRoutes(
 
       // Bloquea creación en periodos cuyo cierre mensual ya está aprobado/emitido.
       // PATCH y DELETE ya validan esto; POST también debe hacerlo para evitar
-      // que se inyecten ingresos en periodos cerrados.
+      // que se inyecten ingresos en periodos cerrados. Usa chargeMonth/year
+      // si están seteados, sino el mes/año del paymentDate.
       if (incomeData.buildingId && incomeData.paymentDate instanceof Date && !isNaN(incomeData.paymentDate.getTime())) {
-        const lockCheck = await assertCycleNotLocked(
-          incomeData.buildingId,
-          incomeData.paymentDate.getMonth() + 1,
-          incomeData.paymentDate.getFullYear(),
-        );
+        const period = resolveIncomePeriod({
+          chargeMonth: incomeData.chargeMonth ?? null,
+          chargeYear: incomeData.chargeYear ?? null,
+          paymentDate: incomeData.paymentDate,
+        });
+        const lockCheck = await assertCycleNotLocked(incomeData.buildingId, period.month, period.year);
         if (lockCheck.locked) {
           return res.status(409).json({ error: lockCheck.reason });
         }
@@ -7051,8 +7068,12 @@ export async function registerRoutes(
       // Valida el periodo ANTERIOR (donde vive el income hoy): no se puede
       // tocar un ingreso que está en un ciclo cerrado.
       if (existingIncome.paymentDate) {
-        const d = new Date(existingIncome.paymentDate);
-        const lockCheck = await assertCycleNotLocked(existingIncome.buildingId, d.getMonth() + 1, d.getFullYear());
+        const oldPeriod = resolveIncomePeriod({
+          chargeMonth: existingIncome.chargeMonth,
+          chargeYear: existingIncome.chargeYear,
+          paymentDate: existingIncome.paymentDate,
+        });
+        const lockCheck = await assertCycleNotLocked(existingIncome.buildingId, oldPeriod.month, oldPeriod.year);
         if (lockCheck.locked) {
           return res.status(409).json({ error: lockCheck.reason });
         }
@@ -7063,27 +7084,34 @@ export async function registerRoutes(
         incomeUpdates.paymentDate = new Date(incomeUpdates.paymentDate);
       }
 
-      // Si se cambia paymentDate (o buildingId), valida el periodo NUEVO:
-      // no se puede mover un ingreso a un ciclo ya cerrado.
+      // Si se cambia paymentDate, chargeMonth/Year o buildingId, valida el
+      // periodo NUEVO: no se puede mover un ingreso a un ciclo ya cerrado.
       const newPaymentDate = incomeUpdates.paymentDate instanceof Date && !isNaN(incomeUpdates.paymentDate.getTime())
         ? incomeUpdates.paymentDate
-        : null;
+        : (existingIncome.paymentDate ? new Date(existingIncome.paymentDate) : null);
       const newBuildingId = typeof incomeUpdates.buildingId === "string" ? incomeUpdates.buildingId : existingIncome.buildingId;
-      const oldDate = existingIncome.paymentDate ? new Date(existingIncome.paymentDate) : null;
-      const periodChanged = newPaymentDate
-        && (
-          !oldDate
-          || newPaymentDate.getTime() !== oldDate.getTime()
-          || newBuildingId !== existingIncome.buildingId
-        );
-      if (periodChanged && newPaymentDate) {
-        const lockCheckNew = await assertCycleNotLocked(
-          newBuildingId,
-          newPaymentDate.getMonth() + 1,
-          newPaymentDate.getFullYear(),
-        );
-        if (lockCheckNew.locked) {
-          return res.status(409).json({ error: lockCheckNew.reason });
+      const newChargeMonth = incomeUpdates.chargeMonth !== undefined ? incomeUpdates.chargeMonth : existingIncome.chargeMonth;
+      const newChargeYear = incomeUpdates.chargeYear !== undefined ? incomeUpdates.chargeYear : existingIncome.chargeYear;
+      if (newPaymentDate) {
+        const oldPeriod = resolveIncomePeriod({
+          chargeMonth: existingIncome.chargeMonth,
+          chargeYear: existingIncome.chargeYear,
+          paymentDate: existingIncome.paymentDate,
+        });
+        const nextPeriod = resolveIncomePeriod({
+          chargeMonth: newChargeMonth ?? null,
+          chargeYear: newChargeYear ?? null,
+          paymentDate: newPaymentDate,
+        });
+        const periodChanged =
+          nextPeriod.month !== oldPeriod.month
+          || nextPeriod.year !== oldPeriod.year
+          || newBuildingId !== existingIncome.buildingId;
+        if (periodChanged) {
+          const lockCheckNew = await assertCycleNotLocked(newBuildingId, nextPeriod.month, nextPeriod.year);
+          if (lockCheckNew.locked) {
+            return res.status(409).json({ error: lockCheckNew.reason });
+          }
         }
       }
 
@@ -7124,8 +7152,12 @@ export async function registerRoutes(
       }
       const existing = await storage.getIncome(req.params.id);
       if (existing?.paymentDate) {
-        const d = new Date(existing.paymentDate);
-        const lockCheck = await assertCycleNotLocked(existing.buildingId, d.getMonth() + 1, d.getFullYear());
+        const period = resolveIncomePeriod({
+          chargeMonth: existing.chargeMonth,
+          chargeYear: existing.chargeYear,
+          paymentDate: existing.paymentDate,
+        });
+        const lockCheck = await assertCycleNotLocked(existing.buildingId, period.month, period.year);
         if (lockCheck.locked) {
           return res.status(409).json({ error: lockCheck.reason });
         }
@@ -7168,7 +7200,7 @@ export async function registerRoutes(
       if (!isManagerRole(profile)) {
         return res.status(403).json({ error: "Solo gerentes pueden dividir depósitos" });
       }
-      const { buildingId, totalAmount, paymentDate, bank, bankOperationId, status, category, notes, splits } = req.body;
+      const { buildingId, totalAmount, paymentDate, bank, bankOperationId, status, category, notes, splits, chargeMonth, chargeYear } = req.body;
       if (!buildingId || !totalAmount || !paymentDate || !splits || !Array.isArray(splits) || splits.length === 0) {
         return res.status(400).json({ error: "Se requiere buildingId, totalAmount, paymentDate y splits[]" });
       }
@@ -7179,6 +7211,13 @@ export async function registerRoutes(
           error: `La suma de las partes ($${splitsSum.toFixed(2)}) no coincide con el total ($${totalNum.toFixed(2)})`
         });
       }
+
+      // chargeMonth/Year son opcionales y compartidos por todos los splits.
+      // Si vienen parciales (uno sí y otro no) los descartamos.
+      const cm = (typeof chargeMonth === "number" && chargeMonth >= 1 && chargeMonth <= 12) ? chargeMonth : null;
+      const cy = (typeof chargeYear === "number" && chargeYear >= 2000 && chargeYear <= 2100) ? chargeYear : null;
+      const finalChargeMonth = cm != null && cy != null ? cm : null;
+      const finalChargeYear = cm != null && cy != null ? cy : null;
 
       // Validamos TODOS los splits con zod antes de abrir la transacción,
       // así fallamos rápido sin reservar un client del pool si los datos vienen mal.
@@ -7198,6 +7237,8 @@ export async function registerRoutes(
           description: split.description || "abono",
           category: category || "gasto_comun",
           paymentDate: parsedDate,
+          chargeMonth: finalChargeMonth,
+          chargeYear: finalChargeYear,
           bank: bank || null,
           bankOperationId: bankOperationId || null,
           status: status || "pending",
@@ -7216,8 +7257,9 @@ export async function registerRoutes(
           const result = await client.query(
             `INSERT INTO incomes
               (building_id, amount, department, description, category, payment_date,
+               charge_month, charge_year,
                bank, bank_operation_id, status, notes, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
              RETURNING *`,
             [
               row.buildingId,
@@ -7226,6 +7268,8 @@ export async function registerRoutes(
               row.description ?? "abono",
               row.category ?? "gasto_comun",
               row.paymentDate,
+              row.chargeMonth ?? null,
+              row.chargeYear ?? null,
               row.bank ?? null,
               row.bankOperationId ?? null,
               row.status ?? "pending",
@@ -7429,6 +7473,8 @@ export async function registerRoutes(
         bank: z.string().max(255).nullable().optional(),
         bankOperationId: z.string().max(255).nullable().optional(),
         notes: z.string().nullable().optional(),
+        chargeMonth: z.number().int().min(1).max(12).nullable().optional(),
+        chargeYear: z.number().int().min(2000).max(2100).nullable().optional(),
         source: z.literal("email_webhook").optional(),
       });
       const data = bodySchema.parse(req.body);
@@ -7453,8 +7499,20 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No se pudo determinar la unidad (department)" });
       }
 
-      // Bloqueo por cierre de periodo
-      const lockCheck = await assertCycleNotLocked(keyRow.buildingId, parsedDate.month, parsedDate.year);
+      // chargeMonth/Year son opcionales. Si vienen ambos, se usan; si vienen
+      // parciales (uno sí y otro no) los descartamos para no inyectar datos
+      // inconsistentes — el cliente debe mandar ambos o ninguno.
+      const chargeMonth = (data.chargeMonth != null && data.chargeYear != null) ? data.chargeMonth : null;
+      const chargeYear = (data.chargeMonth != null && data.chargeYear != null) ? data.chargeYear : null;
+
+      // Bloqueo por cierre de periodo: usa chargeMonth/Year si vinieron, sino
+      // mes/año de paymentDate.
+      const period = resolveIncomePeriod({
+        chargeMonth,
+        chargeYear,
+        paymentDate: parsedDate.date,
+      });
+      const lockCheck = await assertCycleNotLocked(keyRow.buildingId, period.month, period.year);
       if (lockCheck.locked) {
         return res.status(409).json({ error: lockCheck.reason });
       }
@@ -7467,6 +7525,8 @@ export async function registerRoutes(
         description: "abono",
         category: data.category ?? "gasto_comun",
         paymentDate: parsedDate.date,
+        chargeMonth,
+        chargeYear,
         bank: data.bank ?? null,
         bankOperationId: data.bankOperationId ?? null,
         payerRut: data.payerRut ?? null,

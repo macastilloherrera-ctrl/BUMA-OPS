@@ -1502,14 +1502,28 @@ export class DatabaseStorage implements IStorage {
 
   // Incomes
   async getIncomes(filters?: { buildingId?: string; status?: string; month?: number; year?: number }): Promise<Income[]> {
-    const conditions = [];
+    const conditions: any[] = [];
     if (filters?.buildingId) conditions.push(eq(incomes.buildingId, filters.buildingId));
     if (filters?.status) conditions.push(eq(incomes.status, filters.status as any));
     if (filters?.year && filters?.month) {
-      const startDate = new Date(filters.year, filters.month - 1, 1);
-      const endDate = new Date(filters.year, filters.month, 1);
-      conditions.push(gte(incomes.paymentDate, startDate));
-      conditions.push(lt(incomes.paymentDate, endDate));
+      // Si charge_month/year están seteados, el ingreso se imputa a ese
+      // periodo; si no, cae al mes/año de payment_date. Filtramos por la
+      // unión de ambas reglas para que el comportamiento sea transparente
+      // hacia ingresos antiguos sin charge_month/year.
+      conditions.push(
+        or(
+          and(
+            sql`${incomes.chargeMonth} IS NOT NULL`,
+            eq(incomes.chargeMonth, filters.month),
+            eq(incomes.chargeYear, filters.year),
+          ),
+          and(
+            sql`${incomes.chargeMonth} IS NULL`,
+            sql`EXTRACT(MONTH FROM ${incomes.paymentDate})::int = ${filters.month}`,
+            sql`EXTRACT(YEAR FROM ${incomes.paymentDate})::int = ${filters.year}`,
+          ),
+        ),
+      );
     }
     return db.select().from(incomes)
       .where(conditions.length > 0 ? and(...conditions) : undefined)

@@ -1215,6 +1215,12 @@ export const incomes = pgTable("incomes", {
   description: varchar("description", { length: 255 }).default("abono"),
   category: incomeCategoryEnum("category").notNull().default("gasto_comun"),
   paymentDate: timestamp("payment_date").notNull(),
+  // Mes/año de imputación al GGCC. Si quedan null, el sistema usa el
+  // mes/año de payment_date como fallback (filtros, ciclos, exports).
+  // Permiten registrar un pago recibido en mayo que corresponde a abril
+  // sin falsear la fecha real del depósito.
+  chargeMonth: integer("charge_month"),
+  chargeYear: integer("charge_year"),
   bank: varchar("bank", { length: 255 }),
   bankOperationId: varchar("bank_operation_id", { length: 255 }),
   payerRut: varchar("payer_rut", { length: 20 }),

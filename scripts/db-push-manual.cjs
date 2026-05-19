@@ -212,6 +212,15 @@ const STEPS = [
     sql: `ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS updated_at timestamp;`,
   },
   {
+    // Mes/año de imputación a GGCC en incomes. Nullable: si NULL, el sistema
+    // usa el mes/año de payment_date (back-compat con registros antiguos).
+    label: "incomes.charge_month / charge_year",
+    sql: `
+      ALTER TABLE incomes ADD COLUMN IF NOT EXISTS charge_month integer;
+      ALTER TABLE incomes ADD COLUMN IF NOT EXISTS charge_year integer;
+    `,
+  },
+  {
     // Webhook API keys por edificio. api_key guarda SHA-256 hex (64 chars),
     // nunca el valor plano. UNIQUE para que el lookup por hash sea único.
     label: "building_webhook_keys table",
@@ -310,6 +319,14 @@ const VERIFICATIONS = [
   {
     label: "bank_transactions.updated_at",
     sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='bank_transactions' AND column_name='updated_at';`,
+  },
+  {
+    label: "incomes.charge_month",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='incomes' AND column_name='charge_month';`,
+  },
+  {
+    label: "incomes.charge_year",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='incomes' AND column_name='charge_year';`,
   },
   {
     label: "building_webhook_keys table exists",
