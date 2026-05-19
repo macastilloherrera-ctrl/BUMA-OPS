@@ -33,7 +33,7 @@ function generateConserjeriaUsername(buildingName: string): string {
   const slug = name.trim().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
   return `conserjeria_${slug}`;
 }
-import { db } from "./db";
+import { db, pool } from "./db";
 import { eq, or, sql } from "drizzle-orm";
 import { users as usersTable, buildings as buildingsTable } from "@shared/schema";
 import {
@@ -229,15 +229,20 @@ function sanitizeCostFields(body: any, isManager: boolean): any {
 // Vincula automáticamente una transacción bancaria identificada con su
 // income correspondiente cuando hay un único match (mismo edificio, mismo
 // monto, mismo periodo y sin bankOperationId previo). Para splits y casos
-// ambiguos se hace manualmente.
-async function tryLinkBankTxnToIncome(txn: {
-  id: string;
-  buildingId: string;
-  amount: string;
-  periodMonth: number;
-  periodYear: number;
-  assignedUnitsSplit?: string | null;
-}): Promise<void> {
+// ambiguos se hace manualmente. Al enlazar también promueve el income a
+// status "identified" para que entre en los exports y registra un audit_log
+// income_auto_identified.
+async function tryLinkBankTxnToIncome(
+  txn: {
+    id: string;
+    buildingId: string;
+    amount: string;
+    periodMonth: number;
+    periodYear: number;
+    assignedUnitsSplit?: string | null;
+  },
+  actorUserId?: string,
+): Promise<void> {
   if (txn.assignedUnitsSplit) return;
   try {
     const candidates = await storage.getIncomes({
@@ -250,7 +255,35 @@ async function tryLinkBankTxnToIncome(txn: {
       (i) => Math.abs(parseFloat(i.amount) - txnAmount) < 0.01 && !i.bankOperationId,
     );
     if (matches.length === 1) {
-      await storage.updateIncome(matches[0].id, { bankOperationId: txn.id });
+      const matched = matches[0];
+      const updated = await storage.updateIncome(matched.id, {
+        bankOperationId: txn.id,
+        status: "identified",
+      });
+      try {
+        const actor = actorUserId
+          ? await storage.getUser(actorUserId)
+          : undefined;
+        const actorName = actor
+          ? `${actor.firstName || ""} ${actor.lastName || ""}`.trim()
+          : "sistema";
+        await storage.createAuditLog({
+          userId: actorUserId || "system",
+          userName: actorName || "sistema",
+          action: "income_auto_identified",
+          entityType: "income",
+          entityId: matched.id,
+          buildingId: matched.buildingId,
+          metadata: JSON.stringify({
+            bankTransactionId: txn.id,
+            amount: updated?.amount ?? matched.amount,
+            previousStatus: matched.status,
+            newStatus: "identified",
+          }),
+        });
+      } catch (auditErr) {
+        console.error("[bank-link] audit log error:", auditErr);
+      }
     }
   } catch (e) {
     console.error("[bank-link] error linking bank txn to income:", e);
@@ -2437,6 +2470,106 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Datos invalidos", details: error.errors });
       }
       console.error("Error updating ticket:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Elimina un ticket COMPLETO. Solo permitido para super_admin o gerentes
+  // y SOLO cuando el ticket está en estado "pendiente" (sin trabajo en curso,
+  // sin resolver, sin reprogramar, sin vencer). Las eliminaciones se hacen
+  // dentro de una transacción borrando primero las filas dependientes
+  // (quotes, photos, work_cycles, assignment_history, communications,
+  // notifications) para no dejar registros huérfanos. Si el ticket tiene
+  // egresos asociados (expenses.source_ticket_id) o registros de mantención
+  // (maintenance_records.ticket_id) se rechaza para no perder trazabilidad
+  // financiera/operativa.
+  app.delete("/api/tickets/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      const canDelete = !!profile && (profile.role === "super_admin" || isManagerRole(profile));
+      if (!canDelete) {
+        return res.status(403).json({ error: "Solo super_admin o gerentes pueden eliminar tickets" });
+      }
+
+      const ticket = await storage.getTicket(req.params.id);
+      if (!ticket) {
+        return res.status(404).json({ error: "Ticket no encontrado" });
+      }
+      if (ticket.status !== "pendiente") {
+        return res.status(409).json({
+          error: "Solo se pueden eliminar tickets en estado pendiente",
+          currentStatus: ticket.status,
+        });
+      }
+
+      const client = await pool.connect();
+      try {
+        // Bloqueos previos: si el ticket dejó huella en otros módulos,
+        // rechazamos el delete para no romper trazabilidad.
+        const expensesLinked = await client.query(
+          `SELECT 1 FROM expenses WHERE source_ticket_id = $1 LIMIT 1`,
+          [ticket.id],
+        );
+        if (expensesLinked.rowCount && expensesLinked.rowCount > 0) {
+          return res.status(409).json({
+            error: "El ticket tiene egresos asociados y no puede eliminarse",
+          });
+        }
+        const maintenanceLinked = await client.query(
+          `SELECT 1 FROM maintenance_records WHERE ticket_id = $1 LIMIT 1`,
+          [ticket.id],
+        );
+        if (maintenanceLinked.rowCount && maintenanceLinked.rowCount > 0) {
+          return res.status(409).json({
+            error: "El ticket tiene registros de mantención asociados y no puede eliminarse",
+          });
+        }
+
+        await client.query("BEGIN");
+        await client.query(`DELETE FROM ticket_communications WHERE ticket_id = $1`, [ticket.id]);
+        await client.query(`DELETE FROM ticket_assignment_history WHERE ticket_id = $1`, [ticket.id]);
+        await client.query(`DELETE FROM ticket_work_cycles WHERE ticket_id = $1`, [ticket.id]);
+        await client.query(`DELETE FROM ticket_quotes WHERE ticket_id = $1`, [ticket.id]);
+        await client.query(`DELETE FROM ticket_photos WHERE ticket_id = $1`, [ticket.id]);
+        await client.query(`DELETE FROM notifications WHERE ticket_id = $1`, [ticket.id]);
+        const del = await client.query(`DELETE FROM tickets WHERE id = $1`, [ticket.id]);
+        if (del.rowCount === 0) {
+          await client.query("ROLLBACK");
+          return res.status(404).json({ error: "Ticket no encontrado al eliminar" });
+        }
+        await client.query("COMMIT");
+      } catch (txErr) {
+        try { await client.query("ROLLBACK"); } catch (rbErr) {
+          console.error("[delete-ticket] ROLLBACK failed:", rbErr);
+        }
+        throw txErr;
+      } finally {
+        client.release();
+      }
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "delete_ticket",
+          entityType: "ticket",
+          entityId: ticket.id,
+          buildingId: ticket.buildingId,
+          metadata: JSON.stringify({
+            title: ticket.title,
+            status: ticket.status,
+            assignedExecutiveId: ticket.assignedExecutiveId,
+            buildingId: ticket.buildingId,
+          }),
+        });
+      } catch (e) {
+        console.error("[delete-ticket] audit error:", e);
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error eliminando ticket:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
@@ -6820,6 +6953,21 @@ export async function registerRoutes(
       if (incomeData.paymentDate && typeof incomeData.paymentDate === "string") {
         incomeData.paymentDate = new Date(incomeData.paymentDate);
       }
+
+      // Bloquea creación en periodos cuyo cierre mensual ya está aprobado/emitido.
+      // PATCH y DELETE ya validan esto; POST también debe hacerlo para evitar
+      // que se inyecten ingresos en periodos cerrados.
+      if (incomeData.buildingId && incomeData.paymentDate instanceof Date && !isNaN(incomeData.paymentDate.getTime())) {
+        const lockCheck = await assertCycleNotLocked(
+          incomeData.buildingId,
+          incomeData.paymentDate.getMonth() + 1,
+          incomeData.paymentDate.getFullYear(),
+        );
+        if (lockCheck.locked) {
+          return res.status(409).json({ error: lockCheck.reason });
+        }
+      }
+
       const data = insertIncomeSchema.parse(incomeData);
       const income = await storage.createIncome(data);
 
@@ -6856,6 +7004,9 @@ export async function registerRoutes(
       if (!existingIncome) {
         return res.status(404).json({ error: "Ingreso no encontrado" });
       }
+
+      // Valida el periodo ANTERIOR (donde vive el income hoy): no se puede
+      // tocar un ingreso que está en un ciclo cerrado.
       if (existingIncome.paymentDate) {
         const d = new Date(existingIncome.paymentDate);
         const lockCheck = await assertCycleNotLocked(existingIncome.buildingId, d.getMonth() + 1, d.getFullYear());
@@ -6863,10 +7014,36 @@ export async function registerRoutes(
           return res.status(409).json({ error: lockCheck.reason });
         }
       }
+
       const incomeUpdates: any = { ...req.body };
       if (incomeUpdates.paymentDate && typeof incomeUpdates.paymentDate === "string") {
         incomeUpdates.paymentDate = new Date(incomeUpdates.paymentDate);
       }
+
+      // Si se cambia paymentDate (o buildingId), valida el periodo NUEVO:
+      // no se puede mover un ingreso a un ciclo ya cerrado.
+      const newPaymentDate = incomeUpdates.paymentDate instanceof Date && !isNaN(incomeUpdates.paymentDate.getTime())
+        ? incomeUpdates.paymentDate
+        : null;
+      const newBuildingId = typeof incomeUpdates.buildingId === "string" ? incomeUpdates.buildingId : existingIncome.buildingId;
+      const oldDate = existingIncome.paymentDate ? new Date(existingIncome.paymentDate) : null;
+      const periodChanged = newPaymentDate
+        && (
+          !oldDate
+          || newPaymentDate.getTime() !== oldDate.getTime()
+          || newBuildingId !== existingIncome.buildingId
+        );
+      if (periodChanged && newPaymentDate) {
+        const lockCheckNew = await assertCycleNotLocked(
+          newBuildingId,
+          newPaymentDate.getMonth() + 1,
+          newPaymentDate.getFullYear(),
+        );
+        if (lockCheckNew.locked) {
+          return res.status(409).json({ error: lockCheckNew.reason });
+        }
+      }
+
       const data = insertIncomeSchema.partial().parse(incomeUpdates);
       const income = await storage.updateIncome(req.params.id, data);
       if (!income) {
@@ -6939,7 +7116,9 @@ export async function registerRoutes(
     }
   });
 
-  // Split a deposit into multiple department incomes
+  // Split a deposit into multiple department incomes.
+  // Los inserts se ejecutan dentro de una transacción explícita: si falla
+  // cualquiera, se hace ROLLBACK y no queda ningún ingreso parcial creado.
   app.post("/api/incomes/split", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
@@ -6953,36 +7132,81 @@ export async function registerRoutes(
       const splitsSum = splits.reduce((sum: number, s: any) => sum + (parseFloat(s.amount) || 0), 0);
       const totalNum = parseFloat(totalAmount);
       if (Math.abs(splitsSum - totalNum) > 0.01) {
-        return res.status(400).json({ 
-          error: `La suma de las partes ($${splitsSum.toFixed(2)}) no coincide con el total ($${totalNum.toFixed(2)})` 
+        return res.status(400).json({
+          error: `La suma de las partes ($${splitsSum.toFixed(2)}) no coincide con el total ($${totalNum.toFixed(2)})`
         });
       }
-      const createdIncomes = [];
-      for (const split of splits) {
+
+      // Validamos TODOS los splits con zod antes de abrir la transacción,
+      // así fallamos rápido sin reservar un client del pool si los datos vienen mal.
+      const parsedDate = new Date(paymentDate);
+      const rowsToInsert = splits.map((split: any) => {
         if (!split.department || !split.amount) {
-          return res.status(400).json({ error: "Cada split requiere department y amount" });
+          throw new z.ZodError([{
+            code: "custom",
+            path: ["splits"],
+            message: "Cada split requiere department y amount",
+          }]);
         }
-        const data = insertIncomeSchema.parse({
+        return insertIncomeSchema.parse({
           buildingId,
           amount: split.amount.toString(),
           department: split.department,
           description: split.description || "abono",
           category: category || "gasto_comun",
-          paymentDate: new Date(paymentDate),
+          paymentDate: parsedDate,
           bank: bank || null,
           bankOperationId: bankOperationId || null,
           status: status || "pending",
           notes: notes || null,
           createdBy: req.user!.id,
         });
-        const income = await storage.createIncome(data);
-        createdIncomes.push(income);
+      });
+
+      // Reservar un cliente del pool para que BEGIN/COMMIT/ROLLBACK actúen
+      // sobre la misma conexión (pool.query() podría tomar conexiones distintas).
+      const client = await pool.connect();
+      const createdIncomes: any[] = [];
+      try {
+        await client.query("BEGIN");
+        for (const row of rowsToInsert) {
+          const result = await client.query(
+            `INSERT INTO incomes
+              (building_id, amount, department, description, category, payment_date,
+               bank, bank_operation_id, status, notes, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+             RETURNING *`,
+            [
+              row.buildingId,
+              row.amount,
+              row.department,
+              row.description ?? "abono",
+              row.category ?? "gasto_comun",
+              row.paymentDate,
+              row.bank ?? null,
+              row.bankOperationId ?? null,
+              row.status ?? "pending",
+              row.notes ?? null,
+              row.createdBy,
+            ],
+          );
+          createdIncomes.push(result.rows[0]);
+        }
+        await client.query("COMMIT");
+      } catch (txErr) {
+        try { await client.query("ROLLBACK"); } catch (rbErr) {
+          console.error("[split] ROLLBACK failed:", rbErr);
+        }
+        throw txErr;
+      } finally {
+        client.release();
       }
-      res.status(201).json({ 
-        success: true, 
+
+      res.status(201).json({
+        success: true,
         totalAmount: totalNum,
         splitsCreated: createdIncomes.length,
-        incomes: createdIncomes 
+        incomes: createdIncomes,
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -7663,11 +7887,21 @@ export async function registerRoutes(
       const buildingName = building.name.replace(/[^a-zA-Z0-9áéíóúñÁÉÍÓÚÑ ]/g, "").replace(/\s+/g, "_");
       const suffix = onlyNew ? "_nuevos" : "";
       const filename = `ingresos_${format}_${buildingName}_${monthName}_${year}${suffix}.xlsx`;
+
+      // Marcamos los ingresos como exportados ANTES de enviar el archivo.
+      // Si falla la marca, devolvemos 500 y el usuario no recibe el XLSX —
+      // así evitamos un estado donde se generan exportaciones "fantasma"
+      // que el sistema cree que no han sido descargadas.
+      try {
+        await storage.markIncomesExported(incomeIds);
+      } catch (markErr) {
+        console.error("Error marcando ingresos como exportados:", markErr);
+        return res.status(500).json({ error: "No se pudo marcar los ingresos como exportados" });
+      }
+
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.send(buf);
-
-      await storage.markIncomesExported(incomeIds);
     } catch (error) {
       console.error("Error exportando ingresos:", error);
       res.status(500).json({ error: "Error interno del servidor" });
@@ -7796,7 +8030,21 @@ export async function registerRoutes(
       const month = req.query.month ? parseInt(req.query.month as string) : undefined;
       const year = req.query.year ? parseInt(req.query.year as string) : undefined;
       const transactions = await storage.getBankTransactions({ buildingId, status, month, year });
-      res.json(transactions);
+
+      // Enriquecemos cada txn con linkedIncomeId: null para que el front
+      // pueda saber si ya hay un income enlazado (sin un round trip extra).
+      let incomesByBankOpId = new Map<string, string>();
+      if (buildingId && month && year) {
+        const periodIncomes = await storage.getIncomes({ buildingId, month, year });
+        for (const inc of periodIncomes) {
+          if (inc.bankOperationId) incomesByBankOpId.set(inc.bankOperationId, inc.id);
+        }
+      }
+      const enriched = transactions.map((t) => ({
+        ...t,
+        linkedIncomeId: incomesByBankOpId.get(t.id) ?? null,
+      }));
+      res.json(enriched);
     } catch (error) {
       console.error("Error getting bank transactions:", error);
       res.status(500).json({ error: "Error interno del servidor" });
@@ -8137,7 +8385,7 @@ export async function registerRoutes(
           identifiedBy: req.user!.id,
           identifiedAt: new Date(),
         });
-        await tryLinkBankTxnToIncome(txn);
+        await tryLinkBankTxnToIncome(txn, req.user!.id);
         confirmed++;
       }
 
@@ -8245,7 +8493,7 @@ export async function registerRoutes(
         identifiedAt: new Date(),
       });
 
-      await tryLinkBankTxnToIncome(txn);
+      await tryLinkBankTxnToIncome(txn, req.user!.id);
 
       try {
         const user = req.user as any;
@@ -8364,6 +8612,104 @@ export async function registerRoutes(
       res.json(updated);
     } catch (error) {
       console.error("Error reactivating bank transaction:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Crea un income a partir de una bank transaction identificada que aún no
+  // está enlazada a ningún income. Útil cuando el match automático no encontró
+  // un income preexistente. El income queda en status="identified" y enlazado
+  // a la txn vía bankOperationId.
+  app.post("/api/bank-transactions/:id/create-income", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
+        return res.status(403).json({ error: "No tiene permisos para crear ingresos" });
+      }
+      const { id } = req.params;
+      const txn = await storage.getBankTransaction(id);
+      if (!txn) {
+        return res.status(404).json({ error: "Transacción no encontrada" });
+      }
+      if (txn.status !== "identified") {
+        return res.status(400).json({
+          error: "Solo se pueden registrar ingresos desde transacciones identificadas",
+        });
+      }
+      if (txn.assignedUnitsSplit) {
+        return res.status(400).json({
+          error: "Las transacciones divididas en varias unidades no soportan creación directa de ingreso",
+        });
+      }
+      if (!txn.assignedUnit) {
+        return res.status(400).json({
+          error: "La transacción no tiene unidad asignada",
+        });
+      }
+      const existing = await storage.getIncomeByBankOperationId(txn.id);
+      if (existing) {
+        return res.status(409).json({
+          error: "Ya existe un ingreso vinculado a esta transacción",
+          incomeId: existing.id,
+        });
+      }
+
+      const paymentDate = txn.txnDate ? new Date(txn.txnDate) : new Date();
+      const lockCheck = await assertCycleNotLocked(
+        txn.buildingId,
+        paymentDate.getMonth() + 1,
+        paymentDate.getFullYear(),
+      );
+      if (lockCheck.locked) {
+        return res.status(409).json({ error: lockCheck.reason });
+      }
+
+      const { category, description, notes } = req.body || {};
+      const validCategories = ["gasto_comun", "multa", "arriendo", "interes_mora", "fondo_reserva", "otro"];
+      const incomeCategory = validCategories.includes(category) ? category : "gasto_comun";
+
+      const data = insertIncomeSchema.parse({
+        buildingId: txn.buildingId,
+        amount: txn.amount,
+        department: txn.assignedUnit,
+        description: description || "abono",
+        category: incomeCategory,
+        paymentDate,
+        bank: txn.bankName || txn.sourceBank || null,
+        bankOperationId: txn.id,
+        payerRut: txn.payerRut || null,
+        payerName: txn.payerName || null,
+        status: "identified",
+        notes: notes || null,
+        createdBy: req.user!.id,
+      });
+      const income = await storage.createIncome(data);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "create_income_from_bank_txn",
+          entityType: "income",
+          entityId: income.id,
+          buildingId: income.buildingId,
+          metadata: JSON.stringify({
+            bankTransactionId: txn.id,
+            amount: income.amount,
+            department: income.department,
+          }),
+        });
+      } catch (e) {
+        console.error("[create-income-from-txn] audit error:", e);
+      }
+
+      res.status(201).json(income);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
+      console.error("Error creando ingreso desde transacción bancaria:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });

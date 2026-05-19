@@ -59,6 +59,10 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import type { Building, BankTransaction, PayerDirectoryEntry } from "@shared/schema";
 
+// El GET /api/bank-transactions enriquece la respuesta con linkedIncomeId
+// (id del income enlazado vía bankOperationId, o null si no hay).
+type BankTransactionWithLink = BankTransaction & { linkedIncomeId?: string | null };
+
 const months = [
   { value: "1", label: "Enero" },
   { value: "2", label: "Febrero" },
@@ -168,7 +172,7 @@ export default function ConciliacionBancaria() {
     queryKey: ["/api/buildings"],
   });
 
-  const { data: transactions, isLoading: txnLoading } = useQuery<BankTransaction[]>({
+  const { data: transactions, isLoading: txnLoading } = useQuery<BankTransactionWithLink[]>({
     queryKey: ["/api/bank-transactions", buildingId, month, year],
     queryFn: async () => {
       if (!buildingId) return [];
@@ -312,6 +316,21 @@ export default function ConciliacionBancaria() {
     },
     onError: (error: Error) => {
       toast({ title: "Error al reactivar", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const createIncomeFromTxnMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/bank-transactions/${id}/create-income`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bank-transactions", buildingId, month, year] });
+      queryClient.invalidateQueries({ queryKey: ["/api/incomes"] });
+      toast({ title: "Ingreso registrado" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error al registrar ingreso", description: error.message, variant: "destructive" });
     },
   });
 
@@ -1350,7 +1369,7 @@ export default function ConciliacionBancaria() {
     );
   }
 
-  function TransactionActions({ txn }: { txn: BankTransaction }) {
+  function TransactionActions({ txn }: { txn: BankTransactionWithLink }) {
     switch (txn.status) {
       case "pending":
         return (
@@ -1394,9 +1413,12 @@ export default function ConciliacionBancaria() {
             </Button>
           </div>
         );
-      case "identified":
+      case "identified": {
+        const hasLinkedIncome = !!txn.linkedIncomeId;
+        const isSplit = !!txn.assignedUnitsSplit;
+        const canRegisterIncome = !hasLinkedIncome && !isSplit;
         return (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 flex-wrap">
             <span className="text-sm text-muted-foreground">{txn.assignedUnit}</span>
             <Button size="icon" variant="ghost" onClick={() => openAssignDialog(txn)} data-testid={`button-edit-${txn.id}`}>
               <Pencil className="h-3 w-3" />
@@ -1404,8 +1426,21 @@ export default function ConciliacionBancaria() {
             <Button size="icon" variant="ghost" onClick={() => openSplitDialog(txn)} data-testid={`button-split-${txn.id}`}>
               <Split className="h-3 w-3" />
             </Button>
+            {canRegisterIncome && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => createIncomeFromTxnMutation.mutate(txn.id)}
+                disabled={createIncomeFromTxnMutation.isPending}
+                data-testid={`button-register-income-${txn.id}`}
+              >
+                {createIncomeFromTxnMutation.isPending ? <RefreshCw className="h-3 w-3 mr-1 animate-spin" /> : <Plus className="h-3 w-3 mr-1" />}
+                Registrar Ingreso
+              </Button>
+            )}
           </div>
         );
+      }
       case "ignored":
         return (
           <div className="flex items-center gap-1">

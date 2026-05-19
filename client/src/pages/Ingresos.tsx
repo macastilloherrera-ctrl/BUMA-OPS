@@ -116,6 +116,10 @@ const statusVariants: Record<string, "default" | "secondary" | "destructive" | "
   rejected: "destructive",
 };
 
+// Acepta RUT chileno formateado (XX.XXX.XXX-X) o sin formato (12345678-9).
+// El dígito verificador puede ser 0-9 o K. Es opcional: vacío también pasa.
+const rutChileRegex = /^(\d{1,2}\.\d{3}\.\d{3}-[\dkK]|\d{7,8}-[\dkK])$/;
+
 const incomeFormSchema = z.object({
   buildingId: z.string().min(1, "Seleccione un edificio"),
   amount: z.string().min(1, "Ingrese el monto").refine((v) => !isNaN(Number(v)) && Number(v) > 0, "Monto debe ser mayor a 0"),
@@ -124,6 +128,11 @@ const incomeFormSchema = z.object({
   paymentDate: z.string().min(1, "Seleccione la fecha de pago"),
   bank: z.string().optional(),
   bankOperationId: z.string().optional(),
+  payerRut: z.string().optional().refine(
+    (v) => !v || rutChileRegex.test(v.trim()),
+    "RUT inválido. Formato: 12.345.678-9 o 12345678-9",
+  ),
+  payerName: z.string().optional(),
   status: z.enum(["pending", "identified", "rejected"]),
   notes: z.string().optional(),
 });
@@ -185,6 +194,8 @@ export default function Ingresos() {
       paymentDate: "",
       bank: "",
       bankOperationId: "",
+      payerRut: "",
+      payerName: "",
       status: "pending",
       notes: "",
     },
@@ -198,6 +209,8 @@ export default function Ingresos() {
         paymentDate: new Date(data.paymentDate).toISOString(),
         bank: data.bank || null,
         bankOperationId: data.bankOperationId || null,
+        payerRut: data.payerRut?.trim() || null,
+        payerName: data.payerName?.trim() || null,
         notes: data.notes || null,
         createdBy: user?.id || "",
       });
@@ -220,6 +233,8 @@ export default function Ingresos() {
         paymentDate: new Date(data.paymentDate).toISOString(),
         bank: data.bank || null,
         bankOperationId: data.bankOperationId || null,
+        payerRut: data.payerRut?.trim() || null,
+        payerName: data.payerName?.trim() || null,
         notes: data.notes || null,
       });
     },
@@ -342,6 +357,8 @@ export default function Ingresos() {
       paymentDate: "",
       bank: "",
       bankOperationId: "",
+      payerRut: "",
+      payerName: "",
       status: "pending",
       notes: "",
     });
@@ -357,6 +374,8 @@ export default function Ingresos() {
       paymentDate: "",
       bank: "",
       bankOperationId: "",
+      payerRut: "",
+      payerName: "",
       status: "pending",
       notes: "",
     });
@@ -374,6 +393,8 @@ export default function Ingresos() {
       paymentDate,
       bank: income.bank || "",
       bankOperationId: income.bankOperationId || "",
+      payerRut: income.payerRut || "",
+      payerName: income.payerName || "",
       status: income.status as "pending" | "identified" | "rejected",
       notes: income.notes || "",
     });
@@ -845,6 +866,42 @@ export default function Ingresos() {
                       <Input
                         placeholder="Número de operación"
                         data-testid="input-bank-operation"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="payerName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nombre del pagador</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Ej: Juan Pérez Soto"
+                        data-testid="input-payer-name"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="payerRut"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>RUT del pagador</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="12.345.678-9"
+                        data-testid="input-payer-rut"
                         {...field}
                       />
                     </FormControl>

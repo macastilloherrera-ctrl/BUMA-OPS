@@ -26,6 +26,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -238,6 +248,7 @@ export default function TicketDetail() {
   const [isRestartDialogOpen, setIsRestartDialogOpen] = useState(false);
   const [isWorkCompletionDialogOpen, setIsWorkCompletionDialogOpen] = useState(false);
   const [isReassignDialogOpen, setIsReassignDialogOpen] = useState(false);
+  const [isDeleteTicketDialogOpen, setIsDeleteTicketDialogOpen] = useState(false);
   const [workCompletionInvoiceKey, setWorkCompletionInvoiceKey] = useState<string | null>(null);
   const [workCompletionInvoiceName, setWorkCompletionInvoiceName] = useState<string | null>(null);
   const pendingWorkCompletionKeyRef = useRef<{ key: string; name: string } | null>(null);
@@ -252,6 +263,8 @@ export default function TicketDetail() {
   });
 
   const isManager = userProfile?.role ? ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas"].includes(userProfile.role) : false;
+  const isSuperAdmin = userProfile?.role === "super_admin";
+  const canDeleteTicket = isSuperAdmin || isManager;
   const canSeeCosts = userProfile?.role !== "ejecutivo_operaciones" && userProfile?.role !== "ejecutivo_apoyo" && userProfile?.role !== "conserjeria";
 
   const { data: ticket, isLoading } = useQuery<TicketWithDetails>({
@@ -459,6 +472,22 @@ Equipo BUMA Property Management
     },
     onError: () => {
       toast({ title: "Error al eliminar foto", variant: "destructive" });
+    },
+  });
+
+  const deleteTicketMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("DELETE", `/api/tickets/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tickets"] });
+      toast({ title: "Ticket eliminado" });
+      setIsDeleteTicketDialogOpen(false);
+      navigate(backUrl);
+    },
+    onError: async (error: any) => {
+      const message = error?.message || "No se pudo eliminar el ticket";
+      toast({ title: "Error al eliminar ticket", description: message, variant: "destructive" });
     },
   });
 
@@ -756,18 +785,55 @@ Equipo BUMA Property Management
               <h1 className="text-lg font-semibold">{typeInfo?.label}</h1>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <PriorityBadge priority={ticket.priority} />
-            <StatusBadge 
-              status={ticket.status} 
+            <StatusBadge
+              status={ticket.status}
               type="ticket"
               invoiceNumber={ticket.invoiceNumber}
               invoiceAmount={ticket.invoiceAmount}
               invoiceDocumentKey={ticket.invoiceDocumentKey}
             />
+            {canDeleteTicket && ticket.status === "pendiente" && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setIsDeleteTicketDialogOpen(true)}
+                data-testid="button-delete-ticket"
+                aria-label="Eliminar ticket"
+                title="Eliminar ticket"
+              >
+                <Trash2 className="h-5 w-5" />
+              </Button>
+            )}
           </div>
         </div>
       </div>
+
+      <AlertDialog open={isDeleteTicketDialogOpen} onOpenChange={setIsDeleteTicketDialogOpen}>
+        <AlertDialogContent data-testid="dialog-delete-ticket">
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar este ticket?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción es irreversible. Se eliminarán también las cotizaciones, fotos,
+              avisos, historial de asignación, ciclos de trabajo y notificaciones asociados.
+              Solo se permite eliminar tickets en estado <strong>pendiente</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-ticket">Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteTicketMutation.mutate()}
+              disabled={deleteTicketMutation.isPending}
+              data-testid="button-confirm-delete-ticket"
+            >
+              {deleteTicketMutation.isPending ? "Eliminando..." : "Eliminar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="flex-1 overflow-auto pb-24 md:pb-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
