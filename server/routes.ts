@@ -34,6 +34,7 @@ function generateConserjeriaUsername(buildingName: string): string {
   return `conserjeria_${slug}`;
 }
 import { db, pool } from "./db";
+import { parseBankStatement, type ParsedBankMovement } from "./bankStatementParser";
 import { eq, or, sql } from "drizzle-orm";
 import { users as usersTable, buildings as buildingsTable } from "@shared/schema";
 import {
@@ -7572,6 +7573,202 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Datos inválidos", details: error.errors });
       }
       console.error("Error en webhook de ingresos:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ==========================================
+  // Bank statement parser (cartolas Excel)
+  // ==========================================
+  // Flujo separado del módulo de Conciliación Bancaria existente. Parsea
+  // cartolas .xlsx de 5 bancos (Banco Chile, BCI, Itaú, Santander, Scotia),
+  // muestra preview y permite importar movimientos seleccionados con
+  // dedup contra bank_transactions y match contra incomes pending_email.
+
+  app.post("/api/bank-statements/parse", isAuthenticated, upload.single("file"), async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden parsear cartolas" });
+      }
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ error: "Se requiere un archivo (campo 'file')" });
+      }
+      const { buildingId } = req.body;
+      if (!buildingId) {
+        return res.status(400).json({ error: "Se requiere buildingId" });
+      }
+      const building = await storage.getBuilding(buildingId);
+      if (!building) {
+        return res.status(404).json({ error: "Edificio no encontrado" });
+      }
+
+      const parsed = await parseBankStatement(file.buffer, file.originalname);
+      const totalAbonos = parsed.movimientos.reduce((s, m) => s + m.monto, 0);
+      res.json({
+        banco: parsed.banco,
+        edificioDetectado: parsed.edificioDetectado,
+        periodo: parsed.periodo,
+        movimientos: parsed.movimientos,
+        totalAbonos,
+        count: parsed.movimientos.length,
+        errores: parsed.errores,
+      });
+    } catch (error) {
+      console.error("Error parseando cartola:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.post("/api/bank-statements/import", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden importar cartolas" });
+      }
+      const bodySchema = z.object({
+        buildingId: z.string().min(1),
+        chargeMonth: z.number().int().min(1).max(12),
+        chargeYear: z.number().int().min(2000).max(2100),
+        movimientos: z.array(z.object({
+          fecha: z.string(), // ISO
+          descripcion: z.string(),
+          monto: z.number().positive(),
+          numeroDocumento: z.string().nullable().optional(),
+          nombrePagador: z.string().nullable().optional(),
+          rutPagador: z.string().nullable().optional(),
+          banco: z.string(),
+        })).min(1),
+      });
+      const data = bodySchema.parse(req.body);
+      const building = await storage.getBuilding(data.buildingId);
+      if (!building) {
+        return res.status(404).json({ error: "Edificio no encontrado" });
+      }
+
+      // Pre-cargamos incomes pending_email del periodo para el matching
+      const allPeriodIncomes = await storage.getIncomes({
+        buildingId: data.buildingId,
+        month: data.chargeMonth,
+        year: data.chargeYear,
+      });
+      const candidatesPendingEmail = allPeriodIncomes.filter((i) => (i.status as string) === "pending_email" && !i.bankOperationId);
+
+      let insertados = 0;
+      let conciliados = 0;
+      let duplicados = 0;
+      let pendientes = 0;
+      const detalle: Array<{ fecha: string; monto: number; resultado: string; incomeId?: string; txnId?: string }> = [];
+
+      for (const mov of data.movimientos) {
+        const fechaTxn = new Date(mov.fecha);
+        // Dedup: misma fecha (±1 día) + mismo monto + mismo building
+        const dayMs = 24 * 60 * 60 * 1000;
+        const fechaMin = new Date(fechaTxn.getTime() - dayMs);
+        const fechaMax = new Date(fechaTxn.getTime() + dayMs);
+        const existing = await storage.getBankTransactions({
+          buildingId: data.buildingId,
+          month: data.chargeMonth,
+          year: data.chargeYear,
+        });
+        const dup = existing.find((t) => {
+          if (Math.abs(parseFloat(t.amount) - mov.monto) > 0.01) return false;
+          const td = t.txnDate ? new Date(t.txnDate) : null;
+          if (!td) return false;
+          return td >= fechaMin && td <= fechaMax;
+        });
+        if (dup) {
+          duplicados++;
+          detalle.push({ fecha: mov.fecha, monto: mov.monto, resultado: "duplicado", txnId: dup.id });
+          continue;
+        }
+
+        // Insertar bank_transaction
+        const rowHash = crypto.createHash("sha256").update(JSON.stringify({
+          buildingId: data.buildingId,
+          fecha: fechaTxn.toISOString().slice(0, 10),
+          monto: mov.monto,
+          desc: mov.descripcion,
+          ref: mov.numeroDocumento ?? null,
+        })).digest("hex");
+        const txn = await storage.createBankTransaction({
+          buildingId: data.buildingId,
+          txnDate: fechaTxn,
+          amount: String(mov.monto),
+          description: mov.descripcion,
+          reference: mov.numeroDocumento ?? null,
+          payerRut: mov.rutPagador ?? null,
+          payerName: mov.nombrePagador ?? null,
+          sourceBank: mov.banco,
+          bankName: mov.banco,
+          rawRowJson: JSON.stringify(mov),
+          rowHash,
+          periodMonth: data.chargeMonth,
+          periodYear: data.chargeYear,
+          status: "pending",
+          sourceFileName: "cartola_excel",
+          importedBy: req.user!.id,
+        });
+        insertados++;
+
+        // Buscar match en incomes pending_email — tolerancia ±1%
+        const tolerance = mov.monto * 0.01;
+        const matches = candidatesPendingEmail.filter((i) => {
+          if (i.bankOperationId) return false;
+          const diff = Math.abs(parseFloat(i.amount) - mov.monto);
+          return diff <= tolerance;
+        });
+        if (matches.length === 1) {
+          const income = matches[0];
+          await storage.updateIncome(income.id, {
+            bankOperationId: txn.id,
+            status: "identified",
+          });
+          // Marcar el income como ya usado para no doble-matchearlo en la misma corrida
+          income.bankOperationId = txn.id;
+          await storage.updateBankTransaction(txn.id, {
+            status: "identified",
+            identifiedBy: req.user!.id,
+            identifiedAt: new Date(),
+            assignedUnit: income.department,
+          });
+          conciliados++;
+          detalle.push({ fecha: mov.fecha, monto: mov.monto, resultado: "conciliado", incomeId: income.id, txnId: txn.id });
+        } else if (matches.length > 1) {
+          pendientes++;
+          detalle.push({ fecha: mov.fecha, monto: mov.monto, resultado: "multi_match", txnId: txn.id });
+        } else {
+          pendientes++;
+          detalle.push({ fecha: mov.fecha, monto: mov.monto, resultado: "sin_match", txnId: txn.id });
+        }
+      }
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "import_bank_statement",
+          entityType: "bank_transaction",
+          entityId: data.buildingId,
+          buildingId: data.buildingId,
+          metadata: JSON.stringify({
+            chargeMonth: data.chargeMonth,
+            chargeYear: data.chargeYear,
+            insertados, conciliados, duplicados, pendientes,
+          }),
+        });
+      } catch (e) {
+        console.error("[bank-statements/import] audit error:", e);
+      }
+
+      res.json({ insertados, conciliados, duplicados, pendientes, detalle });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
+      console.error("Error importando cartola:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });

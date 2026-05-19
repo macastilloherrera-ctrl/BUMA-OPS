@@ -1148,7 +1148,11 @@ export type NotificationType = "ticket_asignado" | "ticket_derivado" | "ticket_a
 export const incomeStatusEnum = pgEnum("income_status", [
   "pending",
   "identified",
-  "rejected"
+  "rejected",
+  // pending_email: ingreso registrado desde un email/aviso de pago que aún
+  // no se conciló con un movimiento bancario real. Al importar una cartola,
+  // estos candidatos se intentan parear automáticamente.
+  "pending_email"
 ]);
 
 export const expenseSourceTypeEnum = pgEnum("expense_source_type", [

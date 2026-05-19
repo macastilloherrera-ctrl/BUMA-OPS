@@ -212,6 +212,12 @@ const STEPS = [
     sql: `ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS updated_at timestamp;`,
   },
   {
+    // Nuevo valor en el enum income_status para ingresos detectados desde
+    // emails que aún no se concilian con un movimiento bancario real.
+    label: "income_status += pending_email",
+    sql: `ALTER TYPE income_status ADD VALUE IF NOT EXISTS 'pending_email';`,
+  },
+  {
     // Mes/año de imputación a GGCC en incomes. Nullable: si NULL, el sistema
     // usa el mes/año de payment_date (back-compat con registros antiguos).
     label: "incomes.charge_month / charge_year",
@@ -319,6 +325,10 @@ const VERIFICATIONS = [
   {
     label: "bank_transactions.updated_at",
     sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='bank_transactions' AND column_name='updated_at';`,
+  },
+  {
+    label: "income_status has pending_email",
+    sql: `SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname='income_status' AND e.enumlabel='pending_email';`,
   },
   {
     label: "incomes.charge_month",
