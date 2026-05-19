@@ -211,6 +211,25 @@ const STEPS = [
     label: "bank_transactions.updated_at column",
     sql: `ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS updated_at timestamp;`,
   },
+  {
+    // Webhook API keys por edificio. api_key guarda SHA-256 hex (64 chars),
+    // nunca el valor plano. UNIQUE para que el lookup por hash sea único.
+    label: "building_webhook_keys table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS building_webhook_keys (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        building_id varchar NOT NULL REFERENCES buildings(id),
+        api_key varchar(64) NOT NULL UNIQUE,
+        description varchar(255),
+        is_active boolean NOT NULL DEFAULT true,
+        last_used_at timestamp,
+        created_at timestamp NOT NULL DEFAULT now(),
+        created_by varchar NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_bwk_building_id ON building_webhook_keys(building_id);
+      CREATE INDEX IF NOT EXISTS idx_bwk_active ON building_webhook_keys(is_active);
+    `,
+  },
 ];
 
 // Verificaciones a correr al final (read-only) para confirmar que el schema
@@ -291,6 +310,14 @@ const VERIFICATIONS = [
   {
     label: "bank_transactions.updated_at",
     sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='bank_transactions' AND column_name='updated_at';`,
+  },
+  {
+    label: "building_webhook_keys table exists",
+    sql: `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='building_webhook_keys';`,
+  },
+  {
+    label: "building_webhook_keys.api_key unique",
+    sql: `SELECT 1 FROM information_schema.table_constraints WHERE table_schema='public' AND table_name='building_webhook_keys' AND constraint_type='UNIQUE';`,
   },
 ];
 

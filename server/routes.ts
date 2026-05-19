@@ -301,6 +301,49 @@ async function unlinkBankTxnFromIncome(bankTxnId: string): Promise<void> {
   }
 }
 
+// Hash de API key para webhooks: SHA-256 hex. El valor plano NUNCA se
+// persiste. Generamos las keys con crypto.randomBytes(32).toString("hex")
+// (64 chars) y guardamos el hash sha256(plain).hex (también 64 chars,
+// distinto del plano).
+function hashWebhookKey(plain: string): string {
+  return crypto.createHash("sha256").update(plain).digest("hex");
+}
+
+// Parsea "YYYY-MM-DD" y devuelve { date, month, year } interpretando la
+// fecha en America/Santiago. Usamos mediodía local (16:00 UTC ≈ Chile
+// estándar, 15:00 UTC en horario de verano) para evitar que el redondeo
+// salte de día.
+function parsePaymentDateChile(input: string): { date: Date; month: number; year: number } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input);
+  if (!m) return null;
+  const year = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10);
+  const day = parseInt(m[3], 10);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const date = new Date(Date.UTC(year, month - 1, day, 16, 0, 0));
+  return { date, month, year };
+}
+
+// Rate limit por API key: sliding window simple en memoria.
+// 100 requests por minuto por hash de key. Si el proceso reinicia se
+// resetea — aceptable porque la protección principal es el hash, esto
+// solo evita abuso accidental.
+const WEBHOOK_RATE_LIMIT = 100;
+const WEBHOOK_RATE_WINDOW_MS = 60_000;
+const webhookCalls = new Map<string, number[]>();
+function consumeWebhookRateLimit(keyHash: string, now = Date.now()): { ok: boolean; resetMs: number } {
+  const cutoff = now - WEBHOOK_RATE_WINDOW_MS;
+  const arr = (webhookCalls.get(keyHash) || []).filter((t) => t > cutoff);
+  if (arr.length >= WEBHOOK_RATE_LIMIT) {
+    webhookCalls.set(keyHash, arr);
+    const resetMs = arr[0] + WEBHOOK_RATE_WINDOW_MS - now;
+    return { ok: false, resetMs };
+  }
+  arr.push(now);
+  webhookCalls.set(keyHash, arr);
+  return { ok: true, resetMs: 0 };
+}
+
 // Bloquea modificaciones a entidades cuyo periodo de cierre ya está
 // 'approved' o 'issued'. Devuelve { locked: true, reason } cuando hay que
 // rechazar la operación; locked: false en caso contrario (incluyendo cuando
@@ -7213,6 +7256,262 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Datos inválidos", details: error.errors });
       }
       console.error("Error dividiendo depósito:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ==========================================
+  // Webhook API Keys (super_admin)
+  // ==========================================
+  // El valor plano de la API key se devuelve UNA SOLA VEZ al crear; en la
+  // tabla solo se guarda el SHA-256 hex de la key. El webhook público
+  // /api/incomes/webhook (más abajo) hashea la key del header con la misma
+  // función y busca por hash.
+
+  app.post("/api/super-admin/webhook-keys", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!profile || profile.role !== "super_admin") {
+        return res.status(403).json({ error: "Solo super_admin puede crear webhook keys" });
+      }
+      const bodySchema = z.object({
+        buildingId: z.string().min(1),
+        description: z.string().max(255).optional(),
+      });
+      const data = bodySchema.parse(req.body);
+
+      const building = await storage.getBuilding(data.buildingId);
+      if (!building) {
+        return res.status(404).json({ error: "Edificio no encontrado" });
+      }
+
+      // 32 bytes hex (64 chars). El plano se entrega una sola vez.
+      const plainKey = crypto.randomBytes(32).toString("hex");
+      const hashedKey = hashWebhookKey(plainKey);
+
+      const created = await storage.createWebhookKey({
+        buildingId: data.buildingId,
+        apiKey: hashedKey,
+        description: data.description ?? null,
+        isActive: true,
+        createdBy: req.user!.id,
+      });
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "create_webhook_key",
+          entityType: "building_webhook_key",
+          entityId: created.id,
+          buildingId: data.buildingId,
+          metadata: JSON.stringify({ description: data.description ?? null }),
+        });
+      } catch (e) {
+        console.error("[webhook-keys] audit create error:", e);
+      }
+
+      res.status(201).json({
+        id: created.id,
+        buildingId: created.buildingId,
+        description: created.description,
+        isActive: created.isActive,
+        createdAt: created.createdAt,
+        // Solo en respuesta de creación
+        apiKey: plainKey,
+        warning: "Guarde esta key ahora — no se volverá a mostrar",
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
+      console.error("Error creando webhook key:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.get("/api/super-admin/webhook-keys", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!profile || profile.role !== "super_admin") {
+        return res.status(403).json({ error: "Solo super_admin puede ver webhook keys" });
+      }
+      const rows = await storage.listWebhookKeys();
+      // NUNCA exponer api_key (es el hash, pero igual lo omitimos por higiene).
+      const sanitized = rows.map((r) => ({
+        id: r.id,
+        buildingId: r.buildingId,
+        description: r.description,
+        isActive: r.isActive,
+        lastUsedAt: r.lastUsedAt,
+        createdAt: r.createdAt,
+        createdBy: r.createdBy,
+      }));
+      res.json(sanitized);
+    } catch (error) {
+      console.error("Error listando webhook keys:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  app.delete("/api/super-admin/webhook-keys/:id", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!profile || profile.role !== "super_admin") {
+        return res.status(403).json({ error: "Solo super_admin puede revocar webhook keys" });
+      }
+      const existing = await storage.getWebhookKeyById(req.params.id);
+      if (!existing) {
+        return res.status(404).json({ error: "Webhook key no encontrada" });
+      }
+      const updated = await storage.deactivateWebhookKey(req.params.id);
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "revoke_webhook_key",
+          entityType: "building_webhook_key",
+          entityId: existing.id,
+          buildingId: existing.buildingId,
+          metadata: JSON.stringify({ description: existing.description }),
+        });
+      } catch (e) {
+        console.error("[webhook-keys] audit revoke error:", e);
+      }
+
+      res.json({ success: true, id: updated?.id, isActive: false });
+    } catch (error) {
+      console.error("Error revocando webhook key:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // ==========================================
+  // Webhook público para ingresos (sin sesión)
+  // ==========================================
+  // Recibe pagos desde sistemas externos (p.ej. N8N que procesa correos
+  // bancarios). Autenticación por header X-API-Key. NO usa isAuthenticated.
+  // Crea income con status="identified" si encuentra un match en
+  // payer_directory; "pending" si no.
+
+  app.post("/api/incomes/webhook", async (req, res) => {
+    try {
+      const rawKey = (req.header("x-api-key") || "").trim();
+      if (!rawKey) {
+        return res.status(401).json({ error: "API key inválida" });
+      }
+
+      // Rate limit por hash de la key recibida — incluso si la key es
+      // inválida, esto previene fuerza bruta de descubrimiento.
+      const hashed = hashWebhookKey(rawKey);
+      const rl = consumeWebhookRateLimit(hashed);
+      if (!rl.ok) {
+        res.setHeader("Retry-After", Math.ceil(rl.resetMs / 1000).toString());
+        return res.status(429).json({ error: "Rate limit excedido" });
+      }
+
+      const keyRow = await storage.getWebhookKeyByHash(hashed);
+      if (!keyRow || !keyRow.isActive) {
+        return res.status(401).json({ error: "API key inválida" });
+      }
+
+      // Validación del body
+      const bodySchema = z.object({
+        amount: z.number().positive(),
+        paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "paymentDate debe ser YYYY-MM-DD"),
+        department: z.string().min(1).max(255).optional().or(z.literal("")),
+        category: z.enum(["gasto_comun", "multa", "arriendo", "interes_mora", "fondo_reserva", "otro"]).optional(),
+        payerRut: z.string().max(20).nullable().optional(),
+        payerName: z.string().max(255).nullable().optional(),
+        bank: z.string().max(255).nullable().optional(),
+        bankOperationId: z.string().max(255).nullable().optional(),
+        notes: z.string().nullable().optional(),
+        source: z.literal("email_webhook").optional(),
+      });
+      const data = bodySchema.parse(req.body);
+
+      const parsedDate = parsePaymentDateChile(data.paymentDate);
+      if (!parsedDate) {
+        return res.status(400).json({ error: "paymentDate inválido" });
+      }
+
+      // Si vino payerRut, buscamos match en payer_directory para resolver unidad
+      let matchedFromDirectory = false;
+      let department = (data.department || "").trim();
+      if (data.payerRut && data.payerRut.trim()) {
+        const directory = await storage.getPayerDirectory(keyRow.buildingId);
+        const match = directory.find((d) => d.rut && d.rut === data.payerRut);
+        if (match) {
+          matchedFromDirectory = true;
+          if (!department) department = match.unit;
+        }
+      }
+      if (!department) {
+        return res.status(400).json({ error: "No se pudo determinar la unidad (department)" });
+      }
+
+      // Bloqueo por cierre de periodo
+      const lockCheck = await assertCycleNotLocked(keyRow.buildingId, parsedDate.month, parsedDate.year);
+      if (lockCheck.locked) {
+        return res.status(409).json({ error: lockCheck.reason });
+      }
+
+      const status = matchedFromDirectory ? "identified" : "pending";
+      const incomeData = insertIncomeSchema.parse({
+        buildingId: keyRow.buildingId,
+        amount: data.amount.toString(),
+        department,
+        description: "abono",
+        category: data.category ?? "gasto_comun",
+        paymentDate: parsedDate.date,
+        bank: data.bank ?? null,
+        bankOperationId: data.bankOperationId ?? null,
+        payerRut: data.payerRut ?? null,
+        payerName: data.payerName ?? null,
+        status,
+        notes: data.notes ?? null,
+        createdBy: keyRow.createdBy, // attribuido al super_admin que generó la key
+      });
+      const income = await storage.createIncome(incomeData);
+
+      // Actualizar lastUsedAt (best effort)
+      try { await storage.touchWebhookKey(keyRow.id); } catch (e) {
+        console.error("[webhook] touchWebhookKey error:", e);
+      }
+
+      try {
+        await storage.createAuditLog({
+          userId: keyRow.createdBy,
+          userName: "webhook",
+          action: "create_income_webhook",
+          entityType: "income",
+          entityId: income.id,
+          buildingId: keyRow.buildingId,
+          metadata: JSON.stringify({
+            source: data.source ?? "email_webhook",
+            apiKeyId: keyRow.id,
+            payerRut: data.payerRut ?? null,
+            matched: matchedFromDirectory,
+          }),
+        });
+      } catch (e) {
+        console.error("[webhook] audit error:", e);
+      }
+
+      return res.status(201).json({
+        success: true,
+        incomeId: income.id,
+        status,
+        matched: matchedFromDirectory,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
+      }
+      console.error("Error en webhook de ingresos:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });

@@ -42,6 +42,7 @@ import {
   recurringExpenseTemplates,
   bankTransactions,
   payerDirectory,
+  buildingWebhookKeys,
   projects,
   projectMilestones,
   projectDocuments,
@@ -122,6 +123,8 @@ import {
   type InsertBankTransaction,
   type PayerDirectoryEntry,
   type InsertPayerDirectory,
+  type BuildingWebhookKey,
+  type InsertBuildingWebhookKey,
   vendors,
   type Vendor,
   type InsertVendor,
@@ -408,6 +411,14 @@ export interface IStorage {
   createPayerDirectoryEntry(entry: InsertPayerDirectory): Promise<PayerDirectoryEntry>;
   updatePayerDirectoryEntry(id: string, data: Partial<InsertPayerDirectory>): Promise<PayerDirectoryEntry | undefined>;
   deletePayerDirectoryEntry(id: string): Promise<boolean>;
+
+  // Webhook API Keys (sólo se guarda el hash SHA-256 de la key en api_key)
+  listWebhookKeys(): Promise<BuildingWebhookKey[]>;
+  getWebhookKeyById(id: string): Promise<BuildingWebhookKey | undefined>;
+  getWebhookKeyByHash(hashedKey: string): Promise<BuildingWebhookKey | undefined>;
+  createWebhookKey(entry: InsertBuildingWebhookKey): Promise<BuildingWebhookKey>;
+  deactivateWebhookKey(id: string): Promise<BuildingWebhookKey | undefined>;
+  touchWebhookKey(id: string): Promise<void>;
 
   // Monthly Closing Cycles
   getMonthlyClosingCycles(filters?: { buildingId?: string; month?: number; year?: number; status?: string }): Promise<MonthlyClosingCycle[]>;
@@ -1774,6 +1785,40 @@ export class DatabaseStorage implements IStorage {
   async deletePayerDirectoryEntry(id: string): Promise<boolean> {
     await db.delete(payerDirectory).where(eq(payerDirectory.id, id));
     return true;
+  }
+
+  // Webhook API Keys
+  async listWebhookKeys(): Promise<BuildingWebhookKey[]> {
+    return db.select().from(buildingWebhookKeys).orderBy(desc(buildingWebhookKeys.createdAt));
+  }
+
+  async getWebhookKeyById(id: string): Promise<BuildingWebhookKey | undefined> {
+    const [row] = await db.select().from(buildingWebhookKeys).where(eq(buildingWebhookKeys.id, id));
+    return row || undefined;
+  }
+
+  async getWebhookKeyByHash(hashedKey: string): Promise<BuildingWebhookKey | undefined> {
+    const [row] = await db.select().from(buildingWebhookKeys).where(eq(buildingWebhookKeys.apiKey, hashedKey));
+    return row || undefined;
+  }
+
+  async createWebhookKey(entry: InsertBuildingWebhookKey): Promise<BuildingWebhookKey> {
+    const [created] = await db.insert(buildingWebhookKeys).values(entry).returning();
+    return created;
+  }
+
+  async deactivateWebhookKey(id: string): Promise<BuildingWebhookKey | undefined> {
+    const [updated] = await db.update(buildingWebhookKeys)
+      .set({ isActive: false })
+      .where(eq(buildingWebhookKeys.id, id))
+      .returning();
+    return updated || undefined;
+  }
+
+  async touchWebhookKey(id: string): Promise<void> {
+    await db.update(buildingWebhookKeys)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(buildingWebhookKeys.id, id));
   }
 
   // Monthly Closing Cycles

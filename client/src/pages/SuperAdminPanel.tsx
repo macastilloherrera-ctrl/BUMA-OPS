@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { ObjectUploader } from "@/components/ObjectUploader";
-import { Settings, Users, Key, Shield, Building2, Save, RefreshCw, UserPlus, Pencil, ToggleLeft, Upload, FileText, Image, Download, Book, Code, Activity, Wrench, Trash2, RotateCcw, Search, ChevronLeft, ChevronRight, Copy, CheckCheck, Eye, EyeOff, Shuffle } from "lucide-react";
+import { Settings, Users, Key, Shield, Building2, Save, RefreshCw, UserPlus, Pencil, ToggleLeft, Upload, FileText, Image, Download, Book, Code, Activity, Wrench, Trash2, RotateCcw, Search, ChevronLeft, ChevronRight, Copy, CheckCheck, Eye, EyeOff, Shuffle, Webhook, Plus } from "lucide-react";
 import type { UserRole } from "@shared/schema";
 
 interface SystemConfig {
@@ -128,6 +128,54 @@ export default function SuperAdminPanel() {
   const { data: diagnostics = [], isLoading: diagLoading } = useQuery<any[]>({
     queryKey: [diagUrl],
   });
+
+  // Webhook keys ----------------------------------------------------------
+  interface WebhookKeyRow {
+    id: string;
+    buildingId: string;
+    description: string | null;
+    isActive: boolean;
+    lastUsedAt: string | null;
+    createdAt: string;
+    createdBy: string;
+  }
+  const { data: webhookKeys = [], isLoading: webhooksLoading } = useQuery<WebhookKeyRow[]>({
+    queryKey: ["/api/super-admin/webhook-keys"],
+  });
+  const [newWebhookBuildingId, setNewWebhookBuildingId] = useState("");
+  const [newWebhookDescription, setNewWebhookDescription] = useState("");
+  const [generatedWebhookKey, setGeneratedWebhookKey] = useState<string | null>(null);
+  const [webhookKeyCopied, setWebhookKeyCopied] = useState(false);
+  const createWebhookKeyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/super-admin/webhook-keys", {
+        buildingId: newWebhookBuildingId,
+        description: newWebhookDescription || undefined,
+      });
+      return res.json();
+    },
+    onSuccess: (data: { apiKey: string }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/webhook-keys"] });
+      setGeneratedWebhookKey(data.apiKey);
+      setNewWebhookBuildingId("");
+      setNewWebhookDescription("");
+      toast({ title: "Webhook key generada" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error al generar webhook key", description: error?.message, variant: "destructive" });
+    },
+  });
+  const revokeWebhookKeyMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/super-admin/webhook-keys/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/webhook-keys"] });
+      toast({ title: "Webhook key revocada" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Error al revocar key", description: error?.message, variant: "destructive" });
+    },
+  });
+  // -----------------------------------------------------------------------
 
   const bulkDeleteMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/super-admin/bulk-delete-transactions", bulkForm),
@@ -337,6 +385,10 @@ export default function SuperAdminPanel() {
               <TabsTrigger value="corrections" className="gap-2" data-testid="tab-corrections">
                 <Wrench className="h-4 w-4" />
                 Correcciones
+              </TabsTrigger>
+              <TabsTrigger value="webhooks" className="gap-2" data-testid="tab-webhooks">
+                <Webhook className="h-4 w-4" />
+                Webhooks
               </TabsTrigger>
               <TabsTrigger value="docs" className="gap-2" data-testid="tab-docs">
                 <Book className="h-4 w-4" />
@@ -892,6 +944,184 @@ export default function SuperAdminPanel() {
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            <TabsContent value="webhooks" className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Webhook className="h-5 w-5" />
+                    Webhook API Keys
+                  </CardTitle>
+                  <CardDescription>
+                    Llaves para que sistemas externos (N8N, scripts) registren ingresos
+                    mediante POST /api/incomes/webhook con header X-API-Key.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid gap-3 md:grid-cols-3 items-end">
+                    <div className="space-y-1">
+                      <Label htmlFor="webhook-building">Edificio</Label>
+                      <Select value={newWebhookBuildingId} onValueChange={setNewWebhookBuildingId}>
+                        <SelectTrigger id="webhook-building" data-testid="select-webhook-building">
+                          <SelectValue placeholder="Seleccionar edificio" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {buildings.map((b) => (
+                            <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="webhook-description">Descripción (opcional)</Label>
+                      <Input
+                        id="webhook-description"
+                        placeholder="Ej: N8N — recibo banco"
+                        value={newWebhookDescription}
+                        onChange={(e) => setNewWebhookDescription(e.target.value)}
+                        data-testid="input-webhook-description"
+                      />
+                    </div>
+                    <Button
+                      onClick={() => createWebhookKeyMutation.mutate()}
+                      disabled={!newWebhookBuildingId || createWebhookKeyMutation.isPending}
+                      data-testid="button-create-webhook-key"
+                    >
+                      {createWebhookKeyMutation.isPending ? (
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Plus className="h-4 w-4 mr-2" />
+                      )}
+                      Generar Key
+                    </Button>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Edificio</TableHead>
+                          <TableHead>Descripción</TableHead>
+                          <TableHead>Estado</TableHead>
+                          <TableHead>Último uso</TableHead>
+                          <TableHead>Creada</TableHead>
+                          <TableHead>Acciones</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {webhooksLoading ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-6">
+                              Cargando…
+                            </TableCell>
+                          </TableRow>
+                        ) : webhookKeys.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-6" data-testid="text-no-webhooks">
+                              No hay webhook keys creadas
+                            </TableCell>
+                          </TableRow>
+                        ) : (
+                          webhookKeys.map((k) => {
+                            const building = buildings.find((b) => b.id === k.buildingId);
+                            return (
+                              <TableRow key={k.id} data-testid={`row-webhook-${k.id}`}>
+                                <TableCell>{building?.name || k.buildingId}</TableCell>
+                                <TableCell className="max-w-[260px] truncate" title={k.description || ""}>
+                                  {k.description || "—"}
+                                </TableCell>
+                                <TableCell>
+                                  {k.isActive ? (
+                                    <Badge variant="default" data-testid={`badge-active-${k.id}`}>Activa</Badge>
+                                  ) : (
+                                    <Badge variant="secondary" data-testid={`badge-revoked-${k.id}`}>Revocada</Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                                  {k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString("es-CL") : "—"}
+                                </TableCell>
+                                <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                                  {new Date(k.createdAt).toLocaleString("es-CL")}
+                                </TableCell>
+                                <TableCell>
+                                  {k.isActive && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="text-destructive"
+                                      onClick={() => revokeWebhookKeyMutation.mutate(k.id)}
+                                      disabled={revokeWebhookKeyMutation.isPending}
+                                      data-testid={`button-revoke-${k.id}`}
+                                    >
+                                      Revocar
+                                    </Button>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Dialog
+                open={!!generatedWebhookKey}
+                onOpenChange={(open) => {
+                  if (!open) {
+                    setGeneratedWebhookKey(null);
+                    setWebhookKeyCopied(false);
+                  }
+                }}
+              >
+                <DialogContent data-testid="dialog-webhook-key-created">
+                  <DialogHeader>
+                    <DialogTitle>Webhook key generada</DialogTitle>
+                    <DialogDescription>
+                      Esta key NO se volverá a mostrar. Cópiala y guárdala en un lugar seguro.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <div className="rounded-md border bg-muted p-3 font-mono text-xs break-all" data-testid="text-generated-key">
+                      {generatedWebhookKey}
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        if (!generatedWebhookKey) return;
+                        try {
+                          await navigator.clipboard.writeText(generatedWebhookKey);
+                          setWebhookKeyCopied(true);
+                          toast({ title: "Key copiada al portapapeles" });
+                        } catch {
+                          toast({ title: "No se pudo copiar", variant: "destructive" });
+                        }
+                      }}
+                      data-testid="button-copy-webhook-key"
+                    >
+                      {webhookKeyCopied ? (
+                        <><CheckCheck className="h-4 w-4 mr-2" />Copiado</>
+                      ) : (
+                        <><Copy className="h-4 w-4 mr-2" />Copiar</>
+                      )}
+                    </Button>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      onClick={() => {
+                        setGeneratedWebhookKey(null);
+                        setWebhookKeyCopied(false);
+                      }}
+                      data-testid="button-close-webhook-dialog"
+                    >
+                      Cerrar
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </TabsContent>
 
             <TabsContent value="docs" className="space-y-4">

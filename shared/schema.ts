@@ -1439,6 +1439,40 @@ export type PayerDirectoryEntry = typeof payerDirectory.$inferSelect;
 export type BankTxnStatus = "identified" | "suggested" | "pending" | "multi" | "ignored";
 
 // ============================================
+// WEBHOOK API KEYS POR EDIFICIO
+// ============================================
+// Llaves de API que permiten a sistemas externos (p.ej. N8N) publicar
+// pagos contra POST /api/incomes/webhook. Se guarda SHA-256 de la key
+// en la columna api_key — nunca el valor plano. La key plana solo se
+// muestra al super_admin en el momento de creación.
+
+export const buildingWebhookKeys = pgTable("building_webhook_keys", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  buildingId: varchar("building_id").notNull().references(() => buildings.id),
+  apiKey: varchar("api_key", { length: 64 }).notNull().unique(),
+  description: varchar("description", { length: 255 }),
+  isActive: boolean("is_active").default(true).notNull(),
+  lastUsedAt: timestamp("last_used_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  createdBy: varchar("created_by").notNull(),
+});
+
+export const buildingWebhookKeysRelations = relations(buildingWebhookKeys, ({ one }) => ({
+  building: one(buildings, {
+    fields: [buildingWebhookKeys.buildingId],
+    references: [buildings.id],
+  }),
+}));
+
+export const insertBuildingWebhookKeySchema = createInsertSchema(buildingWebhookKeys).omit({
+  id: true,
+  createdAt: true,
+  lastUsedAt: true,
+});
+export type InsertBuildingWebhookKey = z.infer<typeof insertBuildingWebhookKeySchema>;
+export type BuildingWebhookKey = typeof buildingWebhookKeys.$inferSelect;
+
+// ============================================
 // MÓDULO DE PROYECTOS
 // ============================================
 
