@@ -10666,16 +10666,40 @@ export async function registerRoutes(
   }
 
   // ========== OVERDUE MAINTENANCE CHECK ==========
-  // Crea automáticamente un ticket de mantención por cada equipo crítico
-  // 'aprobado' con nextMaintenanceDate < hoy, evitando duplicados (no crea
-  // si ya existe un ticket abierto para el mismo asset en los últimos 7 días).
-  async function checkOverdueMaintenanceTickets(): Promise<{ created: number; skipped: number; errors: number }> {
+  // Crea un ticket por cada equipo crítico con nextMaintenanceDate < hoy.
+  // Si ya existe un ticket abierto para el mismo asset, actualiza el ticket
+  // existente (días de atraso + prioridad) en lugar de crear duplicados.
+  // El tag interno "asset:UUID" se incrusta al final de la descripción
+  // para permitir el lookup sin un campo dedicado en schema.
+  async function checkOverdueMaintenanceTickets(): Promise<{ created: number; updated: number; skipped: number; errors: number }> {
     const now = new Date();
-    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     let created = 0;
+    let updated = 0;
     let skipped = 0;
     let errors = 0;
+
+    // Construye la descripción canónica del ticket. Incluye el tag interno
+    // "asset:UUID" al final para que el dedup por includes() siga funcionando
+    // sin necesidad de un campo dedicado en la tabla tickets.
+    function buildDescription(asset: any, building: any, daysOverdue: number): string {
+      const frecuencia = asset.maintenanceFrequency || "No especificada";
+      return [
+        `Equipo: ${asset.name} (${asset.type})`,
+        `Edificio: ${building.name}`,
+        `Vencido hace ${daysOverdue} día(s).`,
+        `Frecuencia requerida: ${frecuencia}`,
+        ``,
+        `Generado automáticamente por el chequeo diario de mantenciones.`,
+        ``,
+        `asset:${asset.id}`,
+      ].join("\n");
+    }
+
+    function buildTitle(asset: any, building: any, daysOverdue: number): string {
+      const title = `Mantención vencida: ${asset.name} — ${building.name} (${daysOverdue} días de atraso)`;
+      return title.length > 255 ? title.slice(0, 252) + "..." : title;
+    }
 
     try {
       const overdueAssets = await storage.getAssetsWithOverdueMaintenance();
@@ -10683,18 +10707,6 @@ export async function registerRoutes(
 
       for (const asset of overdueAssets) {
         try {
-          const ticketTag = `[MANTENCIÓN VENCIDA] asset:${asset.id}`;
-          const hasRecentOpen = allTickets.some(t =>
-            t.buildingId === asset.buildingId &&
-            (t.description || "").includes(ticketTag) &&
-            t.createdAt && new Date(t.createdAt!) >= sevenDaysAgo &&
-            !CLOSED_STATUSES.includes(t.status)
-          );
-          if (hasRecentOpen) {
-            skipped++;
-            continue;
-          }
-
           const building = await storage.getBuilding(asset.buildingId);
           if (!building) {
             errors++;
@@ -10708,6 +10720,35 @@ export async function registerRoutes(
           const priority: "rojo" | "amarillo" | "verde" =
             daysOverdue > 30 ? "rojo" : daysOverdue > 14 ? "amarillo" : "verde";
 
+          // Busca CUALQUIER ticket abierto del mismo asset, sin importar
+          // cuándo se creó. Antes se filtraba a 7 días lo que dejaba que el
+          // sistema creara duplicados cuando el ticket original quedaba sin
+          // resolver más de una semana.
+          const assetTag = `asset:${asset.id}`;
+          const existingOpen = allTickets.find(t =>
+            t.buildingId === asset.buildingId &&
+            (t.description || "").includes(assetTag) &&
+            !CLOSED_STATUSES.includes(t.status)
+          );
+
+          const description = buildDescription(asset, building, daysOverdue);
+          const title = buildTitle(asset, building, daysOverdue);
+
+          if (existingOpen) {
+            // Actualiza solo si cambian días/prioridad — evita updates ruidosos
+            const titleChanged = (existingOpen.title || "") !== title;
+            const descChanged = (existingOpen.description || "") !== description;
+            const priorityChanged = existingOpen.priority !== priority;
+            if (titleChanged || descChanged || priorityChanged) {
+              await storage.updateTicket(existingOpen.id, { title, description, priority });
+              updated++;
+              console.log(`[Maintenance Check] Updated existing ticket for asset ${asset.name} at ${building.name} - ${daysOverdue} days overdue`);
+            } else {
+              skipped++;
+            }
+            continue;
+          }
+
           let creatorId = building.assignedExecutiveId;
           if (!creatorId) {
             const profiles = await storage.getUserProfiles();
@@ -10715,11 +10756,10 @@ export async function registerRoutes(
             creatorId = adminProfile?.userId || "SYSTEM";
           }
 
-          const description = `${ticketTag}\n\nEquipo: ${asset.name} (${asset.type})\nEdificio: ${building.name}\nVencido hace ${daysOverdue} día(s).\nFrecuencia requerida: ${asset.maintenanceFrequency || "No especificada"}\n\nGenerado automáticamente por el chequeo diario de mantenciones.`;
-
           await storage.createTicket({
             buildingId: building.id,
             ticketType: "mantencion",
+            title,
             description,
             priority,
             status: "pendiente",
@@ -10742,8 +10782,8 @@ export async function registerRoutes(
       errors++;
     }
 
-    console.log(`[Maintenance Check] Complete: ${created} created, ${skipped} skipped, ${errors} errors`);
-    return { created, skipped, errors };
+    console.log(`[Maintenance Check] Complete: ${created} created, ${updated} updated, ${skipped} skipped, ${errors} errors`);
+    return { created, updated, skipped, errors };
   }
 
   // ─────────────────────────────────────────────
