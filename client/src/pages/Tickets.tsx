@@ -225,7 +225,7 @@ export default function Tickets() {
                                 />
                               </div>
                               <p className="text-sm font-medium line-clamp-2 mb-2">
-                                {ticket.description}
+                                {ticket.title?.trim() || (ticket.description?.slice(0, 80) ?? "")}
                               </p>
                               <div className="flex items-center gap-4 text-xs text-muted-foreground">
                                 <div className="flex items-center gap-1">

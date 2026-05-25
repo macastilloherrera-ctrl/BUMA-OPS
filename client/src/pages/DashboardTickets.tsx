@@ -409,7 +409,7 @@ export default function DashboardTickets() {
                         )}
                       </TableCell>
                       <TableCell className="max-w-xs">
-                        <p className="truncate">{ticket.description}</p>
+                        <p className="truncate">{ticket.title?.trim() || (ticket.description?.slice(0, 80) ?? "")}</p>
                       </TableCell>
                       <TableCell>
                         {ticket.executiveName || "Sin asignar"}
