@@ -7457,9 +7457,6 @@ export async function registerRoutes(
   // payer_directory; "pending" si no.
 
   app.post("/api/incomes/webhook", async (req, res) => {
-    // TEMPORAL — debug de requests desde N8N. Quitar tras diagnosticar el 400.
-    console.log("[webhook-debug] body recibido:", JSON.stringify(req.body));
-    console.log("[webhook-debug] content-type:", req.header("content-type"));
     try {
       const rawKey = (req.header("x-api-key") || "").trim();
       if (!rawKey) {
