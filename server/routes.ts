@@ -7486,7 +7486,7 @@ export async function registerRoutes(
       // aviso (perdiéndolo), lo registramos con fallbacks y lo marcamos para
       // revisión manual (ver más abajo).
       const bodySchema = z.object({
-        amount: z.number().positive().nullable().optional(),
+        amount: z.number().min(0).nullable().optional(), // permite 0 cuando no se detectó monto
         paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "paymentDate debe ser YYYY-MM-DD").nullable().optional(),
         department: z.string().max(255).nullable().optional(),
         category: z.enum(["gasto_comun", "multa", "arriendo", "interes_mora", "fondo_reserva", "otro"]).optional(),
@@ -7517,10 +7517,11 @@ export async function registerRoutes(
         parsedDate = todayChilePaymentDate();
       }
 
-      // amount: si no vino, registramos el ingreso con 0 y marcamos para
-      // revisión manual (no perdemos el aviso de pago).
+      // amount: si no vino (null/ausente) o vino en 0 (monto no detectado por
+      // Gemini), registramos el ingreso con 0 y lo marcamos para revisión
+      // manual — así no perdemos el aviso de pago.
       let amountValue: string;
-      if (data.amount != null) {
+      if (data.amount != null && data.amount > 0) {
         amountValue = data.amount.toString();
       } else {
         amountValue = "0";
