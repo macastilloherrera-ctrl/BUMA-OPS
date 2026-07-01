@@ -48,6 +48,15 @@ const CATEGORY_LABELS: Record<string, string> = {
   contrato_mantencion: "Contrato Mantención",
   permiso_edificacion: "Permiso de Edificación",
   inspeccion_tecnica: "Inspección Técnica",
+  certificado_copropiedad: "Certificado de Copropiedad",
+  reglamento_inscrito_cbr: "Reglamento Inscrito CBR",
+  sello_verde: "Sello Verde",
+  lavado_estanques: "Lavado de Estanques",
+  red_humeda: "Red Húmeda",
+  limpieza_vertical: "Limpieza Vertical",
+  poliza_seguro: "Póliza de Seguro",
+  acta_asamblea: "Acta de Asamblea",
+  certificado_vivienda_social: "Certificado Vivienda Social",
   otro: "Otro",
 };
 

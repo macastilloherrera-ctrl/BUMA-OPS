@@ -245,6 +245,23 @@ const STEPS = [
       CREATE INDEX IF NOT EXISTS idx_bwk_active ON building_webhook_keys(is_active);
     `,
   },
+  {
+    // Nuevas categorías de Cumplimiento Legal agregadas al enum
+    // compliance_category. IF NOT EXISTS hace idempotente cada ADD VALUE.
+    // (PG12+ permite ADD VALUE fuera de transacción explícita.)
+    label: "compliance_category += 9 categorías nuevas",
+    sql: `
+      ALTER TYPE compliance_category ADD VALUE IF NOT EXISTS 'certificado_copropiedad';
+      ALTER TYPE compliance_category ADD VALUE IF NOT EXISTS 'reglamento_inscrito_cbr';
+      ALTER TYPE compliance_category ADD VALUE IF NOT EXISTS 'sello_verde';
+      ALTER TYPE compliance_category ADD VALUE IF NOT EXISTS 'lavado_estanques';
+      ALTER TYPE compliance_category ADD VALUE IF NOT EXISTS 'red_humeda';
+      ALTER TYPE compliance_category ADD VALUE IF NOT EXISTS 'limpieza_vertical';
+      ALTER TYPE compliance_category ADD VALUE IF NOT EXISTS 'poliza_seguro';
+      ALTER TYPE compliance_category ADD VALUE IF NOT EXISTS 'acta_asamblea';
+      ALTER TYPE compliance_category ADD VALUE IF NOT EXISTS 'certificado_vivienda_social';
+    `,
+  },
 ];
 
 // Verificaciones a correr al final (read-only) para confirmar que el schema
@@ -345,6 +362,43 @@ const VERIFICATIONS = [
   {
     label: "building_webhook_keys.api_key unique",
     sql: `SELECT 1 FROM information_schema.table_constraints WHERE table_schema='public' AND table_name='building_webhook_keys' AND constraint_type='UNIQUE';`,
+  },
+  // Categorías nuevas de compliance_category (una verificación por valor).
+  {
+    label: "compliance_category has certificado_copropiedad",
+    sql: `SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname='compliance_category' AND e.enumlabel='certificado_copropiedad';`,
+  },
+  {
+    label: "compliance_category has reglamento_inscrito_cbr",
+    sql: `SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname='compliance_category' AND e.enumlabel='reglamento_inscrito_cbr';`,
+  },
+  {
+    label: "compliance_category has sello_verde",
+    sql: `SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname='compliance_category' AND e.enumlabel='sello_verde';`,
+  },
+  {
+    label: "compliance_category has lavado_estanques",
+    sql: `SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname='compliance_category' AND e.enumlabel='lavado_estanques';`,
+  },
+  {
+    label: "compliance_category has red_humeda",
+    sql: `SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname='compliance_category' AND e.enumlabel='red_humeda';`,
+  },
+  {
+    label: "compliance_category has limpieza_vertical",
+    sql: `SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname='compliance_category' AND e.enumlabel='limpieza_vertical';`,
+  },
+  {
+    label: "compliance_category has poliza_seguro",
+    sql: `SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname='compliance_category' AND e.enumlabel='poliza_seguro';`,
+  },
+  {
+    label: "compliance_category has acta_asamblea",
+    sql: `SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname='compliance_category' AND e.enumlabel='acta_asamblea';`,
+  },
+  {
+    label: "compliance_category has certificado_vivienda_social",
+    sql: `SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname='compliance_category' AND e.enumlabel='certificado_vivienda_social';`,
   },
 ];
 

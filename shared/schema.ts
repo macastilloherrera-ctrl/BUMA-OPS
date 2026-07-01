@@ -1803,6 +1803,15 @@ export const complianceCategoryEnum = pgEnum("compliance_category", [
   "contrato_mantencion",
   "permiso_edificacion",
   "inspeccion_tecnica",
+  "certificado_copropiedad",
+  "reglamento_inscrito_cbr",
+  "sello_verde",
+  "lavado_estanques",
+  "red_humeda",
+  "limpieza_vertical",
+  "poliza_seguro",
+  "acta_asamblea",
+  "certificado_vivienda_social",
   "otro",
 ]);
 
@@ -1819,6 +1828,15 @@ export type ComplianceCategory =
   | "contrato_mantencion"
   | "permiso_edificacion"
   | "inspeccion_tecnica"
+  | "certificado_copropiedad"
+  | "reglamento_inscrito_cbr"
+  | "sello_verde"
+  | "lavado_estanques"
+  | "red_humeda"
+  | "limpieza_vertical"
+  | "poliza_seguro"
+  | "acta_asamblea"
+  | "certificado_vivienda_social"
   | "otro";
 
 export const complianceItems = pgTable("compliance_items", {
