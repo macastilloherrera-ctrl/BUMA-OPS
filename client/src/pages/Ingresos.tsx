@@ -110,12 +110,14 @@ const statusLabels: Record<string, string> = {
   pending: "Pendiente",
   identified: "Identificado",
   rejected: "Rechazado",
+  pending_email: "Pendiente Email",
 };
 
 const statusVariants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   pending: "outline",
   identified: "default",
   rejected: "destructive",
+  pending_email: "outline",
 };
 
 // Acepta RUT chileno formateado (XX.XXX.XXX-X) o sin formato (12345678-9).
@@ -699,6 +701,7 @@ export default function Ingresos() {
             <SelectContent>
               <SelectItem value="all">Todos los estados</SelectItem>
               <SelectItem value="pending">Pendiente</SelectItem>
+              <SelectItem value="pending_email">Pendiente Email</SelectItem>
               <SelectItem value="identified">Identificado</SelectItem>
               <SelectItem value="rejected">Rechazado</SelectItem>
             </SelectContent>
@@ -799,7 +802,9 @@ export default function Ingresos() {
                                       ? "border-yellow-500 text-yellow-700 dark:text-yellow-400"
                                       : income.status === "identified"
                                         ? "bg-green-600 text-white border-green-600"
-                                        : ""
+                                        : income.status === "pending_email"
+                                          ? "border-blue-500 text-blue-700 dark:text-blue-400"
+                                          : ""
                                   }
                                   data-testid={`badge-status-${income.id}`}
                                 >

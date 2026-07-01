@@ -7518,7 +7518,12 @@ export async function registerRoutes(
         return res.status(409).json({ error: lockCheck.reason });
       }
 
-      const status = matchedFromDirectory ? "identified" : "pending";
+      // Sin match en payer_directory el ingreso queda en "pending_email":
+      // es un aviso de pago recibido por email que todavía no se concilió
+      // contra un movimiento bancario real (cartola). El import de cartolas
+      // (/api/bank-statements/import) busca justamente estos candidatos para
+      // parearlos y recién ahí pasan a "identified".
+      const status = matchedFromDirectory ? "identified" : "pending_email";
       const incomeData = insertIncomeSchema.parse({
         buildingId: keyRow.buildingId,
         amount: data.amount.toString(),

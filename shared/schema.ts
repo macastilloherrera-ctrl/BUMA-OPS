@@ -1354,7 +1354,7 @@ export const insertVendorSchema = createInsertSchema(vendors).omit({
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type Vendor = typeof vendors.$inferSelect;
 
-export type IncomeStatus = "pending" | "identified" | "rejected";
+export type IncomeStatus = "pending" | "identified" | "rejected" | "pending_email";
 export type IncomeCategory = "gasto_comun" | "multa" | "arriendo" | "interes_mora" | "fondo_reserva" | "otro";
 export type ExpenseSourceType = "ticket" | "recurrent";
 export type ExpensePaymentStatus = "pending" | "paid" | "cancelled";
