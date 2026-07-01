@@ -325,6 +325,20 @@ function parsePaymentDateChile(input: string): { date: Date; month: number; year
   return { date, month, year };
 }
 
+// Fecha de hoy en America/Santiago, con la misma convención que
+// parsePaymentDateChile (mediodía Chile ≈ 16:00 UTC) para evitar saltos de
+// día. Se usa como fallback cuando un aviso de pago no trae paymentDate.
+function todayChilePaymentDate(): { date: Date; month: number; year: number } {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Santiago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const [year, month, day] = fmt.format(new Date()).split("-").map(Number);
+  return { date: new Date(Date.UTC(year, month - 1, day, 16, 0, 0)), month, year };
+}
+
 // Rate limit por API key: sliding window simple en memoria.
 // 100 requests por minuto por hash de key. Si el proceso reinicia se
 // resetea — aceptable porque la protección principal es el hash, esto
@@ -7464,10 +7478,14 @@ export async function registerRoutes(
       }
 
       // Validación del body
+      // amount, paymentDate y department pueden llegar null/ausentes cuando el
+      // parser de Gemini no logra extraerlos del email. En vez de rechazar el
+      // aviso (perdiéndolo), lo registramos con fallbacks y lo marcamos para
+      // revisión manual (ver más abajo).
       const bodySchema = z.object({
-        amount: z.number().positive(),
-        paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "paymentDate debe ser YYYY-MM-DD"),
-        department: z.string().min(1).max(255).optional().or(z.literal("")),
+        amount: z.number().positive().nullable().optional(),
+        paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "paymentDate debe ser YYYY-MM-DD").nullable().optional(),
+        department: z.string().max(255).nullable().optional(),
         category: z.enum(["gasto_comun", "multa", "arriendo", "interes_mora", "fondo_reserva", "otro"]).optional(),
         payerRut: z.string().max(20).nullable().optional(),
         payerName: z.string().max(255).nullable().optional(),
@@ -7480,9 +7498,30 @@ export async function registerRoutes(
       });
       const data = bodySchema.parse(req.body);
 
-      const parsedDate = parsePaymentDateChile(data.paymentDate);
-      if (!parsedDate) {
-        return res.status(400).json({ error: "paymentDate inválido" });
+      // Avisos de revisión manual que se agregan a `notes` cuando falta algún
+      // dato clave que Gemini no detectó en el email.
+      const manualReviewNotes: string[] = [];
+
+      // paymentDate: si no vino, usamos hoy en America/Santiago (regla 9).
+      let parsedDate: { date: Date; month: number; year: number };
+      if (data.paymentDate) {
+        const parsed = parsePaymentDateChile(data.paymentDate);
+        if (!parsed) {
+          return res.status(400).json({ error: "paymentDate inválido" });
+        }
+        parsedDate = parsed;
+      } else {
+        parsedDate = todayChilePaymentDate();
+      }
+
+      // amount: si no vino, registramos el ingreso con 0 y marcamos para
+      // revisión manual (no perdemos el aviso de pago).
+      let amountValue: string;
+      if (data.amount != null) {
+        amountValue = data.amount.toString();
+      } else {
+        amountValue = "0";
+        manualReviewNotes.push("Monto no detectado en email — revisar manualmente");
       }
 
       // Si vino payerRut, buscamos match en payer_directory para resolver unidad
@@ -7496,8 +7535,11 @@ export async function registerRoutes(
           if (!department) department = match.unit;
         }
       }
+      // department es NOT NULL en la DB. Si no se pudo resolver la unidad,
+      // usamos el placeholder "SIN UNIDAD" y marcamos para revisión manual.
       if (!department) {
-        return res.status(400).json({ error: "No se pudo determinar la unidad (department)" });
+        department = "SIN UNIDAD";
+        manualReviewNotes.push("Unidad no detectada en email — revisar manualmente");
       }
 
       // chargeMonth/Year son opcionales. Si vienen ambos, se usan; si vienen
@@ -7524,9 +7566,17 @@ export async function registerRoutes(
       // (/api/bank-statements/import) busca justamente estos candidatos para
       // parearlos y recién ahí pasan a "identified".
       const status = matchedFromDirectory ? "identified" : "pending_email";
+
+      // Notas finales: las del webhook (si vinieron) + los avisos de revisión
+      // manual generados por datos faltantes, unidos con " | ".
+      const noteParts: string[] = [];
+      if (data.notes && data.notes.trim()) noteParts.push(data.notes.trim());
+      noteParts.push(...manualReviewNotes);
+      const finalNotes = noteParts.length > 0 ? noteParts.join(" | ") : null;
+
       const incomeData = insertIncomeSchema.parse({
         buildingId: keyRow.buildingId,
-        amount: data.amount.toString(),
+        amount: amountValue,
         department,
         description: "abono",
         category: data.category ?? "gasto_comun",
@@ -7538,7 +7588,7 @@ export async function registerRoutes(
         payerRut: data.payerRut ?? null,
         payerName: data.payerName ?? null,
         status,
-        notes: data.notes ?? null,
+        notes: finalNotes,
         createdBy: keyRow.createdBy, // attribuido al super_admin que generó la key
       });
       const income = await storage.createIncome(incomeData);

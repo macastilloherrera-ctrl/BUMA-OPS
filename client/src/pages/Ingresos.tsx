@@ -31,6 +31,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -110,7 +115,14 @@ const statusLabels: Record<string, string> = {
   pending: "Pendiente",
   identified: "Identificado",
   rejected: "Rechazado",
-  pending_email: "Pendiente Email",
+  pending_email: "Pendiente Cartola",
+};
+
+const statusTooltips: Record<string, string> = {
+  pending: "Ingreso registrado manualmente, pendiente de revisión",
+  pending_email: "Ingreso recibido por email, esperando cartola bancaria para conciliar",
+  identified: "Ingreso conciliado y confirmado con cartola bancaria",
+  rejected: "Ingreso descartado",
 };
 
 const statusVariants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -701,7 +713,7 @@ export default function Ingresos() {
             <SelectContent>
               <SelectItem value="all">Todos los estados</SelectItem>
               <SelectItem value="pending">Pendiente</SelectItem>
-              <SelectItem value="pending_email">Pendiente Email</SelectItem>
+              <SelectItem value="pending_email">Pendiente Cartola</SelectItem>
               <SelectItem value="identified">Identificado</SelectItem>
               <SelectItem value="rejected">Rechazado</SelectItem>
             </SelectContent>
@@ -795,21 +807,30 @@ export default function Ingresos() {
                             <TableCell>{income.bank || "-"}</TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1 flex-wrap">
-                                <Badge
-                                  variant={statusVariants[income.status]}
-                                  className={
-                                    income.status === "pending"
-                                      ? "border-yellow-500 text-yellow-700 dark:text-yellow-400"
-                                      : income.status === "identified"
-                                        ? "bg-green-600 text-white border-green-600"
-                                        : income.status === "pending_email"
-                                          ? "border-blue-500 text-blue-700 dark:text-blue-400"
-                                          : ""
-                                  }
-                                  data-testid={`badge-status-${income.id}`}
-                                >
-                                  {statusLabels[income.status] || income.status}
-                                </Badge>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge
+                                      variant={statusVariants[income.status]}
+                                      className={
+                                        income.status === "pending"
+                                          ? "border-yellow-500 text-yellow-700 dark:text-yellow-400"
+                                          : income.status === "identified"
+                                            ? "bg-green-600 text-white border-green-600"
+                                            : income.status === "pending_email"
+                                              ? "border-blue-500 text-blue-700 dark:text-blue-400"
+                                              : ""
+                                      }
+                                      data-testid={`badge-status-${income.id}`}
+                                    >
+                                      {statusLabels[income.status] || income.status}
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  {statusTooltips[income.status] && (
+                                    <TooltipContent>
+                                      <p className="max-w-xs">{statusTooltips[income.status]}</p>
+                                    </TooltipContent>
+                                  )}
+                                </Tooltip>
                                 {income.exportedAt && (
                                   <Badge variant="outline" className="text-xs" data-testid={`badge-exported-${income.id}`}>
                                     Exp.
