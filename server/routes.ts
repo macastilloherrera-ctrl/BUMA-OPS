@@ -10866,6 +10866,145 @@ export async function registerRoutes(
     }
   });
 
+  // ─────────────────────────────────────────────
+  // CALENDARIO DE MANTENCIONES — vencimientos unificados
+  // (Cumplimiento Legal + Equipos Críticos) con semáforo
+  // ─────────────────────────────────────────────
+
+  // Semáforo relativo a "hoy" en zona horaria de Chile (regla 9: nunca
+  // usar la hora local del servidor para cálculos de fecha). Compara días
+  // de calendario, no timestamps, para evitar corrimientos por hora.
+  function chileCalendarMs(d: Date): number {
+    const fmt = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Santiago",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const [y, m, day] = fmt.format(d).split("-").map(Number);
+    return Date.UTC(y, m - 1, day);
+  }
+
+  function computeMaintenanceStatus(dateValue: Date | string): {
+    status: "vencido" | "por_vencer" | "vigente";
+    daysUntil: number;
+  } {
+    const todayMs = chileCalendarMs(new Date());
+    const eventMs = chileCalendarMs(new Date(dateValue));
+    const daysUntil = Math.round((eventMs - todayMs) / (1000 * 60 * 60 * 24));
+    if (daysUntil < 0) return { status: "vencido", daysUntil };
+    if (daysUntil <= 30) return { status: "por_vencer", daysUntil };
+    return { status: "vigente", daysUntil };
+  }
+
+  app.get(
+    "/api/maintenance-calendar",
+    isAuthenticated,
+    requireModule("calendario_mantenciones"),
+    async (req, res) => {
+      try {
+        const { buildingId, month, year, type } = req.query;
+
+        const bId =
+          buildingId && buildingId !== "all" ? String(buildingId) : undefined;
+        const eventType =
+          type === "compliance" || type === "equipment" ? type : "all";
+
+        // month/year son opcionales; si vienen, se filtra al mes de calendario
+        // (chileno). month es 1-12 (el cliente envía getMonth()+1).
+        const monthNum = month != null && month !== "" ? Number(month) : null;
+        const yearNum = year != null && year !== "" ? Number(year) : null;
+        if (
+          (monthNum !== null && (Number.isNaN(monthNum) || monthNum < 1 || monthNum > 12)) ||
+          (yearNum !== null && Number.isNaN(yearNum))
+        ) {
+          return res
+            .status(400)
+            .json({ error: "Parámetros month/year inválidos (month debe ser 1-12)" });
+        }
+
+        const buildings = await storage.getBuildings();
+        const buildingMap = Object.fromEntries(
+          buildings.map((b) => [b.id, b.name]),
+        );
+
+        type CalendarEvent = {
+          id: string;
+          type: "compliance" | "equipment";
+          name: string;
+          buildingName: string;
+          date: Date;
+          status: "vencido" | "por_vencer" | "vigente";
+          category: string;
+        };
+
+        const events: CalendarEvent[] = [];
+
+        if (eventType === "compliance" || eventType === "all") {
+          const items = await storage.getComplianceItems(bId);
+          for (const item of items) {
+            if (!item.expiryDate) continue; // sin fecha → no va al calendario
+            events.push({
+              id: item.id,
+              type: "compliance",
+              name: item.name,
+              buildingName: buildingMap[item.buildingId] || "—",
+              date: item.expiryDate,
+              status: computeMaintenanceStatus(item.expiryDate).status,
+              category: item.category,
+            });
+          }
+        }
+
+        if (eventType === "equipment" || eventType === "all") {
+          const assets = await storage.getCriticalAssets(bId);
+          for (const asset of assets) {
+            if (!asset.nextMaintenanceDate) continue; // sin próxima mantención → skip
+            events.push({
+              id: asset.id,
+              type: "equipment",
+              name: asset.name,
+              buildingName: buildingMap[asset.buildingId] || "—",
+              date: asset.nextMaintenanceDate,
+              status: computeMaintenanceStatus(asset.nextMaintenanceDate).status,
+              category: asset.type,
+            });
+          }
+        }
+
+        // Filtro por mes/año de calendario chileno (si se especificó).
+        const filtered =
+          monthNum !== null && yearNum !== null
+            ? events.filter((e) => {
+                const fmt = new Intl.DateTimeFormat("en-CA", {
+                  timeZone: "America/Santiago",
+                  year: "numeric",
+                  month: "2-digit",
+                });
+                const [y, m] = fmt.format(new Date(e.date)).split("-").map(Number);
+                return y === yearNum && m === monthNum;
+              })
+            : events;
+
+        // Orden ascendente por fecha (para la vista de lista).
+        filtered.sort(
+          (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime(),
+        );
+
+        res.json(filtered);
+      } catch (error) {
+        console.error(
+          "[maintenance-calendar] Error al construir el calendario de mantenciones " +
+            `(buildingId=${req.query.buildingId}, month=${req.query.month}, year=${req.query.year}, type=${req.query.type}):`,
+          error,
+        );
+        res
+          .status(500)
+          .json({ error: "Error al obtener el calendario de mantenciones" });
+      }
+    },
+  );
+
   // ─── Repositorio Documental Centralizado ───────────────────────────────────
   app.get("/api/repositorio-documentos", isAuthenticated, async (req, res) => {
     try {

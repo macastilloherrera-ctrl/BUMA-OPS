@@ -16,6 +16,7 @@ import {
   LayoutDashboard,
   Calendar,
   CalendarDays,
+  CalendarClock,
   Ticket,
   Building2,
   Wrench,
@@ -131,6 +132,7 @@ const allNavGroups: NavGroup[] = [
     items: [
       { path: "/edificios", label: "Edificios", icon: Building2, moduleKey: "edificios" },
       { path: "/equipos", label: "Equipos Críticos", icon: Wrench, moduleKey: "equipos_criticos" },
+      { path: "/calendario-mantenciones", label: "Calendario de Mantenciones", icon: CalendarClock, moduleKey: "calendario_mantenciones" },
       { path: "/mantenedores", label: "Proveedores", icon: HardHat, moduleKey: "mantenedores" },
       { path: "/ejecutivos", label: "Ejecutivos", icon: Users, moduleKey: "ejecutivos" },
       { path: "/cumplimiento-legal", label: "Cumplimiento Legal", icon: ShieldAlert, moduleKey: "cumplimiento_legal" },

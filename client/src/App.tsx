@@ -67,6 +67,7 @@ import GestionPermisos from "@/pages/GestionPermisos";
 import ChatIA from "@/pages/ChatIA";
 import MonitoreoChat from "@/pages/MonitoreoChat";
 import CumplimientoLegal from "@/pages/CumplimientoLegal";
+import CalendarioMantenciones from "@/pages/CalendarioMantenciones";
 import RepositorioDocumentos from "@/pages/RepositorioDocumentos";
 
 function LoadingScreen() {
@@ -205,6 +206,10 @@ function AuthenticatedApp() {
 
                 {m.equipos_criticos && (
                   <Route path="/equipos" component={CriticalAssets} />
+                )}
+
+                {m.calendario_mantenciones && (
+                  <Route path="/calendario-mantenciones" component={CalendarioMantenciones} />
                 )}
                 
                 {m.proyectos && (
