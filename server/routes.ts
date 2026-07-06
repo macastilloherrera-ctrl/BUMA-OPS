@@ -12,6 +12,7 @@ import { registerObjectStorageRoutes } from "./replit_integrations/object_storag
 import { registerDevAuthRoutes, isDevMode } from "./devAuth";
 import { parseBankFile } from "./bankParsers";
 import { sendChatMessage, generateConversationTitle } from "./geminiChat";
+import { AMOUNT_MATCH_TOLERANCE, normalizeRut } from "@shared/reconciliation";
 
 function generateConserjeriaUsername(buildingName: string): string {
   const prefixes = [
@@ -228,8 +229,8 @@ function sanitizeCostFields(body: any, isManager: boolean): any {
 }
 
 // Vincula automáticamente una transacción bancaria identificada con su
-// income correspondiente cuando hay un único match (mismo edificio, mismo
-// monto, mismo periodo y sin bankOperationId previo). Para splits y casos
+// income correspondiente cuando hay un único match (mismo edificio, mismo RUT,
+// mismo monto exacto, sin bankTransactionId previo). Para splits y casos
 // ambiguos se hace manualmente. Al enlazar también promueve el income a
 // status "identified" para que entre en los exports y registra un audit_log
 // income_auto_identified.
@@ -241,10 +242,15 @@ async function tryLinkBankTxnToIncome(
     periodMonth: number;
     periodYear: number;
     assignedUnitsSplit?: string | null;
+    payerRut?: string | null;
   },
   actorUserId?: string,
 ): Promise<void> {
   if (txn.assignedUnitsSplit) return;
+  // Fase 1 / decisión 2: sin RUT en el movimiento NO se auto-confirma por
+  // RUT+monto. Cae a la cascada de tabla maestra / revisión manual.
+  const txnRut = normalizeRut(txn.payerRut);
+  if (!txnRut) return;
   try {
     const candidates = await storage.getIncomes({
       buildingId: txn.buildingId,
@@ -252,13 +258,19 @@ async function tryLinkBankTxnToIncome(
       year: txn.periodYear,
     });
     const txnAmount = parseFloat(txn.amount);
+    // Match por RUT + monto exacto (tolerancia unificada). El RUT desempata
+    // cuando varias unidades pagan el mismo monto; sólo ingresos aún no
+    // enlazados a un movimiento (!bankTransactionId).
     const matches = candidates.filter(
-      (i) => Math.abs(parseFloat(i.amount) - txnAmount) < 0.01 && !i.bankOperationId,
+      (i) =>
+        !i.bankTransactionId &&
+        normalizeRut(i.payerRut) === txnRut &&
+        Math.abs(parseFloat(i.amount) - txnAmount) <= AMOUNT_MATCH_TOLERANCE,
     );
     if (matches.length === 1) {
       const matched = matches[0];
       const updated = await storage.updateIncome(matched.id, {
-        bankOperationId: txn.id,
+        bankTransactionId: txn.id,
         status: "identified",
       });
       try {
@@ -293,9 +305,9 @@ async function tryLinkBankTxnToIncome(
 
 async function unlinkBankTxnFromIncome(bankTxnId: string): Promise<void> {
   try {
-    const linked = await storage.getIncomeByBankOperationId(bankTxnId);
+    const linked = await storage.getIncomeByBankTransactionId(bankTxnId);
     if (linked) {
-      await storage.updateIncome(linked.id, { bankOperationId: null });
+      await storage.updateIncome(linked.id, { bankTransactionId: null });
     }
   } catch (e) {
     console.error("[bank-unlink] error clearing income link:", e);
@@ -7709,7 +7721,7 @@ export async function registerRoutes(
         month: data.chargeMonth,
         year: data.chargeYear,
       });
-      const candidatesPendingEmail = allPeriodIncomes.filter((i) => (i.status as string) === "pending_email" && !i.bankOperationId);
+      const candidatesPendingEmail = allPeriodIncomes.filter((i) => (i.status as string) === "pending_email" && !i.bankTransactionId);
 
       let insertados = 0;
       let conciliados = 0;
@@ -7768,21 +7780,25 @@ export async function registerRoutes(
         });
         insertados++;
 
-        // Buscar match en incomes pending_email — tolerancia ±1%
-        const tolerance = mov.monto * 0.01;
-        const matches = candidatesPendingEmail.filter((i) => {
-          if (i.bankOperationId) return false;
-          const diff = Math.abs(parseFloat(i.amount) - mov.monto);
-          return diff <= tolerance;
-        });
+        // Match RUT + monto exacto (Fase 1, tolerancia unificada). El RUT
+        // desempata cuando varias unidades pagan el mismo monto. Sin RUT en el
+        // movimiento no matchea (decisión 2): cae a manual / tabla maestra.
+        const movRut = normalizeRut(mov.rutPagador);
+        const matches = movRut
+          ? candidatesPendingEmail.filter((i) => {
+              if (i.bankTransactionId) return false;
+              if (normalizeRut(i.payerRut) !== movRut) return false;
+              return Math.abs(parseFloat(i.amount) - mov.monto) <= AMOUNT_MATCH_TOLERANCE;
+            })
+          : [];
         if (matches.length === 1) {
           const income = matches[0];
           await storage.updateIncome(income.id, {
-            bankOperationId: txn.id,
+            bankTransactionId: txn.id,
             status: "identified",
           });
           // Marcar el income como ya usado para no doble-matchearlo en la misma corrida
-          income.bankOperationId = txn.id;
+          income.bankTransactionId = txn.id;
           await storage.updateBankTransaction(txn.id, {
             status: "identified",
             identifiedBy: req.user!.id,
@@ -8645,16 +8661,16 @@ export async function registerRoutes(
 
       // Enriquecemos cada txn con linkedIncomeId: null para que el front
       // pueda saber si ya hay un income enlazado (sin un round trip extra).
-      let incomesByBankOpId = new Map<string, string>();
+      let incomesByBankTxnId = new Map<string, string>();
       if (buildingId && month && year) {
         const periodIncomes = await storage.getIncomes({ buildingId, month, year });
         for (const inc of periodIncomes) {
-          if (inc.bankOperationId) incomesByBankOpId.set(inc.bankOperationId, inc.id);
+          if (inc.bankTransactionId) incomesByBankTxnId.set(inc.bankTransactionId, inc.id);
         }
       }
       const enriched = transactions.map((t) => ({
         ...t,
-        linkedIncomeId: incomesByBankOpId.get(t.id) ?? null,
+        linkedIncomeId: incomesByBankTxnId.get(t.id) ?? null,
       }));
       res.json(enriched);
     } catch (error) {
@@ -9231,7 +9247,7 @@ export async function registerRoutes(
   // Crea un income a partir de una bank transaction identificada que aún no
   // está enlazada a ningún income. Útil cuando el match automático no encontró
   // un income preexistente. El income queda en status="identified" y enlazado
-  // a la txn vía bankOperationId.
+  // a la txn vía bankTransactionId.
   app.post("/api/bank-transactions/:id/create-income", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
@@ -9258,7 +9274,7 @@ export async function registerRoutes(
           error: "La transacción no tiene unidad asignada",
         });
       }
-      const existing = await storage.getIncomeByBankOperationId(txn.id);
+      const existing = await storage.getIncomeByBankTransactionId(txn.id);
       if (existing) {
         return res.status(409).json({
           error: "Ya existe un ingreso vinculado a esta transacción",
@@ -9288,7 +9304,8 @@ export async function registerRoutes(
         category: incomeCategory,
         paymentDate,
         bank: txn.bankName || txn.sourceBank || null,
-        bankOperationId: txn.id,
+        bankTransactionId: txn.id,
+        bankOperationId: txn.reference ?? null,
         payerRut: txn.payerRut || null,
         payerName: txn.payerName || null,
         status: "identified",

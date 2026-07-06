@@ -60,7 +60,7 @@ import { useAuth } from "@/hooks/use-auth";
 import type { Building, BankTransaction, PayerDirectoryEntry } from "@shared/schema";
 
 // El GET /api/bank-transactions enriquece la respuesta con linkedIncomeId
-// (id del income enlazado vía bankOperationId, o null si no hay).
+// (id del income enlazado vía bankTransactionId, o null si no hay).
 type BankTransactionWithLink = BankTransaction & { linkedIncomeId?: string | null };
 
 const months = [

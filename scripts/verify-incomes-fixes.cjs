@@ -65,11 +65,11 @@ function check1AutoIdentified() {
   const fnEnd = ROUTES.indexOf("\n}\n", fnStart);
   const body = ROUTES.slice(fnStart, fnEnd);
   const setsStatus = /status:\s*"identified"/.test(body);
-  const setsBankOp = /bankOperationId:\s*txn\.id/.test(body);
+  const setsBankOp = /bankTransactionId:\s*txn\.id/.test(body);
   const writesAudit = /action:\s*"income_auto_identified"/.test(body);
   const passesActor = /actorUserId\?:\s*string/.test(body);
   console.log(`  setea status="identified":         ${setsStatus ? "✅" : "❌"}`);
-  console.log(`  setea bankOperationId=txn.id:      ${setsBankOp ? "✅" : "❌"}`);
+  console.log(`  setea bankTransactionId=txn.id:    ${setsBankOp ? "✅" : "❌"}`);
   console.log(`  audit action income_auto_identified: ${writesAudit ? "✅" : "❌"}`);
   console.log(`  acepta actorUserId opcional:       ${passesActor ? "✅" : "❌"}`);
 
@@ -94,16 +94,16 @@ function check2CreateIncomeEndpoint() {
   const slice = ROUTES.slice(ROUTES.indexOf(route));
   const hasStatusCheck = /txn\.status\s*!==\s*"identified"/.test(slice.slice(0, 4000));
   const setsIdentifiedStatus = /status:\s*"identified"/.test(slice.slice(0, 4000));
-  const setsBankOpId = /bankOperationId:\s*txn\.id/.test(slice.slice(0, 4000));
+  const setsBankOpId = /bankTransactionId:\s*txn\.id/.test(slice.slice(0, 4000));
   const auditAction = /action:\s*"create_income_from_bank_txn"/.test(slice.slice(0, 4000));
   console.log(`  rechaza si txn.status != identified: ${hasStatusCheck ? "✅" : "❌"}`);
   console.log(`  income creado con status=identified: ${setsIdentifiedStatus ? "✅" : "❌"}`);
-  console.log(`  income.bankOperationId = txn.id:     ${setsBankOpId ? "✅" : "❌"}`);
+  console.log(`  income.bankTransactionId = txn.id:   ${setsBankOpId ? "✅" : "❌"}`);
   console.log(`  audit log create_income_from_bank_txn: ${auditAction ? "✅" : "❌"}`);
 
   const btnLine = locate(CONCILIACION, "Registrar Ingreso");
   console.log(`  botón "Registrar Ingreso" en UI:     ${btnLine ? `✅ (L${btnLine})` : "❌"}`);
-  const enriched = /linkedIncomeId:\s*incomesByBankOpId/.test(ROUTES);
+  const enriched = /linkedIncomeId:\s*incomesByBankTxnId/.test(ROUTES);
   console.log(`  GET /api/bank-transactions enriquece linkedIncomeId: ${enriched ? "✅" : "❌"}`);
   return { ok: hasStatusCheck && setsIdentifiedStatus && setsBankOpId && auditAction && !!btnLine && enriched };
 }
@@ -275,7 +275,7 @@ async function dbSanityCheck(client) {
     WHERE table_schema = 'public' AND table_name = 'incomes'
   `);
   const colSet = new Set(cols.rows.map((r) => r.column_name));
-  const needed = ["payer_rut", "payer_name", "bank_operation_id", "exported_at", "status"];
+  const needed = ["payer_rut", "payer_name", "bank_operation_id", "bank_transaction_id", "exported_at", "status"];
   const missing = needed.filter((c) => !colSet.has(c));
   console.log(`  columnas requeridas presentes:        ${missing.length === 0 ? "✅" : "❌ falta: " + missing.join(",")}`);
 
@@ -301,7 +301,7 @@ async function dbSanityCheck(client) {
   const orphans = await client.query(`
     SELECT bt.id, bt.building_id, bt.amount, bt.txn_date, bt.assigned_unit
     FROM bank_transactions bt
-    LEFT JOIN incomes i ON i.bank_operation_id = bt.id
+    LEFT JOIN incomes i ON i.bank_transaction_id = bt.id
     WHERE bt.status = 'identified'
       AND bt.assigned_units_split IS NULL
       AND bt.assigned_unit IS NOT NULL
@@ -316,16 +316,16 @@ async function dbSanityCheck(client) {
     );
   }
 
-  // e) incomes con bankOperationId pero status != identified — debería ser raro tras Fix 1
+  // e) incomes con bank_transaction_id (enlace) pero status != identified — debería ser raro
   const inconsistent = await client.query(`
     SELECT id, status, amount, payment_date
     FROM incomes
-    WHERE bank_operation_id IS NOT NULL
+    WHERE bank_transaction_id IS NOT NULL
       AND status <> 'identified'
     ORDER BY payment_date DESC
     LIMIT 10
   `);
-  console.log(`  incomes con bank_operation_id pero status != identified: ${inconsistent.rows.length}`);
+  console.log(`  incomes con bank_transaction_id pero status != identified: ${inconsistent.rows.length}`);
   for (const r of inconsistent.rows) {
     console.log(`    income=${r.id.slice(0, 8)}… status=${r.status} monto=${r.amount}`);
   }

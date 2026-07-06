@@ -1553,8 +1553,8 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  async getIncomeByBankOperationId(bankOperationId: string): Promise<Income | undefined> {
-    const [income] = await db.select().from(incomes).where(eq(incomes.bankOperationId, bankOperationId));
+  async getIncomeByBankTransactionId(bankTransactionId: string): Promise<Income | undefined> {
+    const [income] = await db.select().from(incomes).where(eq(incomes.bankTransactionId, bankTransactionId));
     return income || undefined;
   }
 

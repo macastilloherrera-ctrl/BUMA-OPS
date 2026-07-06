@@ -1226,7 +1226,10 @@ export const incomes = pgTable("incomes", {
   chargeMonth: integer("charge_month"),
   chargeYear: integer("charge_year"),
   bank: varchar("bank", { length: 255 }),
+  // N° de operación del EMAIL (dato de identificación que aporta el aviso de pago).
   bankOperationId: varchar("bank_operation_id", { length: 255 }),
+  // Enlace al movimiento de cartola conciliado (bank_transactions.id). Marca de "conciliado".
+  bankTransactionId: varchar("bank_transaction_id", { length: 255 }),
   payerRut: varchar("payer_rut", { length: 20 }),
   payerName: varchar("payer_name", { length: 255 }),
   status: incomeStatusEnum("status").notNull().default("pending"),

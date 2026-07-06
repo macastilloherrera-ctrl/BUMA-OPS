@@ -262,6 +262,13 @@ const STEPS = [
       ALTER TYPE compliance_category ADD VALUE IF NOT EXISTS 'certificado_vivienda_social';
     `,
   },
+  {
+    // Fase 0 rediseño conciliación: separa el enlace al movimiento (nueva
+    // columna bank_transaction_id) del N° de operación del email
+    // (bank_operation_id, que se conserva). Ver DISENO-conciliacion-unificada.md.
+    label: "incomes.bank_transaction_id column",
+    sql: `ALTER TABLE incomes ADD COLUMN IF NOT EXISTS bank_transaction_id varchar(255);`,
+  },
 ];
 
 // Verificaciones a correr al final (read-only) para confirmar que el schema
@@ -399,6 +406,10 @@ const VERIFICATIONS = [
   {
     label: "compliance_category has certificado_vivienda_social",
     sql: `SELECT 1 FROM pg_type t JOIN pg_enum e ON t.oid = e.enumtypid WHERE t.typname='compliance_category' AND e.enumlabel='certificado_vivienda_social';`,
+  },
+  {
+    label: "incomes.bank_transaction_id",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='incomes' AND column_name='bank_transaction_id';`,
   },
 ];
 
