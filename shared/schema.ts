@@ -1236,6 +1236,12 @@ export const incomes = pgTable("incomes", {
   // resuelva. Ver DISENO-conciliacion-unificada.md (Fase 2).
   possibleDuplicate: boolean("possible_duplicate").notNull().default(false),
   duplicateOfIncomeId: varchar("duplicate_of_income_id"),
+  // Fase 4: confirmación manual de un provisional SIN cartola que lo respalde
+  // (override consciente de un gerente cuando la cartola aún no llegó/no existe).
+  // Marca visible y filtrable; el motivo opcional se guarda acá y el quién/cuándo
+  // queda en audit_logs (acción income_confirmed_without_bank).
+  confirmedWithoutBank: boolean("confirmed_without_bank").notNull().default(false),
+  confirmedWithoutBankReason: text("confirmed_without_bank_reason"),
   payerRut: varchar("payer_rut", { length: 20 }),
   payerName: varchar("payer_name", { length: 255 }),
   status: incomeStatusEnum("status").notNull().default("pending"),

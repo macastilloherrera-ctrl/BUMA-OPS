@@ -298,6 +298,15 @@ const STEPS = [
     label: "bank_transactions.review_reason column",
     sql: `ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS review_reason bank_txn_review_reason;`,
   },
+  {
+    // Fase 4: marca de confirmación manual de un provisional sin cartola
+    // (override de gerente). Filtrable + motivo opcional. DEFAULT false backfillea.
+    label: "incomes.confirmed_without_bank / reason",
+    sql: `
+      ALTER TABLE incomes ADD COLUMN IF NOT EXISTS confirmed_without_bank boolean NOT NULL DEFAULT false;
+      ALTER TABLE incomes ADD COLUMN IF NOT EXISTS confirmed_without_bank_reason text;
+    `,
+  },
 ];
 
 // Verificaciones a correr al final (read-only) para confirmar que el schema
@@ -455,6 +464,14 @@ const VERIFICATIONS = [
   {
     label: "bank_transactions.review_reason",
     sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='bank_transactions' AND column_name='review_reason';`,
+  },
+  {
+    label: "incomes.confirmed_without_bank",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='incomes' AND column_name='confirmed_without_bank';`,
+  },
+  {
+    label: "incomes.confirmed_without_bank_reason",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='incomes' AND column_name='confirmed_without_bank_reason';`,
   },
 ];
 

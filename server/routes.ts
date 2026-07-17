@@ -7290,6 +7290,66 @@ export async function registerRoutes(
     }
   });
 
+  // Fase 4 — Confirmar un provisional del email A MANO, sin cartola que lo
+  // respalde. Override consciente del principio "nada real sin cartola": queda
+  // marcado confirmed_without_bank (visible + filtrable) y con evento de
+  // auditoría propio (quién/cuándo/motivo). Solo aplica a provisionales aún no
+  // conciliados; nunca sobre un ingreso ya enlazado a la cartola.
+  app.post("/api/incomes/:id/confirm-without-bank", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden confirmar ingresos a mano" });
+      }
+      const income = await storage.getIncome(req.params.id);
+      if (!income) {
+        return res.status(404).json({ error: "Ingreso no encontrado" });
+      }
+      if (income.bankTransactionId) {
+        return res.status(400).json({ error: "Este ingreso ya está conciliado con la cartola; no requiere confirmación manual." });
+      }
+      if ((income.status as string) === "rejected") {
+        return res.status(400).json({ error: "El ingreso está rechazado." });
+      }
+      if (income.possibleDuplicate) {
+        return res.status(400).json({ error: "El ingreso es un posible duplicado sin resolver; resolvé el duplicado primero." });
+      }
+      if (income.paymentDate) {
+        const period = resolveIncomePeriod({ chargeMonth: income.chargeMonth, chargeYear: income.chargeYear, paymentDate: income.paymentDate });
+        const lockCheck = await assertCycleNotLocked(income.buildingId, period.month, period.year);
+        if (lockCheck.locked) return res.status(409).json({ error: lockCheck.reason });
+      }
+
+      const reason = typeof req.body?.reason === "string" && req.body.reason.trim()
+        ? req.body.reason.trim().slice(0, 500)
+        : null;
+
+      const updated = await storage.updateIncome(income.id, {
+        status: "identified",
+        confirmedWithoutBank: true,
+        confirmedWithoutBankReason: reason,
+      });
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "income_confirmed_without_bank",
+          entityType: "income",
+          entityId: income.id,
+          buildingId: income.buildingId,
+          metadata: JSON.stringify({ reason, previousStatus: income.status, amount: income.amount, department: income.department }),
+        });
+      } catch (e) { console.error("[confirm-without-bank] audit error:", e); }
+
+      res.json(updated);
+    } catch (error) {
+      console.error("Error confirmando ingreso sin cartola:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   // Split a deposit into multiple department incomes.
   // Los inserts se ejecutan dentro de una transacción explícita: si falla
   // cualquiera, se hace ROLLBACK y no queda ningún ingreso parcial creado.
@@ -9200,6 +9260,36 @@ export async function registerRoutes(
         createdBy: req.user!.id,
       });
       const income = await storage.createIncome(data);
+
+      // Fase 4: aprendizaje. Al crear un ingreso desde un movimiento resuelto a
+      // mano, alimentamos payer_directory para que la próxima cartola identifique
+      // sola a este pagador. Simétrico con /assign. Guarda anti-duplicado: no
+      // re-crea si ya existe una entrada equivalente (mismo RUT/patrón → unidad).
+      try {
+        const unit = txn.assignedUnit;
+        if (unit && (txn.payerRut || txn.payerName || txn.description)) {
+          const dir = await storage.getPayerDirectory(txn.buildingId);
+          const alreadyKnown = dir.some((d) =>
+            d.unit === unit && (
+              (txn.payerRut && d.rut === txn.payerRut) ||
+              (!txn.payerRut && d.pattern && (txn.payerName || txn.description || "").toLowerCase().includes(d.pattern.toLowerCase()))
+            ),
+          );
+          if (!alreadyKnown) {
+            await storage.createPayerDirectoryEntry({
+              buildingId: txn.buildingId,
+              rut: txn.payerRut || null,
+              pattern: txn.payerName ? txn.payerName.substring(0, 100) : (txn.description ? txn.description.substring(0, 100) : null),
+              unit,
+              confidence: 90,
+              notes: "Auto-creado desde creación de ingreso (revisión manual)",
+              createdBy: req.user!.id,
+            });
+          }
+        }
+      } catch (e) {
+        console.error("[create-income] payer_directory feedback error:", e);
+      }
 
       try {
         const user = req.user as any;

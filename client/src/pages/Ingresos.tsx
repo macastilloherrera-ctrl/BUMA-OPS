@@ -24,6 +24,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import ColaRevision, { type DuplicatePair } from "@/components/ingresos/ColaRevision";
 import {
   Dialog,
   DialogContent,
@@ -217,6 +219,40 @@ export default function Ingresos() {
       return res.json();
     },
   });
+
+  // Fase 4 — cola de revisión: necesita TODOS los estados del período (sin el
+  // filtro de status), para hallar provisionales huérfanos y posibles duplicados.
+  const reviewParams = new URLSearchParams();
+  if (selectedBuilding !== "all") reviewParams.set("buildingId", selectedBuilding);
+  if (selectedMonth) reviewParams.set("month", selectedMonth);
+  if (selectedYear) reviewParams.set("year", selectedYear);
+  const { data: reviewIncomes } = useQuery<Income[]>({
+    queryKey: ["/api/incomes", "review", selectedBuilding, selectedMonth, selectedYear],
+    queryFn: async () => {
+      const res = await fetch(`/api/incomes?${reviewParams.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Error al cargar ingresos");
+      return res.json();
+    },
+  });
+
+  const [mainTab, setMainTab] = useState<"ingresos" | "revision">("ingresos");
+
+  // Cola 1: provisionales pending_email sin cartola y NO congelados (los
+  // congelados van solo a la cola de duplicados). Cola 2: posibles duplicados
+  // apareados con su original (mismo período → está en la misma lista).
+  const orphanProvisionals = (reviewIncomes ?? []).filter(
+    (i) => i.status === "pending_email" && !i.bankTransactionId && !i.possibleDuplicate,
+  );
+  const duplicatePairs: DuplicatePair[] = (reviewIncomes ?? [])
+    .filter((i) => i.possibleDuplicate)
+    .map((dup) => ({ dup, original: (reviewIncomes ?? []).find((o) => o.id === dup.duplicateOfIncomeId) ?? null }));
+  const reviewCount = orphanProvisionals.length + duplicatePairs.length;
+
+  // Fase 4 — filtro "Sin cartola" en la tabla principal: ingresos confirmados a
+  // mano sin cartola que los respalde (override auditado).
+  const [onlyWithoutBank, setOnlyWithoutBank] = useState(false);
+  const withoutBankCount = (incomes ?? []).filter((i) => i.confirmedWithoutBank).length;
+  const displayedIncomes = (incomes ?? []).filter((i) => !onlyWithoutBank || i.confirmedWithoutBank);
 
   const form = useForm<IncomeFormValues>({
     resolver: zodResolver(incomeFormSchema),
@@ -630,6 +666,16 @@ export default function Ingresos() {
       </div>
 
       <div className="flex-1 overflow-auto pb-20 md:pb-6 p-4 md:p-6">
+        <Tabs value={mainTab} onValueChange={(v) => setMainTab(v as "ingresos" | "revision")}>
+          <TabsList className="mb-4">
+            <TabsTrigger value="ingresos" data-testid="tab-ingresos">Ingresos</TabsTrigger>
+            <TabsTrigger value="revision" data-testid="tab-revision">
+              Revisión
+              {reviewCount > 0 && <Badge variant="secondary" className="ml-2">{reviewCount}</Badge>}
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="ingresos">
         {buildingsLoading || incomesLoading ? (
           <div className="space-y-4">
             <Skeleton className="h-20 w-full" />
@@ -678,8 +724,18 @@ export default function Ingresos() {
 
             {incomes && incomes.length > 0 ? (
               <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between gap-2">
                   <CardTitle className="text-base">Detalle de Ingresos</CardTitle>
+                  {withoutBankCount > 0 && (
+                    <Button
+                      variant={onlyWithoutBank ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setOnlyWithoutBank((v) => !v)}
+                      data-testid="filter-without-bank"
+                    >
+                      Sin cartola ({withoutBankCount})
+                    </Button>
+                  )}
                 </CardHeader>
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
@@ -698,7 +754,7 @@ export default function Ingresos() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {incomes.map((income, index) => (
+                        {displayedIncomes.map((income, index) => (
                           <TableRow key={income.id} data-testid={`row-income-${income.id}`}>
                             <TableCell className="font-medium">{index + 1}</TableCell>
                             <TableCell>{getBuildingName(income.buildingId)}</TableCell>
@@ -739,6 +795,21 @@ export default function Ingresos() {
                                     </TooltipContent>
                                   )}
                                 </Tooltip>
+                                {income.confirmedWithoutBank && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Badge variant="outline" className="text-xs border-amber-500 text-amber-700 cursor-help" data-testid={`badge-sin-cartola-${income.id}`}>
+                                        Sin cartola
+                                      </Badge>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p className="max-w-xs">
+                                        Confirmado a mano, sin movimiento de cartola que lo respalde.
+                                        {income.confirmedWithoutBankReason ? ` Motivo: ${income.confirmedWithoutBankReason}` : ""}
+                                      </p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
                                 {income.exportedAt && (
                                   <Badge variant="outline" className="text-xs" data-testid={`badge-exported-${income.id}`}>
                                     Exp.
@@ -788,6 +859,12 @@ export default function Ingresos() {
             )}
           </>
         )}
+          </TabsContent>
+
+          <TabsContent value="revision">
+            <ColaRevision orphans={orphanProvisionals} duplicatePairs={duplicatePairs} buildings={buildings} />
+          </TabsContent>
+        </Tabs>
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog(); }}>

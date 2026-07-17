@@ -111,6 +111,15 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   ignored: { label: "Ignorado", variant: "destructive", className: "" },
 };
 
+// Fase 4 — cola de movimientos sin identificar: motivo de revisión manual
+// (poblado por el motor único, Fase 3). Cada motivo implica una acción distinta.
+const reviewReasonConfig: Record<string, { label: string; hint: string }> = {
+  no_rut: { label: "Sin RUT", hint: "El movimiento no trae RUT: no se pudo identificar por RUT+monto ni por la tabla maestra. Asigná la unidad a mano." },
+  no_directory: { label: "Edificio sin tabla", hint: "Este edificio no tiene tabla maestra de pagadores. Asigná la unidad a mano para empezar a poblarla." },
+  directory_no_match: { label: "Tabla no identificó", hint: "Hay tabla maestra pero no reconoció a este pagador. Asigná la unidad a mano; el sistema aprenderá para la próxima." },
+  multi_match: { label: "Ambiguo", hint: "Varios avisos de pago calzan (mismo RUT y monto). Asigná manualmente cuál corresponde." },
+};
+
 const stepLabels = [
   "Selección",
   "Carga",
@@ -243,6 +252,15 @@ export default function ConciliacionBancaria() {
     multi: transactions?.filter((t) => t.status === "multi").length || 0,
     ignored: transactions?.filter((t) => t.status === "ignored").length || 0,
   };
+
+  // Fase 4 — desglose de los pendientes por motivo de revisión (cola 3).
+  const reviewReasonCounts = (transactions ?? [])
+    .filter((t) => t.status === "pending")
+    .reduce<Record<string, number>>((acc, t) => {
+      const key = (t as any).reviewReason || "unknown";
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
 
   const suggestedWithUnit = transactions?.filter((t) => t.status === "suggested" && t.assignedUnit) ?? [];
   const suggestedHighScore = suggestedWithUnit.filter((t) => (t.matchScore ?? 0) >= 80);
@@ -1056,6 +1074,22 @@ export default function ConciliacionBancaria() {
           </div>
         </div>
 
+        {activeTab === "pending" && statusCounts.pending > 0 && (
+          <div className="flex items-center gap-2 flex-wrap text-xs" data-testid="review-reason-breakdown">
+            <span className="text-muted-foreground">Motivo de revisión:</span>
+            {(["no_rut", "no_directory", "directory_no_match", "multi_match", "unknown"] as const).map((key) =>
+              reviewReasonCounts[key] ? (
+                <Badge key={key} variant="outline" className="border-orange-400 text-orange-700">
+                  {(reviewReasonConfig[key]?.label ?? "Motivo desconocido")}: {reviewReasonCounts[key]}
+                </Badge>
+              ) : null,
+            )}
+            {reviewReasonCounts.unknown ? (
+              <span className="text-muted-foreground">(los "desconocido" son movimientos previos a Fase 3 — re-conciliá para clasificarlos)</span>
+            ) : null}
+          </div>
+        )}
+
         <Card>
           <CardContent className="p-0">
             {txnLoading ? (
@@ -1107,6 +1141,16 @@ export default function ConciliacionBancaria() {
                         <TableCell>
                           <div className="flex items-center gap-1 flex-wrap">
                             <StatusBadge status={txn.status} />
+                            {txn.status === "pending" && (txn as any).reviewReason && reviewReasonConfig[(txn as any).reviewReason] && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge variant="outline" className="text-xs border-orange-400 text-orange-700 cursor-help" data-testid={`badge-review-reason-${txn.id}`}>
+                                    {reviewReasonConfig[(txn as any).reviewReason].label}
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent className="max-w-xs">{reviewReasonConfig[(txn as any).reviewReason].hint}</TooltipContent>
+                              </Tooltip>
+                            )}
                             {txn.exportedAt && (
                               <Badge variant="outline" className="text-xs" data-testid={`badge-exported-${txn.id}`}>
                                 Exp.
