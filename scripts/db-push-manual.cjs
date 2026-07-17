@@ -269,6 +269,16 @@ const STEPS = [
     label: "incomes.bank_transaction_id column",
     sql: `ALTER TABLE incomes ADD COLUMN IF NOT EXISTS bank_transaction_id varchar(255);`,
   },
+  {
+    // Fase 2 dedup de correos: flag de posible duplicado (ortogonal al status)
+    // + puntero self-FK al ingreso original. DEFAULT false backfillea filas
+    // existentes. Ver DISENO-conciliacion-unificada.md (Fase 2).
+    label: "incomes.possible_duplicate / duplicate_of_income_id",
+    sql: `
+      ALTER TABLE incomes ADD COLUMN IF NOT EXISTS possible_duplicate boolean NOT NULL DEFAULT false;
+      ALTER TABLE incomes ADD COLUMN IF NOT EXISTS duplicate_of_income_id varchar;
+    `,
+  },
 ];
 
 // Verificaciones a correr al final (read-only) para confirmar que el schema
@@ -410,6 +420,14 @@ const VERIFICATIONS = [
   {
     label: "incomes.bank_transaction_id",
     sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='incomes' AND column_name='bank_transaction_id';`,
+  },
+  {
+    label: "incomes.possible_duplicate",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='incomes' AND column_name='possible_duplicate';`,
+  },
+  {
+    label: "incomes.duplicate_of_income_id",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='incomes' AND column_name='duplicate_of_income_id';`,
   },
 ];
 

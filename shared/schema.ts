@@ -1230,6 +1230,12 @@ export const incomes = pgTable("incomes", {
   bankOperationId: varchar("bank_operation_id", { length: 255 }),
   // Enlace al movimiento de cartola conciliado (bank_transactions.id). Marca de "conciliado".
   bankTransactionId: varchar("bank_transaction_id", { length: 255 }),
+  // Fase 2 dedup: flag ortogonal al status (un duplicado sigue siendo provisional)
+  // + puntero self-FK al ingreso original. Mientras possibleDuplicate=true, AMBOS
+  // (este y el original apuntado) quedan fuera de conciliación hasta que un gerente
+  // resuelva. Ver DISENO-conciliacion-unificada.md (Fase 2).
+  possibleDuplicate: boolean("possible_duplicate").notNull().default(false),
+  duplicateOfIncomeId: varchar("duplicate_of_income_id"),
   payerRut: varchar("payer_rut", { length: 20 }),
   payerName: varchar("payer_name", { length: 255 }),
   status: incomeStatusEnum("status").notNull().default("pending"),

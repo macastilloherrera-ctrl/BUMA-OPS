@@ -12,7 +12,7 @@ import { registerObjectStorageRoutes } from "./replit_integrations/object_storag
 import { registerDevAuthRoutes, isDevMode } from "./devAuth";
 import { parseBankFile } from "./bankParsers";
 import { sendChatMessage, generateConversationTitle } from "./geminiChat";
-import { AMOUNT_MATCH_TOLERANCE, normalizeRut } from "@shared/reconciliation";
+import { AMOUNT_MATCH_TOLERANCE, normalizeRut, normalizeOperationId, computeFrozenIncomeIds } from "@shared/reconciliation";
 
 function generateConserjeriaUsername(buildingName: string): string {
   const prefixes = [
@@ -65,6 +65,7 @@ import {
   maintainerCategories,
   type UserRole,
   type UserProfile,
+  type Income,
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -258,12 +259,17 @@ async function tryLinkBankTxnToIncome(
       year: txn.periodYear,
     });
     const txnAmount = parseFloat(txn.amount);
+    // Fase 2: excluir ingresos congelados por una revisión de posible duplicado
+    // sin resolver (el sospechoso y su original). No son candidatos hasta que un
+    // gerente resuelva. Ver computeFrozenIncomeIds en @shared/reconciliation.
+    const frozen = computeFrozenIncomeIds(candidates);
     // Match por RUT + monto exacto (tolerancia unificada). El RUT desempata
     // cuando varias unidades pagan el mismo monto; sólo ingresos aún no
-    // enlazados a un movimiento (!bankTransactionId).
+    // enlazados a un movimiento (!bankTransactionId) y no congelados.
     const matches = candidates.filter(
       (i) =>
         !i.bankTransactionId &&
+        !frozen.has(i.id) &&
         normalizeRut(i.payerRut) === txnRut &&
         Math.abs(parseFloat(i.amount) - txnAmount) <= AMOUNT_MATCH_TOLERANCE,
     );
@@ -349,6 +355,18 @@ function todayChilePaymentDate(): { date: Date; month: number; year: number } {
   });
   const [year, month, day] = fmt.format(new Date()).split("-").map(Number);
   return { date: new Date(Date.UTC(year, month - 1, day, 16, 0, 0)), month, year };
+}
+
+// Clave de día "YYYY-MM-DD" en America/Santiago para comparar "mismo día"
+// entre dos avisos de pago (respaldo de detección de duplicado RUT+monto+día).
+// Estable pese a que payment_date se guarda a mediodía Chile (16:00 UTC).
+function chileDayKey(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Santiago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
 // Rate limit por API key: sliding window simple en memoria.
@@ -7218,6 +7236,133 @@ export async function registerRoutes(
     }
   });
 
+  // ==========================================
+  // Fase 2 — Resolución de posibles duplicados (cola de revisión de Cristina)
+  // ==========================================
+  // Dos acciones sobre un par {sospechoso, original}. La máquina detecta; el
+  // humano confirma. Nada se auto-elimina ni auto-fusiona (ver Fase 2).
+
+  // Verifica que el período del income no esté en un ciclo cerrado.
+  async function assertIncomeCycleNotLocked(inc: Income): Promise<{ locked: boolean; reason?: string }> {
+    if (!inc.paymentDate) return { locked: false };
+    const period = resolveIncomePeriod({
+      chargeMonth: inc.chargeMonth,
+      chargeYear: inc.chargeYear,
+      paymentDate: inc.paymentDate,
+    });
+    return assertCycleNotLocked(inc.buildingId, period.month, period.year);
+  }
+
+  // (a) "Sí es duplicado": el gerente elige cuál registro se queda; el otro
+  // pasa a 'rejected'. El que queda se libera y vuelve a ser candidato.
+  app.post("/api/incomes/:id/confirm-duplicate", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden resolver duplicados" });
+      }
+      const dup = await storage.getIncome(req.params.id);
+      if (!dup) {
+        return res.status(404).json({ error: "Ingreso no encontrado" });
+      }
+      if (!dup.duplicateOfIncomeId) {
+        return res.status(400).json({ error: "El ingreso no es un posible duplicado" });
+      }
+      const originalId = dup.duplicateOfIncomeId;
+      const keepIncomeId = (req.body?.keepIncomeId ?? "").toString();
+      if (keepIncomeId !== dup.id && keepIncomeId !== originalId) {
+        return res.status(400).json({ error: "keepIncomeId debe ser uno de los dos ingresos del par" });
+      }
+
+      // Lock-check del período del sospechoso.
+      const lockDup = await assertIncomeCycleNotLocked(dup);
+      if (lockDup.locked) return res.status(409).json({ error: lockDup.reason });
+
+      const original = await storage.getIncome(originalId);
+      // Si el original ya no existe, el par está roto: liberamos el sospechoso
+      // (equivale a "no es duplicado") y devolvemos.
+      if (!original) {
+        const freed = await storage.updateIncome(dup.id, { possibleDuplicate: false, duplicateOfIncomeId: null });
+        return res.json({ resolved: "confirm", note: "El ingreso original ya no existe; se liberó el sospechoso", income: freed });
+      }
+      const lockOrig = await assertIncomeCycleNotLocked(original);
+      if (lockOrig.locked) return res.status(409).json({ error: lockOrig.reason });
+
+      const loserId = keepIncomeId === dup.id ? originalId : dup.id;
+      // Sobreviviente: liberar (candidato de conciliación de nuevo).
+      const survivor = await storage.updateIncome(keepIncomeId, { possibleDuplicate: false, duplicateOfIncomeId: null });
+      // Perdedor: a 'rejected' y limpiar marcas de duplicado.
+      const loser = await storage.updateIncome(loserId, { status: "rejected", possibleDuplicate: false, duplicateOfIncomeId: null });
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "confirm_income_duplicate",
+          entityType: "income",
+          entityId: keepIncomeId,
+          buildingId: dup.buildingId,
+          metadata: JSON.stringify({ keepIncomeId, rejectedIncomeId: loserId }),
+        });
+      } catch (e) { console.error("[confirm-duplicate] audit error:", e); }
+
+      res.json({ resolved: "confirm", kept: survivor, rejected: loser });
+    } catch (error) {
+      console.error("Error confirmando duplicado:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // (b) "No es duplicado, son dos pagos reales": libera AMBOS; los dos vuelven
+  // a ser candidatos de conciliación normal (falso positivo del respaldo, p.ej.
+  // una persona paga dos unidades por el mismo monto el mismo día).
+  app.post("/api/incomes/:id/dismiss-duplicate", isAuthenticated, async (req, res) => {
+    try {
+      const profile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(profile)) {
+        return res.status(403).json({ error: "Solo gerentes pueden resolver duplicados" });
+      }
+      const dup = await storage.getIncome(req.params.id);
+      if (!dup) {
+        return res.status(404).json({ error: "Ingreso no encontrado" });
+      }
+      if (!dup.duplicateOfIncomeId) {
+        return res.status(400).json({ error: "El ingreso no es un posible duplicado" });
+      }
+
+      const lockDup = await assertIncomeCycleNotLocked(dup);
+      if (lockDup.locked) return res.status(409).json({ error: lockDup.reason });
+      const original = await storage.getIncome(dup.duplicateOfIncomeId);
+      if (original) {
+        const lockOrig = await assertIncomeCycleNotLocked(original);
+        if (lockOrig.locked) return res.status(409).json({ error: lockOrig.reason });
+      }
+
+      // Solo el sospechoso lleva el flag; al limpiarlo, el original se
+      // descongela automáticamente (computeFrozenIncomeIds deja de incluirlos).
+      const freed = await storage.updateIncome(dup.id, { possibleDuplicate: false, duplicateOfIncomeId: null });
+
+      try {
+        const user = req.user as any;
+        await storage.createAuditLog({
+          userId: user.id,
+          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
+          action: "dismiss_income_duplicate",
+          entityType: "income",
+          entityId: dup.id,
+          buildingId: dup.buildingId,
+          metadata: JSON.stringify({ dismissedIncomeId: dup.id, originalIncomeId: dup.duplicateOfIncomeId }),
+        });
+      } catch (e) { console.error("[dismiss-duplicate] audit error:", e); }
+
+      res.json({ resolved: "dismiss", income: freed, originalIncomeId: dup.duplicateOfIncomeId });
+    } catch (error) {
+      console.error("Error descartando duplicado:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
   // Split a deposit into multiple department incomes.
   // Los inserts se ejecutan dentro de una transacción explícita: si falla
   // cualquiera, se hace ROLLBACK y no queda ningún ingreso parcial creado.
@@ -7580,12 +7725,53 @@ export async function registerRoutes(
       // parearlos y recién ahí pasan a "identified".
       const status = matchedFromDirectory ? "identified" : "pending_email";
 
+      // Fase 2 — detección de posible duplicado (dos correos, un solo pago).
+      // Cascada: (1) N° de operación idéntico (primaria); (2) RUT + monto +
+      // mismo día (respaldo, solo si la primaria no encontró). NO se fusiona:
+      // el 2° se crea marcado posible duplicado y vinculado al original; ambos
+      // quedan congelados hasta que un gerente resuelva. Se detecta contra
+      // provisionales del período sin conciliar y no rechazados (el 1° puede
+      // haber nacido 'identified' vía payer_directory, no solo 'pending_email').
+      let possibleDuplicate = false;
+      let duplicateOfIncomeId: string | null = null;
+      const periodIncomes = await storage.getIncomes({
+        buildingId: keyRow.buildingId,
+        month: period.month,
+        year: period.year,
+      });
+      const dedupCandidates = periodIncomes.filter(
+        (i) => !i.bankTransactionId && (i.status as string) !== "rejected" && !i.possibleDuplicate,
+      );
+      const opId = normalizeOperationId(data.bankOperationId);
+      let original = opId
+        ? dedupCandidates.find((i) => normalizeOperationId(i.bankOperationId) === opId)
+        : undefined;
+      if (!original) {
+        const rut = normalizeRut(data.payerRut);
+        const amt = parseFloat(amountValue);
+        if (rut && amt > 0) {
+          const dayKey = chileDayKey(parsedDate.date);
+          original = dedupCandidates.find(
+            (i) =>
+              normalizeRut(i.payerRut) === rut &&
+              Math.abs(parseFloat(i.amount) - amt) <= AMOUNT_MATCH_TOLERANCE &&
+              i.paymentDate != null &&
+              chileDayKey(new Date(i.paymentDate)) === dayKey,
+          );
+        }
+      }
+      if (original) {
+        possibleDuplicate = true;
+        duplicateOfIncomeId = original.id;
+        manualReviewNotes.push("Posible duplicado — revisar en cola de duplicados");
+      }
+
       // Notas finales: las del webhook (si vinieron) + los avisos de revisión
-      // manual generados por datos faltantes, unidos con " | ".
-      const noteParts: string[] = [];
-      if (data.notes && data.notes.trim()) noteParts.push(data.notes.trim());
-      noteParts.push(...manualReviewNotes);
-      const finalNotes = noteParts.length > 0 ? noteParts.join(" | ") : null;
+      // manual (datos faltantes y/o posible duplicado), unidos con " | ".
+      const finalNoteParts: string[] = [];
+      if (data.notes && data.notes.trim()) finalNoteParts.push(data.notes.trim());
+      finalNoteParts.push(...manualReviewNotes);
+      const finalNotesWithDup = finalNoteParts.length > 0 ? finalNoteParts.join(" | ") : null;
 
       const incomeData = insertIncomeSchema.parse({
         buildingId: keyRow.buildingId,
@@ -7601,7 +7787,9 @@ export async function registerRoutes(
         payerRut: data.payerRut ?? null,
         payerName: data.payerName ?? null,
         status,
-        notes: finalNotes,
+        possibleDuplicate,
+        duplicateOfIncomeId,
+        notes: finalNotesWithDup,
         createdBy: keyRow.createdBy, // attribuido al super_admin que generó la key
       });
       const income = await storage.createIncome(incomeData);
@@ -7721,7 +7909,13 @@ export async function registerRoutes(
         month: data.chargeMonth,
         year: data.chargeYear,
       });
-      const candidatesPendingEmail = allPeriodIncomes.filter((i) => (i.status as string) === "pending_email" && !i.bankTransactionId);
+      // Fase 2: excluir congelados por revisión de posible duplicado (el
+      // sospechoso y su original). El filtro combina Fase 1 (pending_email sin
+      // enlazar) + el freeze de duplicados. Ver @shared/reconciliation.
+      const frozenIncomeIds = computeFrozenIncomeIds(allPeriodIncomes);
+      const candidatesPendingEmail = allPeriodIncomes.filter(
+        (i) => (i.status as string) === "pending_email" && !i.bankTransactionId && !frozenIncomeIds.has(i.id),
+      );
 
       let insertados = 0;
       let conciliados = 0;
