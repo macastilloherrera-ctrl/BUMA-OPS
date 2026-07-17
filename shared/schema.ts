@@ -1383,6 +1383,17 @@ export const bankTxnStatusEnum = pgEnum("bank_txn_status", [
   "ignored"
 ]);
 
+// Fase 3: motivo de revisión manual de un movimiento de cartola tras el motor
+// único. Distingue "no hay tabla maestra" de "hay tabla pero no identificó",
+// más "sin RUT" y "ambiguo". Ver ReconciliationReviewReason en
+// @shared/reconciliation y DISENO-conciliacion-unificada.md.
+export const bankTxnReviewReasonEnum = pgEnum("bank_txn_review_reason", [
+  "no_rut",
+  "no_directory",
+  "directory_no_match",
+  "multi_match"
+]);
+
 export const bankTransactions = pgTable("bank_transactions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   buildingId: varchar("building_id").notNull(),
@@ -1399,6 +1410,10 @@ export const bankTransactions = pgTable("bank_transactions", {
   periodMonth: integer("period_month").notNull(),
   periodYear: integer("period_year").notNull(),
   status: bankTxnStatusEnum("status").notNull().default("pending"),
+  // Fase 3: si el motor único no pudo identificar el movimiento, queda pending y
+  // este campo dice por qué (para la cola de revisión manual). NULL si se
+  // identificó/sugirió. Ver bankTxnReviewReasonEnum.
+  reviewReason: bankTxnReviewReasonEnum("review_reason"),
   assignedUnit: varchar("assigned_unit", { length: 255 }),
   assignedUnitsSplit: text("assigned_units_split"),
   matchScore: integer("match_score"),

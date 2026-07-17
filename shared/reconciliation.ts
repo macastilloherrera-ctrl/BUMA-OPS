@@ -69,3 +69,47 @@ export function computeFrozenIncomeIds(incomes: DuplicateFreezable[]): Set<strin
   }
   return frozen;
 }
+
+/**
+ * Motivo por el que un movimiento de cartola quedó en REVISIÓN MANUAL tras el
+ * motor único de conciliación (Fase 3). Distingue explícitamente los casos que
+ * el negocio pidió separar (ver DISENO-conciliacion-unificada.md):
+ *   - no_rut:            el movimiento no trae RUT → no se puede matchear por
+ *                        RUT+monto ni por RUT en la tabla maestra.
+ *   - no_directory:      el edificio NO tiene tabla maestra (payer_directory).
+ *   - directory_no_match: hay tabla maestra pero no identificó el pago.
+ *   - multi_match:       varios provisionales del email calzan (mismo RUT+monto)
+ *                        → ambiguo, requiere asignación manual.
+ */
+export type ReconciliationReviewReason =
+  | "no_rut"
+  | "no_directory"
+  | "directory_no_match"
+  | "multi_match";
+
+/**
+ * Clave canónica (string normalizado) para el hash de dedup de una fila de
+ * cartola. Fuente ÚNICA del formato: el sha256 se calcula en el servidor sobre
+ * esta clave (server/reconciliationEngine.ts). Determinística e independiente
+ * del orden de fila (NO usa rowIndex): la MISMA fila deduplica sin importar
+ * cuándo se importó. Ver Fase 3.
+ */
+export function bankRowHashKey(row: {
+  buildingId: string;
+  dateYMD: string;
+  amount: number | string;
+  description: string | null | undefined;
+  payerRut: string | null | undefined;
+  reference: string | null | undefined;
+}): string {
+  const amountFixed = Number(row.amount).toFixed(2);
+  const normDesc = (row.description ?? "").trim().replace(/\s+/g, " ").toUpperCase();
+  return [
+    row.buildingId,
+    row.dateYMD,
+    amountFixed,
+    normDesc,
+    normalizeRut(row.payerRut),
+    normalizeOperationId(row.reference),
+  ].join("|");
+}

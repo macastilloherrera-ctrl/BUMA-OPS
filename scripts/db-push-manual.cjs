@@ -279,6 +279,25 @@ const STEPS = [
       ALTER TABLE incomes ADD COLUMN IF NOT EXISTS duplicate_of_income_id varchar;
     `,
   },
+  {
+    // Fase 3 motor único: motivo de revisión manual de un movimiento de cartola.
+    // Distingue "sin RUT" / "edificio sin tabla" / "tabla no identificó" /
+    // "ambiguo". Ver DISENO-conciliacion-unificada.md (Fase 3).
+    label: "enum bank_txn_review_reason",
+    sql: `
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'bank_txn_review_reason') THEN
+          CREATE TYPE bank_txn_review_reason AS ENUM (
+            'no_rut','no_directory','directory_no_match','multi_match'
+          );
+        END IF;
+      END $$;
+    `,
+  },
+  {
+    label: "bank_transactions.review_reason column",
+    sql: `ALTER TABLE bank_transactions ADD COLUMN IF NOT EXISTS review_reason bank_txn_review_reason;`,
+  },
 ];
 
 // Verificaciones a correr al final (read-only) para confirmar que el schema
@@ -428,6 +447,14 @@ const VERIFICATIONS = [
   {
     label: "incomes.duplicate_of_income_id",
     sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='incomes' AND column_name='duplicate_of_income_id';`,
+  },
+  {
+    label: "enum bank_txn_review_reason exists",
+    sql: `SELECT 1 FROM pg_type WHERE typname='bank_txn_review_reason';`,
+  },
+  {
+    label: "bank_transactions.review_reason",
+    sql: `SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='bank_transactions' AND column_name='review_reason';`,
   },
 ];
 

@@ -65,7 +65,6 @@ import {
   Split,
   X,
   RefreshCw,
-  Upload,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -196,33 +195,9 @@ export default function Ingresos() {
   const [splitRows, setSplitRows] = useState<Array<{ department: string; amount: string; description: string }>>([
     { department: "", amount: "", description: "abono" },
   ]);
-  // ---- Importar cartola ----
-  interface PreviewMov {
-    fecha: string;
-    descripcion: string;
-    monto: number;
-    numeroDocumento: string | null;
-    nombrePagador: string | null;
-    rutPagador: string | null;
-    banco: string;
-  }
-  interface ParsePreview {
-    banco: string;
-    edificioDetectado: string | null;
-    periodo: { desde: string; hasta: string } | null;
-    movimientos: PreviewMov[];
-    totalAbonos: number;
-    count: number;
-    errores: string[];
-  }
-  const [cartolaDialogOpen, setCartolaDialogOpen] = useState(false);
-  const [cartolaBuildingId, setCartolaBuildingId] = useState("");
-  const [cartolaMonth, setCartolaMonth] = useState(String(new Date().getMonth() + 1));
-  const [cartolaYear, setCartolaYear] = useState(String(currentYear));
-  const [cartolaFile, setCartolaFile] = useState<File | null>(null);
-  const [cartolaPreview, setCartolaPreview] = useState<ParsePreview | null>(null);
-  const [cartolaSelected, setCartolaSelected] = useState<Set<number>>(new Set());
-  const [cartolaImportResult, setCartolaImportResult] = useState<{ insertados: number; conciliados: number; duplicados: number; pendientes: number } | null>(null);
+  // Fase 3: el ingest de cartola se unificó en el módulo de Conciliación
+  // Bancaria (motor único). La pantalla de Ingresos ya no sube cartola: solo
+  // consume los ingresos que Conciliación identifica/crea.
 
   const { data: buildings, isLoading: buildingsLoading } = useQuery<Building[]>({
     queryKey: ["/api/buildings"],
@@ -331,69 +306,6 @@ export default function Ingresos() {
       toast({ title: "Error al eliminar ingreso", description: error.message, variant: "destructive" });
     },
   });
-
-  const parseCartolaMutation = useMutation({
-    mutationFn: async () => {
-      if (!cartolaFile || !cartolaBuildingId) throw new Error("Falta archivo o edificio");
-      const fd = new FormData();
-      fd.append("file", cartolaFile);
-      fd.append("buildingId", cartolaBuildingId);
-      const res = await fetch("/api/bank-statements/parse", { method: "POST", credentials: "include", body: fd });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Error parseando cartola" }));
-        throw new Error(err.error || "Error parseando cartola");
-      }
-      return res.json() as Promise<ParsePreview>;
-    },
-    onSuccess: (data) => {
-      setCartolaPreview(data);
-      // Seleccionar todo por defecto
-      setCartolaSelected(new Set(data.movimientos.map((_, i) => i)));
-      if (data.movimientos.length === 0) {
-        toast({ title: "Cartola parseada", description: "No se detectaron abonos", variant: "destructive" });
-      }
-    },
-    onError: (err: Error) => {
-      toast({ title: "Error parseando cartola", description: err.message, variant: "destructive" });
-    },
-  });
-
-  const importCartolaMutation = useMutation({
-    mutationFn: async () => {
-      if (!cartolaPreview) throw new Error("No hay preview");
-      const movsSeleccionados = cartolaPreview.movimientos.filter((_, i) => cartolaSelected.has(i));
-      if (movsSeleccionados.length === 0) throw new Error("Seleccione al menos un movimiento");
-      const res = await apiRequest("POST", "/api/bank-statements/import", {
-        buildingId: cartolaBuildingId,
-        chargeMonth: Number(cartolaMonth),
-        chargeYear: Number(cartolaYear),
-        movimientos: movsSeleccionados,
-      });
-      return res.json();
-    },
-    onSuccess: (data: { insertados: number; conciliados: number; duplicados: number; pendientes: number }) => {
-      setCartolaImportResult(data);
-      queryClient.invalidateQueries({ queryKey: ["/api/incomes"] });
-      toast({ title: "Cartola importada", description: `${data.insertados} insertados, ${data.conciliados} conciliados, ${data.duplicados} duplicados` });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Error importando cartola", description: err.message, variant: "destructive" });
-    },
-  });
-
-  function closeCartolaDialog() {
-    setCartolaDialogOpen(false);
-    setCartolaFile(null);
-    setCartolaPreview(null);
-    setCartolaSelected(new Set());
-    setCartolaImportResult(null);
-  }
-
-  function toggleCartolaMov(i: number) {
-    const next = new Set(cartolaSelected);
-    if (next.has(i)) next.delete(i); else next.add(i);
-    setCartolaSelected(next);
-  }
 
   const splitMutation = useMutation({
     mutationFn: async (data: {
@@ -650,10 +562,6 @@ export default function Ingresos() {
             <Button variant="outline" onClick={openSplitDialog} data-testid="button-split-deposit">
               <Split className="h-4 w-4 mr-1" />
               Dividir Depósito
-            </Button>
-            <Button variant="outline" onClick={() => setCartolaDialogOpen(true)} data-testid="button-import-cartola">
-              <Upload className="h-4 w-4 mr-1" />
-              Importar Cartola
             </Button>
             <Button onClick={openCreate} data-testid="button-create-income">
               <Plus className="h-4 w-4 mr-1" />
@@ -1429,162 +1337,6 @@ export default function Ingresos() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={cartolaDialogOpen} onOpenChange={(open) => { if (!open) closeCartolaDialog(); }}>
-        <DialogContent className="sm:max-w-[900px] max-h-[90vh] overflow-y-auto" data-testid="dialog-import-cartola">
-          <DialogHeader>
-            <DialogTitle>Importar Cartola Bancaria</DialogTitle>
-          </DialogHeader>
-
-          {!cartolaImportResult && !cartolaPreview && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="space-y-1 sm:col-span-3">
-                  <label className="text-sm font-medium">Edificio *</label>
-                  <Select value={cartolaBuildingId} onValueChange={setCartolaBuildingId}>
-                    <SelectTrigger data-testid="cartola-input-building">
-                      <SelectValue placeholder="Seleccionar edificio" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {buildings?.map((b) => (
-                        <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-medium">Mes GGCC *</label>
-                  <Select value={cartolaMonth} onValueChange={setCartolaMonth}>
-                    <SelectTrigger data-testid="cartola-input-month"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {months.map((m) => <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-medium">Año GGCC *</label>
-                  <Select value={cartolaYear} onValueChange={setCartolaYear}>
-                    <SelectTrigger data-testid="cartola-input-year"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {years.map((y) => <SelectItem key={y.value} value={y.value}>{y.label}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-medium">Archivo Excel *</label>
-                  <Input
-                    type="file"
-                    accept=".xlsx,.xls"
-                    onChange={(e) => setCartolaFile(e.target.files?.[0] || null)}
-                    data-testid="cartola-input-file"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={closeCartolaDialog} data-testid="cartola-button-cancel">Cancelar</Button>
-                <Button
-                  onClick={() => parseCartolaMutation.mutate()}
-                  disabled={!cartolaFile || !cartolaBuildingId || parseCartolaMutation.isPending}
-                  data-testid="cartola-button-parse"
-                >
-                  {parseCartolaMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <FileSpreadsheet className="h-4 w-4 mr-1" />}
-                  Parsear
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {cartolaPreview && !cartolaImportResult && (
-            <div className="space-y-3">
-              <div className="rounded-md border bg-muted/30 p-3 text-sm">
-                <p><strong>Banco:</strong> {cartolaPreview.banco}</p>
-                {cartolaPreview.edificioDetectado && (
-                  <p><strong>Edificio detectado:</strong> {cartolaPreview.edificioDetectado}</p>
-                )}
-                {cartolaPreview.periodo && (
-                  <p><strong>Período:</strong> {String(cartolaPreview.periodo.desde).slice(0, 10)} a {String(cartolaPreview.periodo.hasta).slice(0, 10)}</p>
-                )}
-                <p><strong>Movimientos:</strong> {cartolaPreview.count} | <strong>Total abonos:</strong> {formatCurrency(cartolaPreview.totalAbonos)}</p>
-                {cartolaPreview.errores.length > 0 && (
-                  <p className="text-destructive"><strong>Errores:</strong> {cartolaPreview.errores.join("; ")}</p>
-                )}
-              </div>
-              {cartolaPreview.movimientos.length > 0 && (
-                <>
-                  <div className="overflow-x-auto max-h-[400px] overflow-y-auto border rounded-md">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-[40px]">
-                            <Checkbox
-                              checked={cartolaSelected.size === cartolaPreview.movimientos.length}
-                              onCheckedChange={(c) => {
-                                if (c === true) setCartolaSelected(new Set(cartolaPreview.movimientos.map((_, i) => i)));
-                                else setCartolaSelected(new Set());
-                              }}
-                              data-testid="cartola-select-all"
-                            />
-                          </TableHead>
-                          <TableHead>Fecha</TableHead>
-                          <TableHead>Pagador</TableHead>
-                          <TableHead>RUT</TableHead>
-                          <TableHead className="text-right">Monto</TableHead>
-                          <TableHead>Descripción</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {cartolaPreview.movimientos.map((m, i) => (
-                          <TableRow key={i} data-testid={`cartola-row-${i}`}>
-                            <TableCell>
-                              <Checkbox
-                                checked={cartolaSelected.has(i)}
-                                onCheckedChange={() => toggleCartolaMov(i)}
-                                data-testid={`cartola-check-${i}`}
-                              />
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap">{formatDate(m.fecha)}</TableCell>
-                            <TableCell className="max-w-[200px] truncate">{m.nombrePagador || "—"}</TableCell>
-                            <TableCell className="whitespace-nowrap">{m.rutPagador || "—"}</TableCell>
-                            <TableCell className="text-right font-mono">{formatCurrency(m.monto)}</TableCell>
-                            <TableCell className="max-w-[250px] truncate" title={m.descripcion}>{m.descripcion}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  <div className="flex justify-end gap-2 pt-2">
-                    <Button variant="outline" onClick={() => { setCartolaPreview(null); setCartolaSelected(new Set()); }} data-testid="cartola-button-back">
-                      Volver
-                    </Button>
-                    <Button
-                      onClick={() => importCartolaMutation.mutate()}
-                      disabled={cartolaSelected.size === 0 || importCartolaMutation.isPending}
-                      data-testid="cartola-button-import"
-                    >
-                      {importCartolaMutation.isPending ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
-                      Importar {cartolaSelected.size} seleccionados
-                    </Button>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {cartolaImportResult && (
-            <div className="space-y-3">
-              <div className="rounded-md border p-4 space-y-2 bg-muted/30">
-                <h3 className="font-semibold">Resultado de la importación</h3>
-                <p data-testid="cartola-result-insertados">Insertados: <strong>{cartolaImportResult.insertados}</strong></p>
-                <p data-testid="cartola-result-conciliados">Conciliados con emails (pending_email): <strong>{cartolaImportResult.conciliados}</strong></p>
-                <p data-testid="cartola-result-duplicados">Duplicados (ya existían): <strong>{cartolaImportResult.duplicados}</strong></p>
-                <p data-testid="cartola-result-pendientes">Sin match / múltiples matches: <strong>{cartolaImportResult.pendientes}</strong></p>
-              </div>
-              <div className="flex justify-end">
-                <Button onClick={closeCartolaDialog} data-testid="cartola-button-close">Cerrar</Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

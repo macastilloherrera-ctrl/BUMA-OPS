@@ -12,7 +12,15 @@ import { registerObjectStorageRoutes } from "./replit_integrations/object_storag
 import { registerDevAuthRoutes, isDevMode } from "./devAuth";
 import { parseBankFile } from "./bankParsers";
 import { sendChatMessage, generateConversationTitle } from "./geminiChat";
-import { AMOUNT_MATCH_TOLERANCE, normalizeRut, normalizeOperationId, computeFrozenIncomeIds } from "@shared/reconciliation";
+import { AMOUNT_MATCH_TOLERANCE, normalizeRut, normalizeOperationId } from "@shared/reconciliation";
+import {
+  reconcileBankTransaction,
+  ensureIncomeForIdentifiedTxn,
+  linkOrCreateIncomeForTxn,
+  computeBankRowHash,
+  findExistingBankTxn,
+  type ReconcileOutcome,
+} from "./reconciliationEngine";
 
 function generateConserjeriaUsername(buildingName: string): string {
   const prefixes = [
@@ -35,7 +43,6 @@ function generateConserjeriaUsername(buildingName: string): string {
   return `conserjeria_${slug}`;
 }
 import { db, pool } from "./db";
-import { parseBankStatement, type ParsedBankMovement } from "./bankStatementParser";
 import { eq, or, sql } from "drizzle-orm";
 import { users as usersTable, buildings as buildingsTable } from "@shared/schema";
 import {
@@ -227,86 +234,6 @@ function sanitizeCostFields(body: any, isManager: boolean): any {
   delete sanitized.cost;
   delete sanitized.price;
   return sanitized;
-}
-
-// Vincula automáticamente una transacción bancaria identificada con su
-// income correspondiente cuando hay un único match (mismo edificio, mismo RUT,
-// mismo monto exacto, sin bankTransactionId previo). Para splits y casos
-// ambiguos se hace manualmente. Al enlazar también promueve el income a
-// status "identified" para que entre en los exports y registra un audit_log
-// income_auto_identified.
-async function tryLinkBankTxnToIncome(
-  txn: {
-    id: string;
-    buildingId: string;
-    amount: string;
-    periodMonth: number;
-    periodYear: number;
-    assignedUnitsSplit?: string | null;
-    payerRut?: string | null;
-  },
-  actorUserId?: string,
-): Promise<void> {
-  if (txn.assignedUnitsSplit) return;
-  // Fase 1 / decisión 2: sin RUT en el movimiento NO se auto-confirma por
-  // RUT+monto. Cae a la cascada de tabla maestra / revisión manual.
-  const txnRut = normalizeRut(txn.payerRut);
-  if (!txnRut) return;
-  try {
-    const candidates = await storage.getIncomes({
-      buildingId: txn.buildingId,
-      month: txn.periodMonth,
-      year: txn.periodYear,
-    });
-    const txnAmount = parseFloat(txn.amount);
-    // Fase 2: excluir ingresos congelados por una revisión de posible duplicado
-    // sin resolver (el sospechoso y su original). No son candidatos hasta que un
-    // gerente resuelva. Ver computeFrozenIncomeIds en @shared/reconciliation.
-    const frozen = computeFrozenIncomeIds(candidates);
-    // Match por RUT + monto exacto (tolerancia unificada). El RUT desempata
-    // cuando varias unidades pagan el mismo monto; sólo ingresos aún no
-    // enlazados a un movimiento (!bankTransactionId) y no congelados.
-    const matches = candidates.filter(
-      (i) =>
-        !i.bankTransactionId &&
-        !frozen.has(i.id) &&
-        normalizeRut(i.payerRut) === txnRut &&
-        Math.abs(parseFloat(i.amount) - txnAmount) <= AMOUNT_MATCH_TOLERANCE,
-    );
-    if (matches.length === 1) {
-      const matched = matches[0];
-      const updated = await storage.updateIncome(matched.id, {
-        bankTransactionId: txn.id,
-        status: "identified",
-      });
-      try {
-        const actor = actorUserId
-          ? await storage.getUser(actorUserId)
-          : undefined;
-        const actorName = actor
-          ? `${actor.firstName || ""} ${actor.lastName || ""}`.trim()
-          : "sistema";
-        await storage.createAuditLog({
-          userId: actorUserId || "system",
-          userName: actorName || "sistema",
-          action: "income_auto_identified",
-          entityType: "income",
-          entityId: matched.id,
-          buildingId: matched.buildingId,
-          metadata: JSON.stringify({
-            bankTransactionId: txn.id,
-            amount: updated?.amount ?? matched.amount,
-            previousStatus: matched.status,
-            newStatus: "identified",
-          }),
-        });
-      } catch (auditErr) {
-        console.error("[bank-link] audit log error:", auditErr);
-      }
-    }
-  } catch (e) {
-    console.error("[bank-link] error linking bank txn to income:", e);
-  }
 }
 
 async function unlinkBankTxnFromIncome(bankTxnId: string): Promise<void> {
@@ -7841,203 +7768,20 @@ export async function registerRoutes(
   // muestra preview y permite importar movimientos seleccionados con
   // dedup contra bank_transactions y match contra incomes pending_email.
 
-  app.post("/api/bank-statements/parse", isAuthenticated, upload.single("file"), async (req, res) => {
-    try {
-      const profile = await storage.getUserProfile(req.user!.id);
-      if (!isManagerRole(profile)) {
-        return res.status(403).json({ error: "Solo gerentes pueden parsear cartolas" });
-      }
-      const file = req.file;
-      if (!file) {
-        return res.status(400).json({ error: "Se requiere un archivo (campo 'file')" });
-      }
-      const { buildingId } = req.body;
-      if (!buildingId) {
-        return res.status(400).json({ error: "Se requiere buildingId" });
-      }
-      const building = await storage.getBuilding(buildingId);
-      if (!building) {
-        return res.status(404).json({ error: "Edificio no encontrado" });
-      }
+  // Fase 3 — DEPRECADO. El ingest de cartola quedó unificado en el módulo de
+  // Conciliación (POST /api/bank-transactions/import), que corre el motor único
+  // (email → tabla maestra → revisión manual) y crea/confirma los ingresos.
+  // La pantalla de Ingresos ya no sube cartola: solo consume lo que Conciliación
+  // identifica. Estos endpoints responden 410 Gone. Ver DISENO-conciliacion-unificada.md.
+  const bankStatementsDeprecated = (_req: Request, res: Response) => {
+    res.status(410).json({
+      error: "Endpoint deprecado. Subí la cartola desde Conciliación Bancaria (motor único, Fase 3).",
+      redirectTo: "/api/bank-transactions/import",
+    });
+  };
+  app.post("/api/bank-statements/parse", isAuthenticated, bankStatementsDeprecated);
+  app.post("/api/bank-statements/import", isAuthenticated, bankStatementsDeprecated);
 
-      const parsed = await parseBankStatement(file.buffer, file.originalname);
-      const totalAbonos = parsed.movimientos.reduce((s, m) => s + m.monto, 0);
-      res.json({
-        banco: parsed.banco,
-        edificioDetectado: parsed.edificioDetectado,
-        periodo: parsed.periodo,
-        movimientos: parsed.movimientos,
-        totalAbonos,
-        count: parsed.movimientos.length,
-        errores: parsed.errores,
-      });
-    } catch (error) {
-      console.error("Error parseando cartola:", error);
-      res.status(500).json({ error: "Error interno del servidor" });
-    }
-  });
-
-  app.post("/api/bank-statements/import", isAuthenticated, async (req, res) => {
-    try {
-      const profile = await storage.getUserProfile(req.user!.id);
-      if (!isManagerRole(profile)) {
-        return res.status(403).json({ error: "Solo gerentes pueden importar cartolas" });
-      }
-      const bodySchema = z.object({
-        buildingId: z.string().min(1),
-        chargeMonth: z.number().int().min(1).max(12),
-        chargeYear: z.number().int().min(2000).max(2100),
-        movimientos: z.array(z.object({
-          fecha: z.string(), // ISO
-          descripcion: z.string(),
-          monto: z.number().positive(),
-          numeroDocumento: z.string().nullable().optional(),
-          nombrePagador: z.string().nullable().optional(),
-          rutPagador: z.string().nullable().optional(),
-          banco: z.string(),
-        })).min(1),
-      });
-      const data = bodySchema.parse(req.body);
-      const building = await storage.getBuilding(data.buildingId);
-      if (!building) {
-        return res.status(404).json({ error: "Edificio no encontrado" });
-      }
-
-      // Pre-cargamos incomes pending_email del periodo para el matching
-      const allPeriodIncomes = await storage.getIncomes({
-        buildingId: data.buildingId,
-        month: data.chargeMonth,
-        year: data.chargeYear,
-      });
-      // Fase 2: excluir congelados por revisión de posible duplicado (el
-      // sospechoso y su original). El filtro combina Fase 1 (pending_email sin
-      // enlazar) + el freeze de duplicados. Ver @shared/reconciliation.
-      const frozenIncomeIds = computeFrozenIncomeIds(allPeriodIncomes);
-      const candidatesPendingEmail = allPeriodIncomes.filter(
-        (i) => (i.status as string) === "pending_email" && !i.bankTransactionId && !frozenIncomeIds.has(i.id),
-      );
-
-      let insertados = 0;
-      let conciliados = 0;
-      let duplicados = 0;
-      let pendientes = 0;
-      const detalle: Array<{ fecha: string; monto: number; resultado: string; incomeId?: string; txnId?: string }> = [];
-
-      for (const mov of data.movimientos) {
-        const fechaTxn = new Date(mov.fecha);
-        // Dedup: misma fecha (±1 día) + mismo monto + mismo building
-        const dayMs = 24 * 60 * 60 * 1000;
-        const fechaMin = new Date(fechaTxn.getTime() - dayMs);
-        const fechaMax = new Date(fechaTxn.getTime() + dayMs);
-        const existing = await storage.getBankTransactions({
-          buildingId: data.buildingId,
-          month: data.chargeMonth,
-          year: data.chargeYear,
-        });
-        const dup = existing.find((t) => {
-          if (Math.abs(parseFloat(t.amount) - mov.monto) > 0.01) return false;
-          const td = t.txnDate ? new Date(t.txnDate) : null;
-          if (!td) return false;
-          return td >= fechaMin && td <= fechaMax;
-        });
-        if (dup) {
-          duplicados++;
-          detalle.push({ fecha: mov.fecha, monto: mov.monto, resultado: "duplicado", txnId: dup.id });
-          continue;
-        }
-
-        // Insertar bank_transaction
-        const rowHash = crypto.createHash("sha256").update(JSON.stringify({
-          buildingId: data.buildingId,
-          fecha: fechaTxn.toISOString().slice(0, 10),
-          monto: mov.monto,
-          desc: mov.descripcion,
-          ref: mov.numeroDocumento ?? null,
-        })).digest("hex");
-        const txn = await storage.createBankTransaction({
-          buildingId: data.buildingId,
-          txnDate: fechaTxn,
-          amount: String(mov.monto),
-          description: mov.descripcion,
-          reference: mov.numeroDocumento ?? null,
-          payerRut: mov.rutPagador ?? null,
-          payerName: mov.nombrePagador ?? null,
-          sourceBank: mov.banco,
-          bankName: mov.banco,
-          rawRowJson: JSON.stringify(mov),
-          rowHash,
-          periodMonth: data.chargeMonth,
-          periodYear: data.chargeYear,
-          status: "pending",
-          sourceFileName: "cartola_excel",
-          importedBy: req.user!.id,
-        });
-        insertados++;
-
-        // Match RUT + monto exacto (Fase 1, tolerancia unificada). El RUT
-        // desempata cuando varias unidades pagan el mismo monto. Sin RUT en el
-        // movimiento no matchea (decisión 2): cae a manual / tabla maestra.
-        const movRut = normalizeRut(mov.rutPagador);
-        const matches = movRut
-          ? candidatesPendingEmail.filter((i) => {
-              if (i.bankTransactionId) return false;
-              if (normalizeRut(i.payerRut) !== movRut) return false;
-              return Math.abs(parseFloat(i.amount) - mov.monto) <= AMOUNT_MATCH_TOLERANCE;
-            })
-          : [];
-        if (matches.length === 1) {
-          const income = matches[0];
-          await storage.updateIncome(income.id, {
-            bankTransactionId: txn.id,
-            status: "identified",
-          });
-          // Marcar el income como ya usado para no doble-matchearlo en la misma corrida
-          income.bankTransactionId = txn.id;
-          await storage.updateBankTransaction(txn.id, {
-            status: "identified",
-            identifiedBy: req.user!.id,
-            identifiedAt: new Date(),
-            assignedUnit: income.department,
-          });
-          conciliados++;
-          detalle.push({ fecha: mov.fecha, monto: mov.monto, resultado: "conciliado", incomeId: income.id, txnId: txn.id });
-        } else if (matches.length > 1) {
-          pendientes++;
-          detalle.push({ fecha: mov.fecha, monto: mov.monto, resultado: "multi_match", txnId: txn.id });
-        } else {
-          pendientes++;
-          detalle.push({ fecha: mov.fecha, monto: mov.monto, resultado: "sin_match", txnId: txn.id });
-        }
-      }
-
-      try {
-        const user = req.user as any;
-        await storage.createAuditLog({
-          userId: user.id,
-          userName: `${user.firstName || ""} ${user.lastName || ""}`.trim(),
-          action: "import_bank_statement",
-          entityType: "bank_transaction",
-          entityId: data.buildingId,
-          buildingId: data.buildingId,
-          metadata: JSON.stringify({
-            chargeMonth: data.chargeMonth,
-            chargeYear: data.chargeYear,
-            insertados, conciliados, duplicados, pendientes,
-          }),
-        });
-      } catch (e) {
-        console.error("[bank-statements/import] audit error:", e);
-      }
-
-      res.json({ insertados, conciliados, duplicados, pendientes, detalle });
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: "Datos inválidos", details: error.errors });
-      }
-      console.error("Error importando cartola:", error);
-      res.status(500).json({ error: "Error interno del servidor" });
-    }
-  });
 
   // ==========================================
   // Vendor Directory
@@ -8907,34 +8651,38 @@ export async function registerRoutes(
       let imported = 0;
       let duplicates = 0;
 
+      // Fase 3 — motor único: precargamos tabla maestra e histórico una vez para
+      // que la cascada por movimiento no re-consulte en cada iteración.
+      const directory = await storage.getPayerDirectory(buildingId);
+      const identifiedHistory = (await storage.getBankTransactions({ buildingId })).filter((t) => t.status === "identified");
+      // Conteo de resultados de la cascada (para el reporte).
+      const outcomes: Record<ReconcileOutcome, number> = {
+        email_confirmed: 0, directory_identified: 0, directory_suggested: 0, manual: 0,
+      };
+
       for (const txn of parseResult.transactions) {
-        const rowHash = crypto.createHash("sha256").update(JSON.stringify({
-          date: txn.txnDate.toISOString().slice(0, 10),
+        // Hash canónico de contenido (dedup independiente del pipeline, Fase 3).
+        const rowHash = computeBankRowHash({
+          buildingId,
+          dateYMD: txn.txnDate.toISOString().slice(0, 10),
           amount: txn.amount,
-          description: txn.description,
-          reference: txn.reference,
-          payerRut: txn.payerRut,
-          rowIndex: txn.rowIndex,
-        })).digest("hex");
+          description: txn.description ?? null,
+          payerRut: txn.payerRut ?? null,
+          reference: txn.reference ?? null,
+        });
 
-        // Legacy hash (sin rowIndex) para detectar registros importados antes de este cambio.
-        // Evita re-importar transacciones existentes cuando se vuelve a subir la misma cartola.
-        const legacyHash = crypto.createHash("sha256").update(JSON.stringify({
-          date: txn.txnDate.toISOString().slice(0, 10),
-          amount: txn.amount,
-          description: txn.description,
-          reference: txn.reference,
-          payerRut: txn.payerRut,
-        })).digest("hex");
-
-        const existingNew = await storage.getBankTransactionByHash(rowHash, buildingId);
-        const existingLegacy = existingNew ? null : await storage.getBankTransactionByHash(legacyHash, buildingId);
-        if (existingNew || existingLegacy) {
+        // Dedup multi-hash: canónico + formatos legacy (sin migrar datos).
+        const existing = await findExistingBankTxn(
+          { txnDate: txn.txnDate, amount: txn.amount, description: txn.description ?? null, reference: txn.reference ?? null, payerRut: txn.payerRut ?? null, rowIndex: txn.rowIndex },
+          buildingId,
+          rowHash,
+        );
+        if (existing) {
           duplicates++;
           continue;
         }
 
-        await storage.createBankTransaction({
+        const created = await storage.createBankTransaction({
           buildingId,
           txnDate: txn.txnDate,
           amount: String(txn.amount),
@@ -8953,6 +8701,16 @@ export async function registerRoutes(
           sourceFileName: file.originalname,
         });
         imported++;
+
+        // Cascada del motor único: email → tabla maestra → revisión manual.
+        const result = await reconcileBankTransaction(created, {
+          actorUserId: req.user!.id,
+          periodMonth: pMonth,
+          periodYear: pYear,
+          directory,
+          identifiedHistory,
+        });
+        outcomes[result.outcome]++;
       }
 
       try {
@@ -8965,11 +8723,11 @@ export async function registerRoutes(
           entityType: "bank_transaction",
           buildingId: buildingId,
           buildingName: building?.name || "",
-          metadata: JSON.stringify({ count: imported, periodMonth: pMonth, periodYear: pYear }),
+          metadata: JSON.stringify({ count: imported, periodMonth: pMonth, periodYear: pYear, outcomes }),
         });
       } catch(e) {}
 
-      res.json({ imported, duplicates, total: parseResult.totalRowsScanned, detectedBank: parseResult.detectedBank });
+      res.json({ imported, duplicates, total: parseResult.totalRowsScanned, detectedBank: parseResult.detectedBank, outcomes });
     } catch (error) {
       console.error("Error importing bank transactions:", error);
       res.status(500).json({ error: "Error interno del servidor" });
@@ -8987,116 +8745,38 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Se requiere buildingId, periodMonth y periodYear" });
       }
 
+      const pMonth = parseInt(periodMonth);
+      const pYear = parseInt(periodYear);
       const transactions = await storage.getBankTransactions({
         buildingId,
         status: ["pending", "suggested"],
-        month: parseInt(periodMonth),
-        year: parseInt(periodYear),
+        month: pMonth,
+        year: pYear,
       });
 
+      // Fase 3 — re-corre el MISMO motor único sobre los movimientos aún no
+      // resueltos (útil tras editar la tabla maestra). Idéntica cascada que el
+      // import: email → tabla maestra → revisión manual, creando ingresos.
       const directory = await storage.getPayerDirectory(buildingId);
-      const allTxns = await storage.getBankTransactions({ buildingId });
-      const identifiedHistory = allTxns.filter(t => t.status === "identified");
+      const identifiedHistory = (await storage.getBankTransactions({ buildingId })).filter((t) => t.status === "identified");
 
       let identified = 0;
       let suggested = 0;
       let pending = 0;
       let multi = 0;
 
-      const unitRegex = /(?:dep(?:to|artamento)?\.?\s*|local\s*|of(?:icina)?\.?\s*|bodega\s*|unidad\s*)?(\d{1,4}[a-zA-Z]?)/i;
-
       for (const txn of transactions) {
-        let matched = false;
-
-        if (txn.payerRut) {
-          const rutEntry = directory.find(d => d.rut && d.rut === txn.payerRut);
-          if (rutEntry) {
-            const status = rutEntry.confidence >= 80 ? "identified" : "suggested";
-            await storage.updateBankTransaction(txn.id, {
-              status,
-              assignedUnit: rutEntry.unit,
-              matchScore: rutEntry.confidence,
-              matchReason: `RUT ${txn.payerRut} encontrado en directorio de pagadores`,
-            });
-            if (status === "identified") identified++;
-            else suggested++;
-            matched = true;
-            continue;
-          }
-        }
-
-        if (!matched && txn.payerName) {
-          const nameEntry = directory.find(d => d.pattern && txn.payerName && txn.payerName.toLowerCase().includes(d.pattern.toLowerCase()));
-          if (nameEntry) {
-            const status = nameEntry.confidence >= 80 ? "identified" : "suggested";
-            await storage.updateBankTransaction(txn.id, {
-              status,
-              assignedUnit: nameEntry.unit,
-              matchScore: nameEntry.confidence,
-              matchReason: `Patrón "${nameEntry.pattern}" encontrado en nombre pagador "${txn.payerName}"`,
-            });
-            if (status === "identified") identified++;
-            else suggested++;
-            matched = true;
-            continue;
-          }
-        }
-
-        if (!matched && txn.description) {
-          const patternEntry = directory.find(d => d.pattern && txn.description && txn.description.toLowerCase().includes(d.pattern.toLowerCase()));
-          if (patternEntry) {
-            const status = patternEntry.confidence >= 80 ? "identified" : "suggested";
-            await storage.updateBankTransaction(txn.id, {
-              status,
-              assignedUnit: patternEntry.unit,
-              matchScore: patternEntry.confidence,
-              matchReason: `Patrón "${patternEntry.pattern}" encontrado en descripción`,
-            });
-            if (status === "identified") identified++;
-            else suggested++;
-            matched = true;
-            continue;
-          }
-        }
-
-        if (!matched && txn.description) {
-          const glosaMatch = txn.description.match(unitRegex);
-          if (glosaMatch && glosaMatch[1]) {
-            const unit = glosaMatch[1];
-            await storage.updateBankTransaction(txn.id, {
-              status: "suggested",
-              assignedUnit: unit,
-              matchScore: 60,
-              matchReason: `Unidad "${unit}" detectada en glosa`,
-            });
-            suggested++;
-            matched = true;
-            continue;
-          }
-        }
-
-        if (!matched) {
-          const histMatch = identifiedHistory.find(h => {
-            if (txn.payerRut && h.payerRut && txn.payerRut === h.payerRut) return true;
-            if (txn.description && h.description && txn.description.toLowerCase() === h.description.toLowerCase()) return true;
-            return false;
-          });
-          if (histMatch && histMatch.assignedUnit) {
-            await storage.updateBankTransaction(txn.id, {
-              status: "suggested",
-              assignedUnit: histMatch.assignedUnit,
-              matchScore: 50,
-              matchReason: `Coincidencia histórica con transacción anterior`,
-            });
-            suggested++;
-            matched = true;
-            continue;
-          }
-        }
-
-        if (!matched) {
-          pending++;
-        }
+        const result = await reconcileBankTransaction(txn, {
+          actorUserId: req.user!.id,
+          periodMonth: pMonth,
+          periodYear: pYear,
+          directory,
+          identifiedHistory,
+        });
+        if (result.outcome === "email_confirmed" || result.outcome === "directory_identified") identified++;
+        else if (result.outcome === "directory_suggested") suggested++;
+        else if (result.reviewReason === "multi_match") multi++;
+        else pending++;
       }
 
       res.json({ identified, suggested, pending, multi, totalProcessed: transactions.length, directorySize: directory.length });
@@ -9138,6 +8818,15 @@ export async function registerRoutes(
         notes: notes || txn.notes,
         matchScore: 100,
         matchReason: "Asignación manual",
+        reviewReason: null,
+      });
+
+      // Fase 3: la asignación manual también materializa el ingreso desde la
+      // cartola (crea si no hay uno enlazado; idempotente).
+      await ensureIncomeForIdentifiedTxn({ ...txn, assignedUnit: unit }, unit, {
+        actorUserId: req.user!.id,
+        periodMonth: txn.periodMonth,
+        periodYear: txn.periodYear,
       });
 
       if (txn.payerRut || txn.payerName || txn.description) {
@@ -9206,8 +8895,10 @@ export async function registerRoutes(
           status: "identified",
           identifiedBy: req.user!.id,
           identifiedAt: new Date(),
+          reviewReason: null,
         });
-        await tryLinkBankTxnToIncome(txn, req.user!.id);
+        // Fase 3: enlaza el provisional del email si calza, sino crea el ingreso.
+        await linkOrCreateIncomeForTxn(txn, txn.assignedUnit, req.user!.id);
         confirmed++;
       }
 
@@ -9313,9 +9004,11 @@ export async function registerRoutes(
         status: "identified",
         identifiedBy: req.user!.id,
         identifiedAt: new Date(),
+        reviewReason: null,
       });
 
-      await tryLinkBankTxnToIncome(txn, req.user!.id);
+      // Fase 3: enlaza el provisional del email si calza, sino crea el ingreso.
+      await linkOrCreateIncomeForTxn(txn, txn.assignedUnit, req.user!.id);
 
       try {
         const user = req.user as any;
