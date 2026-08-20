@@ -51,7 +51,7 @@ export default function GestionPermisos() {
   const [hasChanges, setHasChanges] = useState(false);
   const [savingRole, setSavingRole] = useState<string | null>(null);
 
-  const { data: serverPermissions, isLoading } = useQuery<PermissionsData>({
+  const { data: serverPermissions, isLoading, isError, error } = useQuery<PermissionsData>({
     queryKey: ["/api/role-permissions"],
   });
 
@@ -188,6 +188,21 @@ export default function GestionPermisos() {
                 <Skeleton key={i} className="h-20 w-full" />
               ))}
             </div>
+          ) : isError ? (
+            // Un fallo de la petición NO significa que la tabla esté vacía.
+            // Antes ambos casos caían en el mismo cartel y ofrecían el botón
+            // de inicializar, que el usuario rechazado tampoco podía ejecutar.
+            <Card>
+              <CardContent className="py-8 text-center">
+                <Shield className="h-12 w-12 text-destructive/50 mx-auto mb-4" />
+                <p className="font-medium mb-1" data-testid="text-load-error">
+                  No se pudieron cargar los permisos
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {(error as Error)?.message || "Error desconocido"}
+                </p>
+              </CardContent>
+            </Card>
           ) : !localPermissions ? (
             <Card>
               <CardContent className="py-8 text-center">

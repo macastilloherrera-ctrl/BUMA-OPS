@@ -5645,11 +5645,16 @@ export async function registerRoutes(
     }
   });
 
-  // Mismo criterio que el GET y el PUT: si podés ver y editar la pantalla,
-  // podés sembrar los roles que falten. Antes exigía super_admin estricto, lo
-  // que dejaba un botón visible que su propio usuario no podía ejecutar.
-  app.post("/api/role-permissions/seed", isAuthenticated, canManagePermissions, async (req, res) => {
+  // El seed queda deliberadamente MÁS restringido que ver/editar la pantalla:
+  // solo super_admin. Escribe filas completas desde los defaults del código, y
+  // no queremos que sea alcanzable por todo el que administra permisos.
+  app.post("/api/role-permissions/seed", isAuthenticated, async (req, res) => {
     try {
+      const profile = await storage.getUserProfile((req.user as any).id);
+      if (!profile || profile.role !== "super_admin") {
+        return res.status(403).json({ error: "Solo Super Admin puede inicializar permisos por defecto" });
+      }
+
       const { DEFAULT_PERMISSIONS, ALL_ROLES } = await import("../shared/modulePermissions");
       const existing = await storage.getAllRolePermissions();
       let seeded = 0;
