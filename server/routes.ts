@@ -132,6 +132,19 @@ function requireModule(...moduleKeys: string[]) {
   };
 }
 
+// Acceso a la sección de administración (Panel Super Admin, Usuarios,
+// Gestión de Permisos). Se gobierna con el sistema de módulos, que es la
+// misma regla que el cliente ya aplica para mostrar estas pantallas en el
+// menú y habilitar sus rutas (App.tsx / DesktopSidebar.tsx). Antes cada
+// endpoint traía su propia lista de roles hardcodeada, lo que hacía que el
+// menú ofreciera pantallas que la API rechazaba con 403.
+//
+// Las acciones irreversibles NO usan este guard y conservan su chequeo de
+// rol propio: borrado masivo de transacciones, limpieza de flags de
+// exportación, emisión y revocación de webhook keys, borrado de usuarios y
+// el seed de permisos por defecto.
+const requireAdminPanel = requireModule("panel_super_admin", "admin_usuarios");
+
 async function isManager(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {
     return res.status(401).json({ error: "No autenticado" });
@@ -5144,12 +5157,9 @@ export async function registerRoutes(
   };
 
   // List all users with their profiles
-  app.get("/api/admin/users", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/users", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isAdminRole(profile.role)) {
-        return res.status(403).json({ error: "Acceso denegado. Se requieren privilegios de administrador." });
-      }
 
       const allUsers = await storage.getUsers();
       const allProfiles = await storage.getUserProfiles();
@@ -5188,12 +5198,9 @@ export async function registerRoutes(
   });
 
   // Get single user with profile
-  app.get("/api/admin/users/:id", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/users/:id", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isAdminRole(profile.role)) {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
 
       const user = await storage.getUser(req.params.id);
       if (!user) {
@@ -5216,13 +5223,8 @@ export async function registerRoutes(
   });
 
   // Create new user with profile
-  app.post("/api/admin/users", isAuthenticated, async (req, res) => {
+  app.post("/api/admin/users", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
-      const adminProfile = await storage.getUserProfile((req.user as any).id);
-      if (!adminProfile || !isAdminRole(adminProfile.role)) {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
-
       const { email, firstName, lastName, role, buildingScope, phone, isActive, password } = req.body;
       
       if (!email || !role) {
@@ -5269,13 +5271,8 @@ export async function registerRoutes(
   });
 
   // Update user and profile
-  app.patch("/api/admin/users/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/admin/users/:id", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
-      const adminProfile = await storage.getUserProfile((req.user as any).id);
-      if (!adminProfile || !isAdminRole(adminProfile.role)) {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
-
       const userId = req.params.id;
       const { email, firstName, lastName, role, buildingScope, phone, isActive } = req.body;
       
@@ -5359,13 +5356,8 @@ export async function registerRoutes(
   });
 
   // Toggle user active status
-  app.patch("/api/admin/users/:id/toggle-active", isAuthenticated, async (req, res) => {
+  app.patch("/api/admin/users/:id/toggle-active", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
-      const adminProfile = await storage.getUserProfile((req.user as any).id);
-      if (!adminProfile || !isAdminRole(adminProfile.role)) {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
-
       const userId = req.params.id;
       
       const userProfile = await storage.getUserProfile(userId);
@@ -5389,13 +5381,8 @@ export async function registerRoutes(
   });
 
   // Assign buildings to executive
-  app.patch("/api/admin/users/:id/buildings", isAuthenticated, async (req, res) => {
+  app.patch("/api/admin/users/:id/buildings", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
-      const adminProfile = await storage.getUserProfile((req.user as any).id);
-      if (!adminProfile || !isAdminRole(adminProfile.role)) {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
-
       const userId = req.params.id;
       const { buildingIds } = req.body;
       
@@ -5436,13 +5423,8 @@ export async function registerRoutes(
   });
 
   // Get available roles
-  app.get("/api/admin/roles", isAuthenticated, async (req, res) => {
+  app.get("/api/admin/roles", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
-      const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isAdminRole(profile.role) && profile.role !== "super_admin") {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
-
       // El nombre visible sale de ROLE_LABELS (fuente de verdad en shared/
       // modulePermissions.ts) para que no vuelva a divergir. Acá sólo se
       // decide QUÉ roles son asignables y con qué descripción.
@@ -5478,13 +5460,8 @@ export async function registerRoutes(
   };
 
   // Get system configuration
-  app.get("/api/super-admin/config", isAuthenticated, async (req, res) => {
+  app.get("/api/super-admin/config", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
-      const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isSuperAdminRole(profile.role)) {
-        return res.status(403).json({ error: "Acceso denegado. Se requieren privilegios de Super Admin." });
-      }
-
       const config = await storage.getSystemConfig();
       res.json(config || {
         id: "default",
@@ -5501,13 +5478,8 @@ export async function registerRoutes(
   });
 
   // Update system configuration
-  app.patch("/api/super-admin/config", isAuthenticated, async (req, res) => {
+  app.patch("/api/super-admin/config", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
-      const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isSuperAdminRole(profile.role)) {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
-
       const { companyName, logoUrl, primaryColor } = req.body;
       const userId = (req.user as any).id;
       
@@ -5527,14 +5499,7 @@ export async function registerRoutes(
 
   // ==================== ROLE PERMISSIONS MANAGEMENT ====================
 
-  // La pantalla de Gestión de Permisos se gobierna con el sistema normal de
-  // módulos, no con una lista de roles hardcodeada. Las claves son las mismas
-  // que ya usa el cliente para habilitar la ruta /gestion-permisos
-  // (App.tsx: panel_super_admin || admin_usuarios) y para mostrarla en el
-  // sidebar, de modo que menú y API no puedan volver a contradecirse.
-  const canManagePermissions = requireModule("panel_super_admin", "admin_usuarios");
-
-  app.get("/api/role-permissions", isAuthenticated, canManagePermissions, async (req, res) => {
+  app.get("/api/role-permissions", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
       const rows = await storage.getAllRolePermissions();
       const { DEFAULT_PERMISSIONS, ALL_ROLES } = await import("../shared/modulePermissions");
@@ -5590,7 +5555,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/role-permissions/:role", isAuthenticated, canManagePermissions, async (req, res) => {
+  app.put("/api/role-permissions/:role", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
       const { role } = req.params;
       const { ALL_ROLES, MODULE_KEYS } = await import("../shared/modulePermissions");
@@ -5682,12 +5647,9 @@ export async function registerRoutes(
   });
 
   // Super Admin: List all users
-  app.get("/api/super-admin/users", isAuthenticated, async (req, res) => {
+  app.get("/api/super-admin/users", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isSuperAdminRole(profile.role)) {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
 
       const allUsers = await storage.getUsers();
       const allProfiles = await storage.getUserProfiles();
@@ -5726,12 +5688,9 @@ export async function registerRoutes(
   });
 
   // Super Admin: Create user
-  app.post("/api/super-admin/users", isAuthenticated, async (req, res) => {
+  app.post("/api/super-admin/users", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isSuperAdminRole(profile.role)) {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
 
       const { email, firstName, lastName, role, phone, password, isActive } = req.body;
       
@@ -5802,12 +5761,9 @@ export async function registerRoutes(
   });
 
   // Super Admin: Update user
-  app.patch("/api/super-admin/users/:id", isAuthenticated, async (req, res) => {
+  app.patch("/api/super-admin/users/:id", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isSuperAdminRole(profile.role)) {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
 
       const { id } = req.params;
       const { email, firstName, lastName, role, phone, isActive } = req.body;
@@ -5835,7 +5791,7 @@ export async function registerRoutes(
         await storage.createAuditLog({
           userId: adminUser.id,
           userName: `${adminUser.firstName || ""} ${adminUser.lastName || ""}`.trim(),
-          userRole: profile.role,
+          userRole: profile?.role,
           action: "super_admin_update_user",
           entityType: "user",
           entityId: id,
@@ -5855,12 +5811,9 @@ export async function registerRoutes(
   });
 
   // Super Admin: Toggle user active status
-  app.patch("/api/super-admin/users/:id/toggle-active", isAuthenticated, async (req, res) => {
+  app.patch("/api/super-admin/users/:id/toggle-active", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isSuperAdminRole(profile.role)) {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
 
       const { id } = req.params;
       const userProfile = await storage.getUserProfile(id);
@@ -5876,7 +5829,7 @@ export async function registerRoutes(
         await storage.createAuditLog({
           userId: adminUser.id,
           userName: `${adminUser.firstName || ""} ${adminUser.lastName || ""}`.trim(),
-          userRole: profile.role,
+          userRole: profile?.role,
           action: "super_admin_toggle_active",
           entityType: "user",
           entityId: id,
@@ -5896,12 +5849,9 @@ export async function registerRoutes(
   });
 
   // Super Admin: Reset user password
-  app.post("/api/super-admin/users/:id/reset-password", isAuthenticated, async (req, res) => {
+  app.post("/api/super-admin/users/:id/reset-password", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isSuperAdminRole(profile.role)) {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
 
       const { id } = req.params;
       const { newPassword } = req.body;
@@ -5922,7 +5872,7 @@ export async function registerRoutes(
         await storage.createAuditLog({
           userId: adminUser.id,
           userName: `${adminUser.firstName || ""} ${adminUser.lastName || ""}`.trim(),
-          userRole: profile.role,
+          userRole: profile?.role,
           action: "super_admin_reset_password",
           entityType: "user",
           entityId: id,
@@ -5943,12 +5893,9 @@ export async function registerRoutes(
   // ========================
   // ADMIN TOOLS MODULE
   // Super Admin: Sync ejecutivo_operaciones users → executives HR table
-  app.post("/api/super-admin/sync-executives", isAuthenticated, async (req, res) => {
+  app.post("/api/super-admin/sync-executives", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isSuperAdminRole(profile.role)) {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
 
       const allProfiles = await storage.getUserProfiles();
       const execProfiles = allProfiles.filter(
@@ -5988,12 +5935,8 @@ export async function registerRoutes(
 
   // ========================
 
-  app.get("/api/super-admin/audit-logs", isAuthenticated, async (req, res) => {
+  app.get("/api/super-admin/audit-logs", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
-      const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isSuperAdminRole(profile.role)) {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
       const filters: any = {};
       if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
       if (req.query.userId) filters.userId = req.query.userId as string;
@@ -6009,12 +5952,8 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/super-admin/diagnostics", isAuthenticated, async (req, res) => {
+  app.get("/api/super-admin/diagnostics", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
-      const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || !isSuperAdminRole(profile.role)) {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
       const buildingId = req.query.buildingId as string | undefined;
       const stats = await storage.getDiagnosticStats(buildingId);
       res.json(stats);
@@ -7541,12 +7480,8 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/super-admin/webhook-keys", isAuthenticated, async (req, res) => {
+  app.get("/api/super-admin/webhook-keys", isAuthenticated, requireAdminPanel, async (req, res) => {
     try {
-      const profile = await storage.getUserProfile(req.user!.id);
-      if (!profile || profile.role !== "super_admin") {
-        return res.status(403).json({ error: "Solo super_admin puede ver webhook keys" });
-      }
       const rows = await storage.listWebhookKeys();
       // NUNCA exponer api_key (es el hash, pero igual lo omitimos por higiene).
       const sanitized = rows.map((r) => ({
