@@ -5527,17 +5527,15 @@ export async function registerRoutes(
 
   // ==================== ROLE PERMISSIONS MANAGEMENT ====================
 
-  const canManagePermissions = (profile: any) => {
-    return profile && (profile.role === "super_admin" || profile.role === "gerente_general");
-  };
+  // La pantalla de Gestión de Permisos se gobierna con el sistema normal de
+  // módulos, no con una lista de roles hardcodeada. Las claves son las mismas
+  // que ya usa el cliente para habilitar la ruta /gestion-permisos
+  // (App.tsx: panel_super_admin || admin_usuarios) y para mostrarla en el
+  // sidebar, de modo que menú y API no puedan volver a contradecirse.
+  const canManagePermissions = requireModule("panel_super_admin", "admin_usuarios");
 
-  app.get("/api/role-permissions", isAuthenticated, async (req, res) => {
+  app.get("/api/role-permissions", isAuthenticated, canManagePermissions, async (req, res) => {
     try {
-      const profile = await storage.getUserProfile((req.user as any).id);
-      if (!canManagePermissions(profile)) {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
-
       const rows = await storage.getAllRolePermissions();
       const { DEFAULT_PERMISSIONS, ALL_ROLES } = await import("../shared/modulePermissions");
 
@@ -5592,13 +5590,8 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/role-permissions/:role", isAuthenticated, async (req, res) => {
+  app.put("/api/role-permissions/:role", isAuthenticated, canManagePermissions, async (req, res) => {
     try {
-      const profile = await storage.getUserProfile((req.user as any).id);
-      if (!canManagePermissions(profile)) {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
-
       const { role } = req.params;
       const { ALL_ROLES, MODULE_KEYS } = await import("../shared/modulePermissions");
       const validRoles = ALL_ROLES as readonly string[];
@@ -5652,13 +5645,11 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/role-permissions/seed", isAuthenticated, async (req, res) => {
+  // Mismo criterio que el GET y el PUT: si podés ver y editar la pantalla,
+  // podés sembrar los roles que falten. Antes exigía super_admin estricto, lo
+  // que dejaba un botón visible que su propio usuario no podía ejecutar.
+  app.post("/api/role-permissions/seed", isAuthenticated, canManagePermissions, async (req, res) => {
     try {
-      const profile = await storage.getUserProfile((req.user as any).id);
-      if (!profile || profile.role !== "super_admin") {
-        return res.status(403).json({ error: "Acceso denegado" });
-      }
-
       const { DEFAULT_PERMISSIONS, ALL_ROLES } = await import("../shared/modulePermissions");
       const existing = await storage.getAllRolePermissions();
       let seeded = 0;
