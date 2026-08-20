@@ -373,7 +373,7 @@ export const DEFAULT_PERMISSIONS: Record<string, RolePermissionsConfig> = {
       tickets: true,
       edificios: true,
       equipos_criticos: true,
-      calendario_mantenciones: true,
+      calendario_mantenciones: false,
       proyectos: true,
       conciliacion_bancaria: false,
       cierre_mensual: false,

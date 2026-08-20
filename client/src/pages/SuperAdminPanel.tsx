@@ -45,8 +45,8 @@ interface AdminUser {
 }
 
 interface Role {
-  value: UserRole;
-  label: string;
+  id: UserRole;
+  name: string;
   description: string;
 }
 
@@ -1247,8 +1247,8 @@ export default function SuperAdminPanel() {
                 </SelectTrigger>
                 <SelectContent>
                   {roles.map((role) => (
-                    <SelectItem key={role.value} value={role.value}>
-                      {role.label}
+                    <SelectItem key={role.id} value={role.id}>
+                      {role.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1335,8 +1335,8 @@ export default function SuperAdminPanel() {
                 </SelectTrigger>
                 <SelectContent>
                   {roles.map((role) => (
-                    <SelectItem key={role.value} value={role.value}>
-                      {role.label}
+                    <SelectItem key={role.id} value={role.id}>
+                      {role.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

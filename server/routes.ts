@@ -5443,16 +5443,27 @@ export async function registerRoutes(
         return res.status(403).json({ error: "Acceso denegado" });
       }
 
-      const roles = [
-        { id: "super_admin", name: "Super Admin", description: "Configuración del sistema" },
-        { id: "gerente_general", name: "Gerente General", description: "Acceso total a la plataforma" },
-        { id: "gerente_operaciones", name: "Gerente de Operaciones", description: "Gestiona visitas, tickets y equipos" },
-        { id: "gerente_comercial", name: "Gerente Comercial", description: "Acceso a reportes financieros" },
-        { id: "gerente_finanzas", name: "Ejecutivo de Apoyo", description: "Acceso al módulo financiero y apoyo operativo" },
-        { id: "ejecutivo_operaciones", name: "Ejecutivo de Operaciones", description: "Trabajo de campo, sin acceso a costos" },
-        { id: "conserjeria", name: "Conserjería", description: "Solo ve tickets de su edificio, sube evidencia" },
+      // El nombre visible sale de ROLE_LABELS (fuente de verdad en shared/
+      // modulePermissions.ts) para que no vuelva a divergir. Acá sólo se
+      // decide QUÉ roles son asignables y con qué descripción.
+      // gerente_finanzas queda fuera a propósito: 0 usuarios, reemplazado
+      // por ejecutivo_apoyo (ver scripts/fix-rocio-role.cjs).
+      const { ROLE_LABELS } = await import("../shared/modulePermissions");
+      const assignable: { id: string; description: string }[] = [
+        { id: "super_admin", description: "Configuración del sistema" },
+        { id: "gerente_general", description: "Acceso total a la plataforma" },
+        { id: "gerente_operaciones", description: "Gestiona visitas, tickets y equipos" },
+        { id: "gerente_comercial", description: "Acceso a reportes financieros" },
+        { id: "ejecutivo_operaciones", description: "Trabajo de campo, sin acceso a costos" },
+        { id: "ejecutivo_apoyo", description: "Apoyo administrativo transversal, sin acceso a costos" },
+        { id: "conserjeria", description: "Solo ve tickets de su edificio, sube evidencia" },
       ];
-      
+      const roles = assignable.map(r => ({
+        id: r.id,
+        name: ROLE_LABELS[r.id] ?? r.id,
+        description: r.description,
+      }));
+
       res.json(roles);
     } catch (error) {
       console.error("Error fetching roles:", error);
