@@ -12,17 +12,21 @@ export interface UserPermissions {
   isLoading: boolean;
 }
 
-function buildAllowedRoutes(modules: Record<ModuleKey, boolean>): string[] {
+function buildAllowedRoutes(modules: Record<ModuleKey, boolean>, userRole: UserRole): string[] {
+  const esSuperAdmin = userRole === "super_admin";
   const routes: string[] = ["/perfil"];
   for (const [key, enabled] of Object.entries(modules)) {
     if (enabled) {
+      // El Panel Super Admin es administración profunda del sistema y no se
+      // delega por módulo: sólo lo alcanza la cuenta super_admin.
+      if (key === "panel_super_admin" && !esSuperAdmin) continue;
       const def = MODULE_DEFINITIONS[key as ModuleKey];
       if (def) {
         routes.push(...def.routes);
       }
     }
   }
-  if (modules.panel_super_admin) {
+  if (esSuperAdmin) {
     routes.push("/super-admin", "/super-admin/config", "/super-admin/logs");
   }
   if (modules.admin_usuarios) {
@@ -57,7 +61,7 @@ export function usePermissions(userRole: UserRole): UserPermissions {
   }
 
   const modules = config.modules;
-  const allowedRoutes = buildAllowedRoutes(modules);
+  const allowedRoutes = buildAllowedRoutes(modules, userRole);
 
   return {
     modules,

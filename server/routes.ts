@@ -132,18 +132,34 @@ function requireModule(...moduleKeys: string[]) {
   };
 }
 
-// Acceso a la sección de administración (Panel Super Admin, Usuarios,
-// Gestión de Permisos). Se gobierna con el sistema de módulos, que es la
-// misma regla que el cliente ya aplica para mostrar estas pantallas en el
-// menú y habilitar sus rutas (App.tsx / DesktopSidebar.tsx). Antes cada
-// endpoint traía su propia lista de roles hardcodeada, lo que hacía que el
-// menú ofreciera pantallas que la API rechazaba con 403.
-//
-// Las acciones irreversibles NO usan este guard y conservan su chequeo de
-// rol propio: borrado masivo de transacciones, limpieza de flags de
-// exportación, emisión y revocación de webhook keys, borrado de usuarios y
-// el seed de permisos por defecto.
+// Administración de usuarios y permisos (/admin/usuarios, /gestion-permisos).
+// Se gobierna con el sistema de módulos, que es la misma regla que el cliente
+// ya aplica para mostrar estas pantallas en el menú y habilitar sus rutas
+// (App.tsx / DesktopSidebar.tsx). Antes cada endpoint traía su propia lista de
+// roles hardcodeada, lo que hacía que el menú ofreciera pantallas que la API
+// rechazaba con 403.
 const requireAdminPanel = requireModule("panel_super_admin", "admin_usuarios");
+
+// Panel Super Admin (/super-admin y sus 7 pestañas: configuración del sistema,
+// usuarios, logs de auditoría, diagnóstico, correcciones de datos, webhooks,
+// documentación). Es administración profunda del sistema y NO se delega por
+// módulo: queda reservada a la cuenta super_admin. El cliente aplica el mismo
+// criterio por rol en use-permissions.ts, App.tsx y DesktopSidebar.tsx, para
+// que el menú no ofrezca lo que la API va a rechazar.
+async function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({ error: "No autenticado" });
+  }
+  const user = req.user as any;
+  if (!user.id && user.claims?.sub) {
+    user.id = user.claims.sub;
+  }
+  const profile = await storage.getUserProfile(req.user.id);
+  if (!profile || profile.role !== "super_admin") {
+    return res.status(403).json({ error: "Acceso denegado. Se requieren privilegios de Super Admin." });
+  }
+  next();
+}
 
 async function isManager(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {
@@ -5460,7 +5476,7 @@ export async function registerRoutes(
   };
 
   // Get system configuration
-  app.get("/api/super-admin/config", isAuthenticated, requireAdminPanel, async (req, res) => {
+  app.get("/api/super-admin/config", isAuthenticated, requireSuperAdmin, async (req, res) => {
     try {
       const config = await storage.getSystemConfig();
       res.json(config || {
@@ -5478,7 +5494,7 @@ export async function registerRoutes(
   });
 
   // Update system configuration
-  app.patch("/api/super-admin/config", isAuthenticated, requireAdminPanel, async (req, res) => {
+  app.patch("/api/super-admin/config", isAuthenticated, requireSuperAdmin, async (req, res) => {
     try {
       const { companyName, logoUrl, primaryColor } = req.body;
       const userId = (req.user as any).id;
@@ -5647,7 +5663,7 @@ export async function registerRoutes(
   });
 
   // Super Admin: List all users
-  app.get("/api/super-admin/users", isAuthenticated, requireAdminPanel, async (req, res) => {
+  app.get("/api/super-admin/users", isAuthenticated, requireSuperAdmin, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
 
@@ -5688,7 +5704,7 @@ export async function registerRoutes(
   });
 
   // Super Admin: Create user
-  app.post("/api/super-admin/users", isAuthenticated, requireAdminPanel, async (req, res) => {
+  app.post("/api/super-admin/users", isAuthenticated, requireSuperAdmin, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
 
@@ -5761,7 +5777,7 @@ export async function registerRoutes(
   });
 
   // Super Admin: Update user
-  app.patch("/api/super-admin/users/:id", isAuthenticated, requireAdminPanel, async (req, res) => {
+  app.patch("/api/super-admin/users/:id", isAuthenticated, requireSuperAdmin, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
 
@@ -5811,7 +5827,7 @@ export async function registerRoutes(
   });
 
   // Super Admin: Toggle user active status
-  app.patch("/api/super-admin/users/:id/toggle-active", isAuthenticated, requireAdminPanel, async (req, res) => {
+  app.patch("/api/super-admin/users/:id/toggle-active", isAuthenticated, requireSuperAdmin, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
 
@@ -5849,7 +5865,7 @@ export async function registerRoutes(
   });
 
   // Super Admin: Reset user password
-  app.post("/api/super-admin/users/:id/reset-password", isAuthenticated, requireAdminPanel, async (req, res) => {
+  app.post("/api/super-admin/users/:id/reset-password", isAuthenticated, requireSuperAdmin, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
 
@@ -5893,7 +5909,7 @@ export async function registerRoutes(
   // ========================
   // ADMIN TOOLS MODULE
   // Super Admin: Sync ejecutivo_operaciones users → executives HR table
-  app.post("/api/super-admin/sync-executives", isAuthenticated, requireAdminPanel, async (req, res) => {
+  app.post("/api/super-admin/sync-executives", isAuthenticated, requireSuperAdmin, async (req, res) => {
     try {
       const profile = await storage.getUserProfile((req.user as any).id);
 
@@ -5935,7 +5951,7 @@ export async function registerRoutes(
 
   // ========================
 
-  app.get("/api/super-admin/audit-logs", isAuthenticated, requireAdminPanel, async (req, res) => {
+  app.get("/api/super-admin/audit-logs", isAuthenticated, requireSuperAdmin, async (req, res) => {
     try {
       const filters: any = {};
       if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
@@ -5952,7 +5968,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/super-admin/diagnostics", isAuthenticated, requireAdminPanel, async (req, res) => {
+  app.get("/api/super-admin/diagnostics", isAuthenticated, requireSuperAdmin, async (req, res) => {
     try {
       const buildingId = req.query.buildingId as string | undefined;
       const stats = await storage.getDiagnosticStats(buildingId);
@@ -7480,7 +7496,7 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/super-admin/webhook-keys", isAuthenticated, requireAdminPanel, async (req, res) => {
+  app.get("/api/super-admin/webhook-keys", isAuthenticated, requireSuperAdmin, async (req, res) => {
     try {
       const rows = await storage.listWebhookKeys();
       // NUNCA exponer api_key (es el hash, pero igual lo omitimos por higiene).

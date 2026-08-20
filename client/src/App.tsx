@@ -306,7 +306,10 @@ function AuthenticatedApp() {
                   <Route path="/admin/usuarios" component={AdminUsers} />
                 )}
                 
-                {m.panel_super_admin && <Route path="/super-admin" component={SuperAdminPanel} />}
+                {/* El Panel Super Admin va por rol, no por módulo: es administración
+                    profunda del sistema (config, logs, diagnóstico, correcciones,
+                    webhooks) y queda reservado a la cuenta super_admin. */}
+                {userRole === "super_admin" && <Route path="/super-admin" component={SuperAdminPanel} />}
                 {(m.panel_super_admin || m.admin_usuarios) && <Route path="/gestion-permisos" component={GestionPermisos} />}
                 
                 <Route path="/chat-ia" component={ChatIA} />

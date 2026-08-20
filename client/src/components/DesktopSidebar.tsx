@@ -75,10 +75,13 @@ interface NavGroup {
 
 const allNavGroups: NavGroup[] = [
   {
+    // Sin moduleKey a propósito: el grupo entero se filtra por rol super_admin
+    // en getFilteredNavGroups. Atarlo además al módulo panel_super_admin haría
+    // que apagar ese switch dejara sin panel a la única cuenta que debe tenerlo.
     group: "Panel Super Admin",
     items: [
-      { path: "/super-admin", label: "Panel Super Admin", icon: Shield, moduleKey: "panel_super_admin" },
-      { path: "/gestion-permisos", label: "Gestión de Permisos", icon: Shield, moduleKey: "panel_super_admin" },
+      { path: "/super-admin", label: "Panel Super Admin", icon: Shield },
+      { path: "/gestion-permisos", label: "Gestión de Permisos", icon: Shield },
     ]
   },
   {
@@ -172,13 +175,19 @@ function getFilteredNavGroups(modules: Record<ModuleKey, boolean>, userRole: Use
 
   const result: NavGroup[] = [];
 
+  // El Panel Super Admin es administración profunda del sistema y va por rol,
+  // no por módulo. El grupo "Administración" (Usuarios, Gestión de Permisos) sí
+  // se delega por módulo, y se oculta sólo para el super_admin, que ya ve esas
+  // pantallas dentro de su propio grupo.
+  const esSuperAdmin = userRole === "super_admin";
+
   for (const group of allNavGroups) {
-    if (group.group === "Panel Super Admin" && !modules.panel_super_admin) continue;
+    if (group.group === "Panel Super Admin" && !esSuperAdmin) continue;
     if (group.group === "Administración" && !modules.admin_usuarios) continue;
     if (group.group === "Mi Edificio" && !isConserjeria) continue;
     if (isConserjeria && group.group !== "Mi Edificio") continue;
 
-    if (group.group === "Administración" && modules.panel_super_admin) continue;
+    if (group.group === "Administración" && esSuperAdmin) continue;
 
     const filteredItems = group.items.filter((item) => {
       if (!item.moduleKey) return true;
