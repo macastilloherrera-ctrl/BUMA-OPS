@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { storage } from "../../storage";
+import { hasAllBuildingsScope } from "../../buildingScope";
 import { db } from "../../db";
 import {
   buildingFiles,
@@ -29,7 +30,7 @@ async function canNonManagerAccessObject(
   profile: any,
   objectPath: string,
 ): Promise<boolean> {
-  const buildingScopeAll = profile?.buildingScope === "all";
+  const buildingScopeAll = await hasAllBuildingsScope(profile);
 
   const buildingsForUser = async (): Promise<Set<string>> => {
     const buildings = await storage.getBuildings();

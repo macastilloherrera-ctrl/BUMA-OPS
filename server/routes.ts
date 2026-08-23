@@ -9,6 +9,7 @@ import multer from "multer";
 import passport from "passport";
 import { storage } from "./storage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
+import { hasAllBuildingsScope, getEffectiveBuildingScope } from "./buildingScope";
 import { registerDevAuthRoutes, isDevMode } from "./devAuth";
 import { parseBankFile } from "./bankParsers";
 import { sendChatMessage, generateConversationTitle } from "./geminiChat";
@@ -218,9 +219,9 @@ async function canAccessBuilding(userId: string, buildingId: string, profile: Us
   if (isManagerRole(profile)) return true;
   // ejecutivo_apoyo es rol de soporte transversal: asiste a TODOS los
   // ejecutivos, por lo que tiene acceso a cualquier edificio sin importar
-  // el buildingScope almacenado en su perfil.
+  // el alcance configurado para su rol.
   if (profile?.role === "ejecutivo_apoyo") return true;
-  if (profile?.buildingScope === "all") return true;
+  if (await hasAllBuildingsScope(profile)) return true;
 
   const building = await storage.getBuilding(buildingId);
   return building?.assignedExecutiveId === userId;
@@ -242,7 +243,7 @@ async function canAccessEntity(
   if (profile?.role === "ejecutivo_apoyo") return true;
 
   // User with "all" scope can access any entity
-  if (profile?.buildingScope === "all") return true;
+  if (await hasAllBuildingsScope(profile)) return true;
 
   // User is directly assigned to the entity
   if (entity.executiveId === userId) return true;
@@ -489,7 +490,7 @@ export async function registerRoutes(
         firstName: user.claims?.first_name || null,
         lastName: user.claims?.last_name || null,
         role: profile?.role || "ejecutivo_operaciones",
-        buildingScope: profile?.buildingScope || "assigned",
+        buildingScope: await getEffectiveBuildingScope(profile),
       });
     } catch (error) {
       console.error("Error getting user info:", error);
@@ -1394,7 +1395,7 @@ export async function registerRoutes(
       let visits = await storage.getVisits();
       
       // For non-managers with "assigned" scope, filter by assignment
-      if (!isManager && profile?.buildingScope !== "all") {
+      if (!isManager && !(await hasAllBuildingsScope(profile))) {
         // Executives see visits they created OR visits for their assigned buildings
         const buildings = await storage.getBuildings();
         const userBuildingIds = new Set(
@@ -1491,7 +1492,7 @@ export async function registerRoutes(
       
       // Filter tickets by access for non-managers with "assigned" scope and strip cost
       if (!isManager) {
-        if (profile?.buildingScope !== "all") {
+        if (!(await hasAllBuildingsScope(profile))) {
           const buildings = await storage.getBuildings();
           const userBuildingIds = new Set(
             buildings.filter((b) => b.assignedExecutiveId === req.user!.id).map((b) => b.id)
@@ -2094,7 +2095,7 @@ export async function registerRoutes(
         tickets = tickets.filter((t) =>
           userBuildingIds.has(t.buildingId) && t.receiverType === "personal_edificio"
         );
-      } else if (!isManager && profile?.buildingScope !== "all") {
+      } else if (!isManager && !(await hasAllBuildingsScope(profile))) {
         const allBuildings = await storage.getBuildings();
         const userBuildingIds = new Set(
           allBuildings.filter((b) => b.assignedExecutiveId === req.user!.id).map((b) => b.id)
@@ -2924,7 +2925,7 @@ export async function registerRoutes(
       let incidents = await storage.getIncidents(visitId);
       
       // For non-managers with "assigned" scope without visitId filter, show incidents they created or from their assigned buildings
-      if (!isManager && profile?.buildingScope !== "all" && !visitId) {
+      if (!isManager && !(await hasAllBuildingsScope(profile)) && !visitId) {
         const buildings = await storage.getBuildings();
         const userBuildingIds = new Set(
           buildings.filter((b) => b.assignedExecutiveId === req.user!.id).map((b) => b.id)
