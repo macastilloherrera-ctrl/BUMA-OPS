@@ -1,10 +1,15 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { eq } from "drizzle-orm";
-import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
+import {
+  ObjectStorageService,
+  ObjectNotFoundError,
+  isObjectStorageConfigured,
+} from "./objectStorage";
 import { storage } from "../../storage";
 import { hasAllBuildingsScope } from "../../buildingScope";
 import { db } from "../../db";
 import {
+  attachments,
   buildingFiles,
   visitPhotos,
   ticketPhotos,
@@ -91,6 +96,21 @@ async function canNonManagerAccessObject(
     return !!(exec && profile?.id && exec.userProfileId === profile.id);
   }
 
+  // 5) attachments → hoy se usa para boletas de egresos.
+  const [att] = await db
+    .select({ entityType: attachments.entityType, entityId: attachments.entityId })
+    .from(attachments)
+    .where(eq(attachments.fileUrl, objectPath))
+    .limit(1);
+  if (att) {
+    if (att.entityType === "expense") {
+      const expense = await storage.getExpense(att.entityId);
+      if (!expense) return false;
+      return await allowedForBuilding(expense.buildingId);
+    }
+    return false;
+  }
+
   // No catalog match → denegar (no servir archivos huérfanos)
   return false;
 }
@@ -137,13 +157,21 @@ export function registerObjectStorageRoutes(app: Express): void {
    * IMPORTANT: The client should NOT send the file to this endpoint.
    * Send JSON metadata only, then upload the file directly to uploadURL.
    */
-  app.post("/api/uploads/request-url", async (req, res) => {
+  app.post("/api/uploads/request-url", ensureAuthenticated, async (req, res) => {
     try {
       const { name, size, contentType } = req.body;
 
       if (!name) {
         return res.status(400).json({
           error: "Missing required field: name",
+        });
+      }
+
+      if (!isObjectStorageConfigured()) {
+        return res.status(503).json({
+          error:
+            "El almacenamiento de archivos no esta configurado. Falta cargar las " +
+            "credenciales de Google Cloud Storage en el servidor.",
         });
       }
 

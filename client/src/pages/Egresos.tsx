@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ObjectUploader } from "@/components/ObjectUploader";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -66,12 +67,11 @@ import {
   Clock,
   Repeat,
   ArrowRightLeft,
-  AlertTriangle,
-} from "lucide-react";
+  AlertTriangle, Paperclip,} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
-import type { Building, Expense, UserProfile } from "@shared/schema";
+import type { Attachment, Building, Expense, UserProfile } from "@shared/schema";
 
 const months = [
   { value: "1", label: "Enero" },
@@ -156,6 +156,16 @@ const expenseFormSchema = z.object({
 
 type ExpenseFormValues = z.infer<typeof expenseFormSchema>;
 
+/** GET /api/expenses adjunta las boletas de cada egreso. */
+type ExpenseWithAttachments = Expense & { attachments?: Attachment[] };
+
+interface PendingFile {
+  objectPath: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+}
+
 export default function Egresos() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -166,7 +176,10 @@ export default function Egresos() {
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string>("all");
   const [exportFormat, setExportFormat] = useState<string>("edipro");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  // Boletas subidas al storage que todavia no se vincularon al egreso: al crear
+  // uno nuevo el id recien existe despues de guardar.
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  const [editingExpense, setEditingExpense] = useState<ExpenseWithAttachments | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const { data: userProfile } = useQuery<UserProfile>({
@@ -197,7 +210,7 @@ export default function Egresos() {
   if (selectedSourceType !== "all") queryParams.set("sourceType", selectedSourceType);
   if (selectedPaymentStatus !== "all") queryParams.set("paymentStatus", selectedPaymentStatus);
 
-  const { data: expenses, isLoading: expensesLoading } = useQuery<Expense[]>({
+  const { data: expenses, isLoading: expensesLoading } = useQuery<ExpenseWithAttachments[]>({
     queryKey: ["/api/expenses", selectedBuilding, selectedMonth, selectedYear, selectedSourceType, selectedPaymentStatus],
     queryFn: async () => {
       const res = await fetch(`/api/expenses?${queryParams.toString()}`, { credentials: "include" });
@@ -253,12 +266,28 @@ export default function Egresos() {
     };
   }
 
+  /** Registra en el catalogo las boletas ya subidas al storage. */
+  async function linkPendingFiles(expenseId: string) {
+    for (const file of pendingFiles) {
+      await apiRequest("POST", "/api/attachments", {
+        entityType: "expense",
+        entityId: expenseId,
+        fileName: file.fileName,
+        fileUrl: file.objectPath,
+        fileType: file.fileType,
+        fileSize: file.fileSize,
+      });
+    }
+  }
+
   const createMutation = useMutation({
     mutationFn: async (data: ExpenseFormValues) => {
-      await apiRequest("POST", "/api/expenses", {
+      const res = await apiRequest("POST", "/api/expenses", {
         ...buildExpensePayload(data),
         createdBy: user?.id || "",
       });
+      const created = await res.json();
+      await linkPendingFiles(created.id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
@@ -275,6 +304,7 @@ export default function Egresos() {
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: ExpenseFormValues }) => {
       await apiRequest("PATCH", `/api/expenses/${id}`, buildExpensePayload(data));
+      await linkPendingFiles(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
@@ -367,6 +397,7 @@ export default function Egresos() {
   function closeDialog() {
     setDialogOpen(false);
     setEditingExpense(null);
+    setPendingFiles([]);
     form.reset(defaultFormValues);
     setVendorSearch("");
     setShowVendorSuggestions(false);
@@ -386,7 +417,7 @@ export default function Egresos() {
     setDialogOpen(true);
   }
 
-  function openEdit(expense: Expense) {
+  function openEdit(expense: ExpenseWithAttachments) {
     setEditingExpense(expense);
     const paymentDate = expense.paymentDate ? new Date(expense.paymentDate).toISOString().split("T")[0] : "";
     const consumptionFrom = (expense as any).consumptionPeriodFrom ? new Date((expense as any).consumptionPeriodFrom).toISOString().split("T")[0] : "";
@@ -689,6 +720,7 @@ export default function Egresos() {
                           <TableHead>Doc</TableHead>
                           <TableHead className="text-right">Monto</TableHead>
                           <TableHead>Fecha</TableHead>
+                          <TableHead>Boleta</TableHead>
                           <TableHead>Estado Pago</TableHead>
                           <TableHead>Inclusión</TableHead>
                           <TableHead className="text-right">Acciones</TableHead>
@@ -716,6 +748,22 @@ export default function Egresos() {
                               </TableCell>
                             
                             <TableCell>{formatDate(expense.paymentDate)}</TableCell>
+                            <TableCell>
+                              {expense.attachments?.length ? (
+                                <a
+                                  href={expense.attachments[0].fileUrl}
+                                  download={expense.attachments[0].fileName}
+                                  title={expense.attachments[0].fileName}
+                                  className="inline-flex items-center gap-1 underline underline-offset-2"
+                                  data-testid={`link-download-${expense.id}`}
+                                >
+                                  <Download className="h-4 w-4" />
+                                  {expense.attachments.length > 1 ? expense.attachments.length : ""}
+                                </a>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
                                                           <TableCell>
                                 <Badge
                                   variant={paymentStatusVariants[expense.paymentStatus]}
@@ -1217,6 +1265,63 @@ export default function Egresos() {
                   </FormItem>
                 )}
               />
+
+              <div className="border rounded-md p-4 space-y-3">
+                <p className="text-sm font-medium text-muted-foreground">Boleta / comprobante</p>
+
+                {editingExpense?.attachments?.length ? (
+                  <ul className="space-y-1">
+                    {editingExpense.attachments.map((file: Attachment) => (
+                      <li key={file.id} className="flex items-center gap-2 text-sm">
+                        <Paperclip className="h-3 w-3 text-muted-foreground" />
+                        <a
+                          href={file.fileUrl}
+                          download={file.fileName}
+                          className="underline underline-offset-2"
+                          data-testid={`link-attachment-${file.id}`}
+                        >
+                          {file.fileName}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+
+                {pendingFiles.length > 0 && (
+                  <p className="text-sm text-muted-foreground" data-testid="text-pending-files">
+                    {pendingFiles.length} archivo(s) listo(s) para adjuntar al guardar.
+                  </p>
+                )}
+
+                <ObjectUploader
+                  maxNumberOfFiles={5}
+                  maxFileSize={10 * 1024 * 1024}
+                  onGetUploadParameters={async (file) => {
+                    const res = await apiRequest("POST", "/api/uploads/request-url", {
+                      name: file.name,
+                      size: file.size,
+                      contentType: file.type || "application/octet-stream",
+                    });
+                    const { uploadURL, objectPath } = await res.json();
+                    setPendingFiles((prev) => [
+                      ...prev,
+                      {
+                        objectPath,
+                        fileName: file.name || "boleta",
+                        fileType: file.type || "application/octet-stream",
+                        fileSize: Number(file.size ?? 0),
+                      },
+                    ]);
+                    return { method: "PUT" as const, url: uploadURL };
+                  }}
+                  buttonClassName="w-full"
+                >
+                  <span className="flex items-center gap-2">
+                    <Paperclip className="h-4 w-4" />
+                    Adjuntar boleta (PDF o imagen)
+                  </span>
+                </ObjectUploader>
+              </div>
 
               <div className="flex justify-end gap-2 pt-2">
                 <Button

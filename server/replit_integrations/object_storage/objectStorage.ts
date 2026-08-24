@@ -9,26 +9,56 @@ import {
   setObjectAclPolicy,
 } from "./objectAcl";
 
-const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
+/**
+ * Credenciales de Google Cloud Storage.
+ *
+ * Antes esto apuntaba al sidecar de Replit (127.0.0.1:1106), que no existe
+ * fuera de Replit: al migrar a Railway toda la subida y descarga de archivos
+ * quedo caida. Ahora se autentica con una service account estandar.
+ *
+ * Se acepta la llave por env en JSON plano o en base64 (comodo para Railway,
+ * que no maneja bien los saltos de linea). Si no hay llave se cae a las
+ * credenciales por defecto del entorno (GOOGLE_APPLICATION_CREDENTIALS), util
+ * para desarrollo local.
+ */
+function readServiceAccountKey(): Record<string, unknown> | null {
+  const raw = process.env.GCS_SERVICE_ACCOUNT_KEY;
+  if (!raw) return null;
+  try {
+    const text = raw.trim().startsWith("{")
+      ? raw
+      : Buffer.from(raw, "base64").toString("utf8");
+    return JSON.parse(text);
+  } catch (error) {
+    console.error(
+      "[object-storage] GCS_SERVICE_ACCOUNT_KEY no es un JSON valido (ni JSON plano ni base64):",
+      error,
+    );
+    return null;
+  }
+}
 
-// The object storage client is used to interact with the object storage service.
-export const objectStorageClient = new Storage({
-  credentials: {
-    audience: "replit",
-    subject_token_type: "access_token",
-    token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
-    type: "external_account",
-    credential_source: {
-      url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
-      format: {
-        type: "json",
-        subject_token_field_name: "access_token",
-      },
-    },
-    universe_domain: "googleapis.com",
-  },
-  projectId: "",
-});
+const serviceAccountKey = readServiceAccountKey();
+
+export const objectStorageClient = new Storage(
+  serviceAccountKey
+    ? {
+        credentials: serviceAccountKey as Record<string, string>,
+        projectId:
+          process.env.GCS_PROJECT_ID || (serviceAccountKey.project_id as string) || undefined,
+      }
+    : { projectId: process.env.GCS_PROJECT_ID || undefined },
+);
+
+/**
+ * true si el storage tiene lo minimo para operar. Se usa para responder un
+ * error claro en vez de un 500 opaco cuando todavia no esta configurado.
+ */
+export function isObjectStorageConfigured(): boolean {
+  const hasCredentials =
+    !!serviceAccountKey || !!process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  return hasCredentials && !!process.env.PRIVATE_OBJECT_DIR;
+}
 
 export class ObjectNotFoundError extends Error {
   constructor() {
@@ -271,30 +301,19 @@ async function signObjectURL({
   method: "GET" | "PUT" | "DELETE" | "HEAD";
   ttlSec: number;
 }): Promise<string> {
-  const request = {
-    bucket_name: bucketName,
-    object_name: objectName,
-    method,
-    expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
-  };
-  const response = await fetch(
-    `${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(request),
-    }
-  );
-  if (!response.ok) {
-    throw new Error(
-      `Failed to sign object URL, errorcode: ${response.status}, ` +
-        `make sure you're running on Replit`
-    );
-  }
+  // Firma V4 con la service account. No se firma el Content-Type a proposito:
+  // si se incluyera, el cliente tendria que enviar exactamente ese header y
+  // cualquier diferencia haria fallar la subida.
+  const action = method === "PUT" ? "write" : method === "DELETE" ? "delete" : "read";
 
-  const { signed_url: signedURL } = await response.json();
+  const [signedURL] = await objectStorageClient
+    .bucket(bucketName)
+    .file(objectName)
+    .getSignedUrl({
+      version: "v4",
+      action,
+      expires: Date.now() + ttlSec * 1000,
+    });
+
   return signedURL;
 }
-

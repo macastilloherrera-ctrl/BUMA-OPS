@@ -3072,6 +3072,18 @@ export async function registerRoutes(
         if (!visit) return false;
         return canAccessEntity(userId, profile, visit);
       }
+      case "expense": {
+        // Boletas/comprobantes de un egreso. Quien alcanza el egreso alcanza su
+        // boleta: gerencia por el lado financiero, y conserjeria dentro de sus
+        // edificios asignados (mismas reglas que /api/expenses).
+        const expense = await storage.getExpense(entityId);
+        if (!expense) return false;
+        if (canAccessFinancial(profile)) return true;
+        if (isConserjeriaRole(profile)) {
+          return canUserReachBuilding(userId, profile, expense.buildingId);
+        }
+        return false;
+      }
       default:
         return false;
     }
@@ -7984,7 +7996,20 @@ export async function registerRoutes(
         items = items.filter((e: any) => conserjeriaBuildingIds!.has(e.buildingId));
       }
 
-      res.json(items);
+      // Boletas/comprobantes adjuntos, en una sola consulta para no hacer N+1
+      // desde la pantalla.
+      const files = await storage.getAttachmentsForEntities(
+        "expense",
+        items.map((e: any) => e.id),
+      );
+      const filesByExpense = new Map<string, typeof files>();
+      for (const f of files) {
+        const list = filesByExpense.get(f.entityId);
+        if (list) list.push(f);
+        else filesByExpense.set(f.entityId, [f]);
+      }
+
+      res.json(items.map((e: any) => ({ ...e, attachments: filesByExpense.get(e.id) ?? [] })));
     } catch (error) {
       console.error("Error obteniendo egresos:", error);
       res.status(500).json({ error: "Error interno del servidor" });

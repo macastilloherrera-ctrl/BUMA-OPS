@@ -253,6 +253,7 @@ export interface IStorage {
 
   // Attachments
   getAttachments(entityType: string, entityId: string): Promise<Attachment[]>;
+  getAttachmentsForEntities(entityType: string, entityIds: string[]): Promise<Attachment[]>;
   getAttachment(id: string): Promise<Attachment | undefined>;
   createAttachment(attachment: InsertAttachment): Promise<Attachment>;
   deleteAttachment(id: string): Promise<boolean>;
@@ -931,6 +932,16 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(attachments)
       .where(and(eq(attachments.entityType, entityType), eq(attachments.entityId, entityId)))
+      .orderBy(desc(attachments.createdAt));
+  }
+
+  /** Adjuntos de varias entidades del mismo tipo, para evitar N+1 en listados. */
+  async getAttachmentsForEntities(entityType: string, entityIds: string[]): Promise<Attachment[]> {
+    if (entityIds.length === 0) return [];
+    return db
+      .select()
+      .from(attachments)
+      .where(and(eq(attachments.entityType, entityType), inArray(attachments.entityId, entityIds)))
       .orderBy(desc(attachments.createdAt));
   }
 
