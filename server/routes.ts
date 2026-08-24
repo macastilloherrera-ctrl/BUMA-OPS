@@ -521,12 +521,15 @@ export async function registerRoutes(
     try {
       const allProfiles = await storage.getUserProfiles();
       const activeProfiles = allProfiles.filter(p => p.isActive);
-      
+
       const usersWithNames = await Promise.all(activeProfiles.map(async (profile) => {
         const user = await storage.getUser(profile.userId);
-        const displayName = user 
-          ? `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || profile.userId
-          : profile.userId;
+        // Un perfil sin fila en users es basura de una cuenta borrada: no es
+        // nadie a quien se le pueda asignar un ticket, y en el desplegable
+        // aparecia como un id crudo.
+        if (!user) return null;
+        const displayName =
+          `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || profile.userId;
         return {
           userId: profile.userId,
           displayName,
@@ -534,8 +537,8 @@ export async function registerRoutes(
           isActive: profile.isActive,
         };
       }));
-      
-      res.json(usersWithNames);
+
+      res.json(usersWithNames.filter((u) => u !== null));
     } catch (error) {
       console.error("Error getting executives:", error);
       res.status(500).json({ error: "Error interno del servidor" });

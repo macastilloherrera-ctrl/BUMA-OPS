@@ -52,6 +52,7 @@ import {
   Forward,
 } from "lucide-react";
 import type { Ticket, Building, UserProfile } from "@shared/schema";
+import { ROLE_LABELS } from "@shared/modulePermissions";
 import { format, differenceInDays } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -92,7 +93,11 @@ export default function DashboardTickets() {
     queryKey: ["/api/buildings"],
   });
 
-  const { data: executives } = useQuery<(UserProfile & { name: string })[]>({
+  // /api/users/executives devuelve displayName, no name: leer el campo
+  // equivocado dejaba el desplegable con todas las opciones en blanco.
+  const { data: executives } = useQuery<
+    { userId: string; displayName: string; role: string; isActive: boolean }[]
+  >({
     queryKey: ["/api/users/executives"],
   });
 
@@ -512,8 +517,9 @@ export default function DashboardTickets() {
                 </SelectTrigger>
                 <SelectContent>
                   {executives?.map((exec) => (
-                    <SelectItem key={exec.userId} value={exec.userId}>
-                      {exec.name}
+                    <SelectItem key={exec.userId} value={exec.userId} data-testid={`option-executive-${exec.userId}`}>
+                      {exec.displayName}
+                      {ROLE_LABELS[exec.role] ? ` (${ROLE_LABELS[exec.role]})` : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
