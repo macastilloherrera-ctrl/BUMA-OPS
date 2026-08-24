@@ -9,7 +9,12 @@ import multer from "multer";
 import passport from "passport";
 import { storage } from "./storage";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
-import { hasAllBuildingsScope, getEffectiveBuildingScope } from "./buildingScope";
+import {
+  hasAllBuildingsScope,
+  getEffectiveBuildingScope,
+  getAssignedBuildingIds,
+  canUserReachBuilding,
+} from "./buildingScope";
 import { registerDevAuthRoutes, isDevMode } from "./devAuth";
 import { parseBankFile } from "./bankParsers";
 import { sendChatMessage, generateConversationTitle } from "./geminiChat";
@@ -223,8 +228,8 @@ async function canAccessBuilding(userId: string, buildingId: string, profile: Us
   if (profile?.role === "ejecutivo_apoyo") return true;
   if (await hasAllBuildingsScope(profile)) return true;
 
-  const building = await storage.getBuilding(buildingId);
-  return building?.assignedExecutiveId === userId;
+  const assigned = await getAssignedBuildingIds(userId);
+  return assigned.has(buildingId);
 }
 
 // Helper to check if user can view/edit entity based on assignment
@@ -514,10 +519,11 @@ export async function registerRoutes(
       }
       
       const enriched: any = { ...profile };
-      if (profile.role === "conserjeria") {
-        const buildings = await storage.getBuildings();
-        const myBuilding = buildings.find(b => b.conserjeriaUserId === userId);
-        enriched.assignedBuildings = myBuilding ? [myBuilding.id] : [];
+      if (!(await hasAllBuildingsScope(profile))) {
+        // Lista de edificios que el cliente puede ofrecer en los selectores.
+        // Antes solo se calculaba para conserjeria y devolvia un unico edificio,
+        // asi que un conserje a cargo de varios se quedaba sin opciones.
+        enriched.assignedBuildings = Array.from(await getAssignedBuildingIds(userId));
       }
       
       res.json(enriched);
@@ -7961,32 +7967,21 @@ export async function registerRoutes(
       if (req.query.month) filters.month = parseInt(req.query.month as string);
       if (req.query.year) filters.year = parseInt(req.query.year as string);
 
+      // Conserjeria trabaja el modulo de Egresos completo, pero acotado a los
+      // edificios que tiene asignados (pueden ser varios).
+      let conserjeriaBuildingIds: Set<string> | null = null;
       if (isConserjeria) {
-        filters.sourceType = "recurrent";
-        const allBuildings = await storage.getBuildings();
-        const myBuilding = allBuildings.find(b => b.conserjeriaUserId === req.user!.id);
-        if (!myBuilding) {
-          // Sin edificio vinculado no hay nada que pueda ver: antes se omitia el
-          // filtro y terminaba viendo los egresos recurrentes de TODOS los
-          // edificios.
+        conserjeriaBuildingIds = await getAssignedBuildingIds(req.user!.id);
+        if (conserjeriaBuildingIds.size === 0) return res.json([]);
+        if (filters.buildingId && !conserjeriaBuildingIds.has(filters.buildingId)) {
           return res.json([]);
         }
-        filters.buildingId = myBuilding.id;
       }
 
-      const items = await storage.getExpenses(filters);
+      let items = await storage.getExpenses(filters);
 
-      if (isConserjeria) {
-        const sanitized = items.map((e: any) => ({
-          ...e,
-          amount: undefined,
-          paymentMethod: undefined,
-          operationallyValidated: undefined,
-          financiallyValidated: undefined,
-          inclusionStatus: undefined,
-          postponementReason: undefined,
-        }));
-        return res.json(sanitized);
+      if (conserjeriaBuildingIds) {
+        items = items.filter((e: any) => conserjeriaBuildingIds!.has(e.buildingId));
       }
 
       res.json(items);
@@ -8002,13 +7997,9 @@ export async function registerRoutes(
       const isConserjeria = isConserjeriaRole(profile);
 
       if (isConserjeria) {
-        if (req.body.sourceType !== "recurrent") {
-          return res.status(403).json({ error: "Conserjería solo puede ingresar egresos recurrentes" });
-        }
-        const allBuildings = await storage.getBuildings();
-        const myBuilding = allBuildings.find(b => b.conserjeriaUserId === req.user!.id);
-        if (!req.body.buildingId || !myBuilding || req.body.buildingId !== myBuilding.id) {
-          return res.status(403).json({ error: "Solo puede ingresar egresos de su edificio asignado" });
+        const canReach = await canUserReachBuilding(req.user!.id, profile, req.body.buildingId);
+        if (!canReach) {
+          return res.status(403).json({ error: "Solo puede ingresar egresos de sus edificios asignados" });
         }
       } else if (!isManagerRole(profile)) {
         return res.status(403).json({ error: "Solo gerentes pueden crear egresos" });
@@ -8089,11 +8080,20 @@ export async function registerRoutes(
     try {
       const profile = await storage.getUserProfile(req.user!.id);
       if (isConserjeriaRole(profile)) {
-        const allowedFields = ["documentKey"];
-        const bodyKeys = Object.keys(req.body);
-        const hasDisallowed = bodyKeys.some(k => !allowedFields.includes(k));
-        if (hasDisallowed) {
-          return res.status(403).json({ error: "Conserjería solo puede subir documentos de respaldo" });
+        // Conserjeria edita egresos, pero solo los de sus edificios asignados y
+        // sin poder moverlos a un edificio fuera de su alcance.
+        const target = await storage.getExpense(req.params.id);
+        if (!target) {
+          return res.status(404).json({ error: "Egreso no encontrado" });
+        }
+        if (!(await canUserReachBuilding(req.user!.id, profile, target.buildingId))) {
+          return res.status(403).json({ error: "Solo puede modificar egresos de sus edificios asignados" });
+        }
+        if (
+          req.body.buildingId &&
+          !(await canUserReachBuilding(req.user!.id, profile, req.body.buildingId))
+        ) {
+          return res.status(403).json({ error: "Solo puede asignar egresos a sus edificios asignados" });
         }
       } else if (!canAccessFinancial(profile)) {
         return res.status(403).json({ error: "No autorizado para modificar egresos" });

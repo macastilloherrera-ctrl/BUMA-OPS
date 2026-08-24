@@ -42,3 +42,39 @@ export async function hasAllBuildingsScope(
 ): Promise<boolean> {
   return (await getEffectiveBuildingScope(profile)) === "all";
 }
+
+/**
+ * Edificios que un usuario tiene asignados cuando su alcance es "assigned".
+ *
+ * Un edificio se considera asignado por dos vias, y ambas cuentan:
+ *  - `assigned_executive_id`: el ejecutivo (o conserje) responsable del edificio.
+ *  - `conserjeria_user_id`: la cuenta de conserjeria vinculada al edificio.
+ *
+ * Antes cada llamador miraba una sola columna, asi que un conserje asignado por
+ * la via de ejecutivo no tenia ningun edificio y un ejecutivo vinculado como
+ * conserje tampoco. Devolver la union deja que un mismo usuario cubra varios
+ * edificios sin duplicar cuentas.
+ */
+export async function getAssignedBuildingIds(userId: string): Promise<Set<string>> {
+  const buildings = await storage.getBuildings();
+  return new Set(
+    buildings
+      .filter((b) => b.assignedExecutiveId === userId || b.conserjeriaUserId === userId)
+      .map((b) => b.id),
+  );
+}
+
+/**
+ * Resuelve si el usuario alcanza un edificio concreto, combinando el alcance
+ * efectivo del rol con sus edificios asignados.
+ */
+export async function canUserReachBuilding(
+  userId: string,
+  profile: UserProfile | null | undefined,
+  buildingId: string | null | undefined,
+): Promise<boolean> {
+  if (!buildingId) return false;
+  if (await hasAllBuildingsScope(profile)) return true;
+  const assigned = await getAssignedBuildingIds(userId);
+  return assigned.has(buildingId);
+}

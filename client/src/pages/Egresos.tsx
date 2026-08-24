@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -177,6 +177,18 @@ export default function Egresos() {
   const { data: buildings, isLoading: buildingsLoading } = useQuery<Building[]>({
     queryKey: ["/api/buildings"],
   });
+
+  // Cuando el usuario no alcanza todos los edificios, /api/user/profile informa
+  // cuales tiene asignados. Los selectores deben ofrecer solo esos: /api/buildings
+  // devuelve el catalogo completo y la API rechaza los que estan fuera del alcance.
+  const assignedBuildingIds = (userProfile as any)?.assignedBuildings as string[] | undefined;
+  const scopedBuildings = useMemo(
+    () =>
+      assignedBuildingIds
+        ? (buildings ?? []).filter((b) => assignedBuildingIds.includes(b.id))
+        : buildings,
+    [buildings, assignedBuildingIds],
+  );
 
   const queryParams = new URLSearchParams();
   if (selectedBuilding !== "all") queryParams.set("buildingId", selectedBuilding);
@@ -362,24 +374,12 @@ export default function Egresos() {
 
   function openCreate() {
     setEditingExpense(null);
-    let conserjeriaBuilding = "";
-    if (isConserjeria) {
-      if ((userProfile as any)?.assignedBuildings?.length) {
-        conserjeriaBuilding = (userProfile as any).assignedBuildings[0];
-      } else if (buildings?.length) {
-        const myBuilding = buildings.find((b: any) => b.conserjeriaUserId === user?.id);
-        if (myBuilding) conserjeriaBuilding = myBuilding.id;
-        else if (buildings.length === 1) conserjeriaBuilding = buildings[0].id;
-      }
-    }
+    // Si el usuario alcanza un solo edificio no tiene nada que elegir.
+    const onlyBuilding = scopedBuildings?.length === 1 ? scopedBuildings[0].id : "";
     form.reset({
       ...defaultFormValues,
-      // Conserjeria registra "Cuentas de Servicios", que el backend modela como
-      // egresos recurrentes: GET /api/expenses fuerza sourceType "recurrent" y
-      // POST lo exige. El selector de tipo de origen esta oculto para este rol,
-      // asi que el valor tiene que quedar correcto desde aca.
-      sourceType: isConserjeria ? "recurrent" : "gasto_comun",
-      buildingId: isConserjeria ? conserjeriaBuilding : "",
+      sourceType: "gasto_comun",
+      buildingId: onlyBuilding,
       paymentStatus: "pending",
       inclusionStatus: "included",
     });
@@ -535,8 +535,7 @@ export default function Egresos() {
         </div>
 
         <div className="mt-4 flex gap-3 flex-wrap">
-          {!isConserjeria && (
-            <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2">
               <Building2 className="h-4 w-4 text-muted-foreground" />
               <Select value={selectedBuilding} onValueChange={setSelectedBuilding}>
                 <SelectTrigger className="w-[200px]" data-testid="select-building">
@@ -544,7 +543,7 @@ export default function Egresos() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos los edificios</SelectItem>
-                  {buildings?.map((building) => (
+                  {scopedBuildings?.map((building) => (
                     <SelectItem key={building.id} value={building.id}>
                       {building.name}
                     </SelectItem>
@@ -552,7 +551,7 @@ export default function Egresos() {
                 </SelectContent>
               </Select>
             </div>
-          )}
+          
 
           <Select value={selectedMonth} onValueChange={setSelectedMonth}>
             <SelectTrigger className="w-[150px]" data-testid="select-month">
@@ -580,8 +579,7 @@ export default function Egresos() {
             </SelectContent>
           </Select>
 
-          {!isConserjeria && (
-            <Select value={selectedSourceType} onValueChange={setSelectedSourceType}>
+                      <Select value={selectedSourceType} onValueChange={setSelectedSourceType}>
               <SelectTrigger className="w-[160px]" data-testid="select-source-type">
                 <SelectValue placeholder="Tipo origen" />
               </SelectTrigger>
@@ -592,10 +590,9 @@ export default function Egresos() {
                 <SelectItem value="project">Proyecto</SelectItem>
               </SelectContent>
             </Select>
-          )}
+          
 
-          {!isConserjeria && (
-            <Select value={selectedPaymentStatus} onValueChange={setSelectedPaymentStatus}>
+                      <Select value={selectedPaymentStatus} onValueChange={setSelectedPaymentStatus}>
               <SelectTrigger className="w-[160px]" data-testid="select-payment-status">
                 <SelectValue placeholder="Estado pago" />
               </SelectTrigger>
@@ -606,7 +603,7 @@ export default function Egresos() {
                 <SelectItem value="cancelled">Cancelado</SelectItem>
               </SelectContent>
             </Select>
-          )}
+          
         </div>
       </div>
 
@@ -618,8 +615,7 @@ export default function Egresos() {
           </div>
         ) : (
           <>
-            {!isConserjeria && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -660,9 +656,9 @@ export default function Egresos() {
                   </CardContent>
                 </Card>
               </div>
-            )}
+            
 
-            {!isConserjeria && deferredCount > 0 && (
+            {deferredCount > 0 && (
               <div className="flex items-center gap-3 p-3 mb-4 rounded-md border border-orange-300 bg-orange-50 dark:bg-orange-950/30 dark:border-orange-800" data-testid="alert-deferred-expenses">
                 <AlertTriangle className="h-5 w-5 text-orange-600 dark:text-orange-400 shrink-0" />
                 <div className="flex-1 text-sm">
@@ -687,14 +683,14 @@ export default function Egresos() {
                       <TableHeader>
                         <TableRow>
                           <TableHead className="w-[60px]">N</TableHead>
-                          {!isConserjeria && <TableHead>Edificio</TableHead>}
+                          <TableHead>Edificio</TableHead>
                           <TableHead className="max-w-[200px]">Descripción</TableHead>
                           <TableHead>Proveedor</TableHead>
                           <TableHead>Doc</TableHead>
-                          {!isConserjeria && <TableHead className="text-right">Monto</TableHead>}
+                          <TableHead className="text-right">Monto</TableHead>
                           <TableHead>Fecha</TableHead>
-                          {!isConserjeria && <TableHead>Estado Pago</TableHead>}
-                          {!isConserjeria && <TableHead>Inclusión</TableHead>}
+                          <TableHead>Estado Pago</TableHead>
+                          <TableHead>Inclusión</TableHead>
                           <TableHead className="text-right">Acciones</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -702,7 +698,7 @@ export default function Egresos() {
                         {expenses.map((expense, index) => (
                           <TableRow key={expense.id} data-testid={`row-expense-${expense.id}`}>
                             <TableCell className="font-medium">{index + 1}</TableCell>
-                            {!isConserjeria && <TableCell>{getBuildingName(expense.buildingId)}</TableCell>}
+                            <TableCell>{getBuildingName(expense.buildingId)}</TableCell>
                             <TableCell className="max-w-[200px] truncate">{expense.description}</TableCell>
                             <TableCell>{expense.vendorName || "-"}</TableCell>
                             <TableCell>
@@ -715,14 +711,12 @@ export default function Egresos() {
                                 <span className="text-xs">{expense.documentNumber}</span>
                               ) : "-"}
                             </TableCell>
-                            {!isConserjeria && (
-                              <TableCell className="text-right font-medium">
+                                                          <TableCell className="text-right font-medium">
                                 {formatCurrency(expense.amount)}
                               </TableCell>
-                            )}
+                            
                             <TableCell>{formatDate(expense.paymentDate)}</TableCell>
-                            {!isConserjeria && (
-                              <TableCell>
+                                                          <TableCell>
                                 <Badge
                                   variant={paymentStatusVariants[expense.paymentStatus]}
                                   className={
@@ -737,9 +731,8 @@ export default function Egresos() {
                                   {paymentStatusLabels[expense.paymentStatus] || expense.paymentStatus}
                                 </Badge>
                               </TableCell>
-                            )}
-                            {!isConserjeria && (
-                              <TableCell>
+                            
+                                                          <TableCell>
                                 <div className="flex flex-col gap-1">
                                   {(expense as any).deferredFromMonth && (expense as any).deferredFromYear ? (
                                     <Tooltip>
@@ -772,14 +765,10 @@ export default function Egresos() {
                                   )}
                                 </div>
                               </TableCell>
-                            )}
+                            
                             <TableCell className="text-right">
-                              {isConserjeria ? (
-                                <Badge variant="outline" className="text-xs">
-                                  Enviado
-                                </Badge>
-                              ) : (
-                                <div className="flex items-center justify-end gap-1">
+                              <div className="flex items-center justify-end gap-1">
+                                {!isConserjeria && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <Button
@@ -793,14 +782,17 @@ export default function Egresos() {
                                     </TooltipTrigger>
                                     <TooltipContent>Aplazar al mes siguiente</TooltipContent>
                                   </Tooltip>
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    onClick={() => openEdit(expense)}
-                                    data-testid={`button-edit-${expense.id}`}
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </Button>
+                                )}
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => openEdit(expense)}
+                                  data-testid={`button-edit-${expense.id}`}
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                {/* Eliminar queda para gerencia: la API solo se lo permite a ese rol. */}
+                                {!isConserjeria && (
                                   <Button
                                     size="icon"
                                     variant="ghost"
@@ -809,8 +801,8 @@ export default function Egresos() {
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
-                                </div>
-                              )}
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
@@ -847,59 +839,36 @@ export default function Egresos() {
           </DialogHeader>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-              {isConserjeria ? (
-                <FormField
-                  control={form.control}
-                  name="buildingId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Edificio</FormLabel>
+              <FormField
+                control={form.control}
+                name="buildingId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Edificio</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
-                        <Input
-                          disabled
-                          value={
-                            buildings?.find(b => b.id === field.value)?.name ||
-                            "Sin edificio asignado"
-                          }
-                          data-testid="input-building-readonly"
-                        />
+                        <SelectTrigger data-testid="input-building">
+                          <SelectValue placeholder="Seleccionar edificio" />
+                        </SelectTrigger>
                       </FormControl>
-                      {!field.value && (
-                        <p className="text-sm text-destructive" data-testid="text-no-building">
-                          Tu usuario de conserjeria no tiene un edificio asignado, por lo que no
-                          puedes registrar cuentas. Pide al administrador que te asigne uno.
-                        </p>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              ) : (
-                <FormField
-                  control={form.control}
-                  name="buildingId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Edificio</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="input-building">
-                            <SelectValue placeholder="Seleccionar edificio" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {buildings?.map((building) => (
-                            <SelectItem key={building.id} value={building.id}>
-                              {building.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
+                      <SelectContent>
+                        {scopedBuildings?.map((building) => (
+                          <SelectItem key={building.id} value={building.id}>
+                            {building.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {scopedBuildings?.length === 0 && (
+                      <p className="text-sm text-destructive" data-testid="text-no-building">
+                        Tu usuario no tiene edificios asignados, por lo que no puedes registrar
+                        egresos. Pide al administrador que te asigne uno.
+                      </p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <FormField
                 control={form.control}
@@ -1075,8 +1044,7 @@ export default function Egresos() {
                 />
               </div>
 
-              {!isConserjeria && (
-                <div className="border rounded-md p-4 space-y-4">
+                              <div className="border rounded-md p-4 space-y-4">
                   <p className="text-sm font-medium text-muted-foreground">Período de consumo y mes de cargo</p>
                   <div className="grid grid-cols-2 gap-4">
                     <FormField
@@ -1153,10 +1121,9 @@ export default function Egresos() {
                     />
                   </div>
                 </div>
-              )}
+              
 
-              {!isConserjeria && (
-                <div className="grid grid-cols-2 gap-4">
+                              <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="paymentMethod"
@@ -1204,10 +1171,9 @@ export default function Egresos() {
                     )}
                   />
                 </div>
-              )}
+              
 
-              {!isConserjeria && (
-                <div className="grid grid-cols-2 gap-4">
+                              <div className="grid grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="paymentStatus"
@@ -1232,7 +1198,7 @@ export default function Egresos() {
                   />
 
                 </div>
-              )}
+              
 
               <FormField
                 control={form.control}
@@ -1263,7 +1229,7 @@ export default function Egresos() {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={isMutating || (isConserjeria && !form.watch("buildingId"))}
+                  disabled={isMutating || !form.watch("buildingId")}
                   data-testid="button-submit"
                 >
                   {isMutating ? "Guardando..." : editingExpense ? "Actualizar" : "Crear"}
