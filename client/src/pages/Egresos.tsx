@@ -374,9 +374,13 @@ export default function Egresos() {
     }
     form.reset({
       ...defaultFormValues,
-      sourceType: "gasto_comun",
+      // Conserjeria registra "Cuentas de Servicios", que el backend modela como
+      // egresos recurrentes: GET /api/expenses fuerza sourceType "recurrent" y
+      // POST lo exige. El selector de tipo de origen esta oculto para este rol,
+      // asi que el valor tiene que quedar correcto desde aca.
+      sourceType: isConserjeria ? "recurrent" : "gasto_comun",
       buildingId: isConserjeria ? conserjeriaBuilding : "",
-      paymentStatus: isConserjeria ? "pending" : "pending",
+      paymentStatus: "pending",
       inclusionStatus: "included",
     });
     setDialogOpen(true);
@@ -853,10 +857,19 @@ export default function Egresos() {
                       <FormControl>
                         <Input
                           disabled
-                          value={buildings?.find(b => b.id === field.value)?.name || "Mi edificio"}
+                          value={
+                            buildings?.find(b => b.id === field.value)?.name ||
+                            "Sin edificio asignado"
+                          }
                           data-testid="input-building-readonly"
                         />
                       </FormControl>
+                      {!field.value && (
+                        <p className="text-sm text-destructive" data-testid="text-no-building">
+                          Tu usuario de conserjeria no tiene un edificio asignado, por lo que no
+                          puedes registrar cuentas. Pide al administrador que te asigne uno.
+                        </p>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -1250,7 +1263,7 @@ export default function Egresos() {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={isMutating}
+                  disabled={isMutating || (isConserjeria && !form.watch("buildingId"))}
                   data-testid="button-submit"
                 >
                   {isMutating ? "Guardando..." : editingExpense ? "Actualizar" : "Crear"}

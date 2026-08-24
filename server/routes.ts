@@ -7965,9 +7965,13 @@ export async function registerRoutes(
         filters.sourceType = "recurrent";
         const allBuildings = await storage.getBuildings();
         const myBuilding = allBuildings.find(b => b.conserjeriaUserId === req.user!.id);
-        if (myBuilding) {
-          filters.buildingId = myBuilding.id;
+        if (!myBuilding) {
+          // Sin edificio vinculado no hay nada que pueda ver: antes se omitia el
+          // filtro y terminaba viendo los egresos recurrentes de TODOS los
+          // edificios.
+          return res.json([]);
         }
+        filters.buildingId = myBuilding.id;
       }
 
       const items = await storage.getExpenses(filters);
