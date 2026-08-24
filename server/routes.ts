@@ -31,26 +31,6 @@ import {
   type ReconcileOutcome,
 } from "./reconciliationEngine";
 
-function generateConserjeriaUsername(buildingName: string): string {
-  const prefixes = [
-    "condominio edificio",
-    "comunidad edificio",
-    "condominio",
-    "comunidad",
-    "edificio",
-  ];
-  let name = buildingName.toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  for (const prefix of prefixes) {
-    const normalized = prefix.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    if (name.startsWith(normalized)) {
-      name = name.slice(normalized.length);
-      break;
-    }
-  }
-  const slug = name.trim().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
-  return `conserjeria_${slug}`;
-}
 import { db, pool } from "./db";
 import { eq, or, sql } from "drizzle-orm";
 import { users as usersTable, buildings as buildingsTable } from "@shared/schema";
@@ -741,42 +721,13 @@ export async function registerRoutes(
       const data = insertBuildingSchema.parse(bodyBuilding);
       const building = await storage.createBuilding(data);
 
-      const conserjeriaUsername = generateConserjeriaUsername(building.name);
-      const tempPassword = String(Math.floor(1000 + Math.random() * 9000));
-      const passwordHash = await bcrypt.hash(tempPassword, 10);
-      const conserjeriaUserId = `conserjeria-${building.id}`;
+      // Un conserje es una PERSONA con edificios asignados, no una casilla por
+      // edificio. Antes cada alta de edificio fabricaba una cuenta
+      // "Conserjería <edificio>" con clave de 4 digitos que nadie usaba nunca.
+      // Ahora el edificio nace sin conserje y se le asigna una persona real
+      // desde Gestion de Usuarios.
 
-      const conserjeriaUser = await storage.createUser({
-        id: conserjeriaUserId,
-        email: null,
-        username: conserjeriaUsername,
-        firstName: "Conserjería",
-        lastName: building.name,
-        passwordHash,
-        mustChangePassword: false,
-      });
-
-      await storage.createUserProfile({
-        userId: conserjeriaUser.id,
-        role: "conserjeria",
-        buildingScope: "assigned",
-        isActive: true,
-      });
-
-      await storage.updateBuilding(building.id, {
-        conserjeriaUserId: conserjeriaUser.id,
-        assignedExecutiveId: building.assignedExecutiveId,
-      });
-
-      res.status(201).json({
-        ...building,
-        conserjeriaUserId: conserjeriaUser.id,
-        conserjeriaCredentials: {
-          username: conserjeriaUsername,
-          tempPassword,
-          userId: conserjeriaUser.id,
-        },
-      });
+      res.status(201).json(building);
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: "Datos invalidos", details: error.errors });
@@ -831,68 +782,6 @@ export async function registerRoutes(
       });
     } catch (error) {
       console.error("Error fetching conserjeria info:", error);
-      res.status(500).json({ error: "Error interno del servidor" });
-    }
-  });
-
-  app.post("/api/buildings/:id/conserjeria/reset-password", isAuthenticated, isManager, async (req, res) => {
-    try {
-      const building = await storage.getBuilding(req.params.id);
-      if (!building) return res.status(404).json({ error: "Edificio no encontrado" });
-      if (!building.conserjeriaUserId) return res.status(404).json({ error: "No hay usuario conserjería para este edificio" });
-
-      const newPassword = String(Math.floor(1000 + Math.random() * 9000));
-      const passwordHash = await bcrypt.hash(newPassword, 10);
-
-      await storage.updateUser(building.conserjeriaUserId, {
-        passwordHash,
-        mustChangePassword: false,
-      });
-
-      res.json({ newPassword, userId: building.conserjeriaUserId });
-    } catch (error) {
-      console.error("Error resetting conserjeria password:", error);
-      res.status(500).json({ error: "Error interno del servidor" });
-    }
-  });
-
-  app.post("/api/buildings/:id/conserjeria/create", isAuthenticated, isManager, async (req, res) => {
-    try {
-      const building = await storage.getBuilding(req.params.id);
-      if (!building) return res.status(404).json({ error: "Edificio no encontrado" });
-      if (building.conserjeriaUserId) return res.status(400).json({ error: "Ya existe un usuario conserjería para este edificio" });
-
-      const conserjeriaUsername = generateConserjeriaUsername(building.name);
-      const tempPassword = String(Math.floor(1000 + Math.random() * 9000));
-      const passwordHash = await bcrypt.hash(tempPassword, 10);
-      const conserjeriaUserId = `conserjeria-${building.id}`;
-
-      const conserjeriaUser = await storage.createUser({
-        id: conserjeriaUserId,
-        email: null,
-        username: conserjeriaUsername,
-        firstName: "Conserjería",
-        lastName: building.name,
-        passwordHash,
-        mustChangePassword: false,
-      });
-
-      await storage.createUserProfile({
-        userId: conserjeriaUser.id,
-        role: "conserjeria",
-        buildingScope: "assigned",
-        isActive: true,
-      });
-
-      await storage.updateBuilding(building.id, { conserjeriaUserId: conserjeriaUser.id });
-
-      res.status(201).json({
-        userId: conserjeriaUser.id,
-        username: conserjeriaUsername,
-        tempPassword,
-      });
-    } catch (error) {
-      console.error("Error creating conserjeria user:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
