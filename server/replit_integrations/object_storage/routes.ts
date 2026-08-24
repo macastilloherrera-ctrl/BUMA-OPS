@@ -6,7 +6,7 @@ import {
   isObjectStorageConfigured,
 } from "./objectStorage";
 import { storage } from "../../storage";
-import { hasAllBuildingsScope } from "../../buildingScope";
+import { hasAllBuildingsScope, getSupportBuildingIds } from "../../buildingScope";
 import { db } from "../../db";
 import {
   attachments,
@@ -106,7 +106,10 @@ async function canNonManagerAccessObject(
     if (att.entityType === "expense") {
       const expense = await storage.getExpense(att.entityId);
       if (!expense) return false;
-      return await allowedForBuilding(expense.buildingId);
+      // La boleta sigue el alcance del egreso, que incluye los edificios de apoyo.
+      if (await allowedForBuilding(expense.buildingId)) return true;
+      const support = await getSupportBuildingIds(userId);
+      return support.has(expense.buildingId);
     }
     return false;
   }

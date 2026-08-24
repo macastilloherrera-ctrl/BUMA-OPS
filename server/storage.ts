@@ -23,6 +23,7 @@ import {
   ticketCommunications,
   ticketAssignmentHistory,
   attachments,
+  buildingSupportUsers,
   executives,
   executiveAssignments,
   executiveDocuments,
@@ -254,6 +255,10 @@ export interface IStorage {
   // Attachments
   getAttachments(entityType: string, entityId: string): Promise<Attachment[]>;
   getAttachmentsForEntities(entityType: string, entityIds: string[]): Promise<Attachment[]>;
+  getSupportBuildings(userId: string): Promise<string[]>;
+  getAllSupportBuildings(): Promise<Map<string, string[]>>;
+  setSupportBuildings(userId: string, buildingIds: string[], createdBy?: string): Promise<string[]>;
+  setConserjeriaBuildings(userId: string, buildingIds: string[]): Promise<string[]>;
   getAttachment(id: string): Promise<Attachment | undefined>;
   createAttachment(attachment: InsertAttachment): Promise<Attachment>;
   deleteAttachment(id: string): Promise<boolean>;
@@ -933,6 +938,65 @@ export class DatabaseStorage implements IStorage {
       .from(attachments)
       .where(and(eq(attachments.entityType, entityType), eq(attachments.entityId, entityId)))
       .orderBy(desc(attachments.createdAt));
+  }
+
+  /** Edificios donde el usuario figura como apoyo. */
+  async getSupportBuildings(userId: string): Promise<string[]> {
+    const rows = await db
+      .select({ buildingId: buildingSupportUsers.buildingId })
+      .from(buildingSupportUsers)
+      .where(eq(buildingSupportUsers.userId, userId));
+    return rows.map((r) => r.buildingId);
+  }
+
+  /** Todos los apoyos agrupados por usuario, para listados. */
+  async getAllSupportBuildings(): Promise<Map<string, string[]>> {
+    const rows = await db.select().from(buildingSupportUsers);
+    const map = new Map<string, string[]>();
+    for (const r of rows) {
+      const list = map.get(r.userId);
+      if (list) list.push(r.buildingId);
+      else map.set(r.userId, [r.buildingId]);
+    }
+    return map;
+  }
+
+  /** Reemplaza el conjunto de edificios de apoyo del usuario. */
+  async setSupportBuildings(
+    userId: string,
+    buildingIds: string[],
+    createdBy?: string,
+  ): Promise<string[]> {
+    await db.delete(buildingSupportUsers).where(eq(buildingSupportUsers.userId, userId));
+    if (buildingIds.length > 0) {
+      await db.insert(buildingSupportUsers).values(
+        buildingIds.map((buildingId) => ({ userId, buildingId, createdBy: createdBy || null })),
+      );
+    }
+    return this.getSupportBuildings(userId);
+  }
+
+  /**
+   * Reemplaza los edificios donde el usuario es conserje titular.
+   * Libera primero los que tenia y despues toma los nuevos, de modo que un
+   * edificio nunca quede con dos titulares.
+   */
+  async setConserjeriaBuildings(userId: string, buildingIds: string[]): Promise<string[]> {
+    await db
+      .update(buildings)
+      .set({ conserjeriaUserId: null })
+      .where(eq(buildings.conserjeriaUserId, userId));
+    for (const buildingId of buildingIds) {
+      await db
+        .update(buildings)
+        .set({ conserjeriaUserId: userId })
+        .where(eq(buildings.id, buildingId));
+    }
+    const rows = await db
+      .select({ id: buildings.id })
+      .from(buildings)
+      .where(eq(buildings.conserjeriaUserId, userId));
+    return rows.map((r) => r.id);
   }
 
   /** Adjuntos de varias entidades del mismo tipo, para evitar N+1 en listados. */

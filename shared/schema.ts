@@ -513,6 +513,34 @@ export const ticketCommunications = pgTable("ticket_communications", {
 });
 
 // Attachments table
+/**
+ * Edificios de apoyo de un usuario.
+ *
+ * Un edificio tiene un solo conserje titular (buildings.conserjeria_user_id) y
+ * un solo ejecutivo responsable (buildings.assigned_executive_id). Esta tabla
+ * agrega un vinculo muchos-a-muchos para dar alcance SIN ocupar ninguna de esas
+ * dos casillas: sirve para el conserje que carga egresos en un edificio del que
+ * no es titular, sin desplazar a quien si lo es.
+ *
+ * Hoy solo lo consume el modulo de Egresos (ver server/buildingScope.ts).
+ */
+export const buildingSupportUsers = pgTable("building_support_users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  buildingId: varchar("building_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  createdBy: varchar("created_by"),
+}, (table) => ({
+  uniqUserBuilding: unique("uq_support_user_building").on(table.userId, table.buildingId),
+}));
+
+export const insertBuildingSupportUserSchema = createInsertSchema(buildingSupportUsers).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertBuildingSupportUser = z.infer<typeof insertBuildingSupportUserSchema>;
+export type BuildingSupportUser = typeof buildingSupportUsers.$inferSelect;
+
 export const attachments = pgTable("attachments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   entityType: varchar("entity_type", { length: 50 }).notNull(),

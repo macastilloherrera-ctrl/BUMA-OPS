@@ -14,6 +14,9 @@ import {
   getEffectiveBuildingScope,
   getAssignedBuildingIds,
   canUserReachBuilding,
+  getSupportBuildingIds,
+  getExpenseBuildingIds,
+  canReachBuildingForExpenses,
 } from "./buildingScope";
 import { registerDevAuthRoutes, isDevMode } from "./devAuth";
 import { parseBankFile } from "./bankParsers";
@@ -3080,7 +3083,7 @@ export async function registerRoutes(
         if (!expense) return false;
         if (canAccessFinancial(profile)) return true;
         if (isConserjeriaRole(profile)) {
-          return canUserReachBuilding(userId, profile, expense.buildingId);
+          return canReachBuildingForExpenses(userId, profile, expense.buildingId);
         }
         return false;
       }
@@ -5202,9 +5205,15 @@ export async function registerRoutes(
       
       const profileMap = new Map(allProfiles.map(p => [p.userId, p]));
       
+      // Apoyos de todos los usuarios en una sola consulta, para no hacer N+1.
+      const allSupport = await storage.getAllSupportBuildings();
+
       const usersWithProfiles = allUsers.map(user => {
         const userProfile = profileMap.get(user.id);
         const assignedBuildings = buildings.filter(b => b.assignedExecutiveId === user.id);
+        const conserjeriaBuildings = buildings.filter(b => b.conserjeriaUserId === user.id);
+        const supportIds = allSupport.get(user.id) ?? [];
+        const supportBuildings = buildings.filter(b => supportIds.includes(b.id));
         
         return {
           id: user.id,
@@ -5222,6 +5231,8 @@ export async function registerRoutes(
             isActive: userProfile.isActive,
           } : null,
           assignedBuildings: assignedBuildings.map(b => ({ id: b.id, name: b.name })),
+          conserjeriaBuildings: conserjeriaBuildings.map(b => ({ id: b.id, name: b.name })),
+          supportBuildings: supportBuildings.map(b => ({ id: b.id, name: b.name })),
         };
       });
       
@@ -5411,6 +5422,95 @@ export async function registerRoutes(
       });
     } catch (error) {
       console.error("Error toggling user status:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Edificios de apoyo: dan alcance de EGRESOS sin tocar al conserje titular ni
+  // al ejecutivo responsable del edificio.
+  app.patch("/api/admin/users/:id/support-buildings", isAuthenticated, requireAdminPanel, async (req, res) => {
+    try {
+      const { buildingIds } = req.body;
+      if (!Array.isArray(buildingIds)) {
+        return res.status(400).json({ error: "buildingIds debe ser un array" });
+      }
+
+      const userProfile = await storage.getUserProfile(req.params.id);
+      if (!userProfile) {
+        return res.status(404).json({ error: "Perfil de usuario no encontrado" });
+      }
+
+      const allBuildings = await storage.getBuildings();
+      const validIds = new Set(allBuildings.map((b) => b.id));
+      const unknown = buildingIds.filter((id: string) => !validIds.has(id));
+      if (unknown.length > 0) {
+        return res.status(400).json({ error: "Hay edificios inexistentes en la seleccion" });
+      }
+
+      const saved = await storage.setSupportBuildings(req.params.id, buildingIds, req.user!.id);
+      res.json({
+        userId: req.params.id,
+        supportBuildings: allBuildings
+          .filter((b) => saved.includes(b.id))
+          .map((b) => ({ id: b.id, name: b.name })),
+      });
+    } catch (error) {
+      console.error("Error asignando edificios de apoyo:", error);
+      res.status(500).json({ error: "Error interno del servidor" });
+    }
+  });
+
+  // Conserje titular: un edificio tiene uno solo, asi que tomarlo libera al
+  // titular anterior. Solo tiene sentido para usuarios de rol conserjeria.
+  app.patch("/api/admin/users/:id/conserjeria-buildings", isAuthenticated, requireAdminPanel, async (req, res) => {
+    try {
+      const { buildingIds } = req.body;
+      if (!Array.isArray(buildingIds)) {
+        return res.status(400).json({ error: "buildingIds debe ser un array" });
+      }
+
+      const userProfile = await storage.getUserProfile(req.params.id);
+      if (!userProfile) {
+        return res.status(404).json({ error: "Perfil de usuario no encontrado" });
+      }
+      if (userProfile.role !== "conserjeria") {
+        return res.status(400).json({ error: "Solo un usuario de rol conserjeria puede ser conserje titular" });
+      }
+
+      const allBuildings = await storage.getBuildings();
+      const validIds = new Set(allBuildings.map((b) => b.id));
+      const unknown = buildingIds.filter((id: string) => !validIds.has(id));
+      if (unknown.length > 0) {
+        return res.status(400).json({ error: "Hay edificios inexistentes en la seleccion" });
+      }
+
+      // Avisar a quien se desplaza, para que quede en el log de auditoria.
+      const desplazados = allBuildings.filter(
+        (b) => buildingIds.includes(b.id) && b.conserjeriaUserId && b.conserjeriaUserId !== req.params.id,
+      );
+
+      const saved = await storage.setConserjeriaBuildings(req.params.id, buildingIds);
+
+      await storage.createAuditLog({
+        userId: req.user!.id,
+        action: "update_conserjeria_buildings",
+        entityType: "user",
+        entityId: req.params.id,
+        metadata: JSON.stringify({
+          buildingIds: saved,
+          desplazados: desplazados.map((b) => ({ building: b.name, anterior: b.conserjeriaUserId })),
+        }),
+      });
+
+      res.json({
+        userId: req.params.id,
+        conserjeriaBuildings: allBuildings
+          .filter((b) => saved.includes(b.id))
+          .map((b) => ({ id: b.id, name: b.name })),
+        desplazados: desplazados.map((b) => b.name),
+      });
+    } catch (error) {
+      console.error("Error asignando conserjeria titular:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
@@ -7979,13 +8079,17 @@ export async function registerRoutes(
       if (req.query.month) filters.month = parseInt(req.query.month as string);
       if (req.query.year) filters.year = parseInt(req.query.year as string);
 
-      // Conserjeria trabaja el modulo de Egresos completo, pero acotado a los
-      // edificios que tiene asignados (pueden ser varios).
+      // Conserjeria trabaja el modulo de Egresos completo, acotado a los
+      // edificios que alcanza: los asignados mas los de apoyo.
       let conserjeriaBuildingIds: Set<string> | null = null;
       if (isConserjeria) {
-        conserjeriaBuildingIds = await getAssignedBuildingIds(req.user!.id);
-        if (conserjeriaBuildingIds.size === 0) return res.json([]);
-        if (filters.buildingId && !conserjeriaBuildingIds.has(filters.buildingId)) {
+        conserjeriaBuildingIds = await getExpenseBuildingIds(req.user!.id, profile);
+        if (conserjeriaBuildingIds && conserjeriaBuildingIds.size === 0) return res.json([]);
+        if (
+          conserjeriaBuildingIds &&
+          filters.buildingId &&
+          !conserjeriaBuildingIds.has(filters.buildingId)
+        ) {
           return res.json([]);
         }
       }
@@ -8022,7 +8126,7 @@ export async function registerRoutes(
       const isConserjeria = isConserjeriaRole(profile);
 
       if (isConserjeria) {
-        const canReach = await canUserReachBuilding(req.user!.id, profile, req.body.buildingId);
+        const canReach = await canReachBuildingForExpenses(req.user!.id, profile, req.body.buildingId);
         if (!canReach) {
           return res.status(403).json({ error: "Solo puede ingresar egresos de sus edificios asignados" });
         }
@@ -8111,12 +8215,12 @@ export async function registerRoutes(
         if (!target) {
           return res.status(404).json({ error: "Egreso no encontrado" });
         }
-        if (!(await canUserReachBuilding(req.user!.id, profile, target.buildingId))) {
+        if (!(await canReachBuildingForExpenses(req.user!.id, profile, target.buildingId))) {
           return res.status(403).json({ error: "Solo puede modificar egresos de sus edificios asignados" });
         }
         if (
           req.body.buildingId &&
-          !(await canUserReachBuilding(req.user!.id, profile, req.body.buildingId))
+          !(await canReachBuildingForExpenses(req.user!.id, profile, req.body.buildingId))
         ) {
           return res.status(403).json({ error: "Solo puede asignar egresos a sus edificios asignados" });
         }

@@ -34,7 +34,35 @@ interface AdminUser {
   updatedAt: string;
   profile: UserProfile | null;
   assignedBuildings: { id: string; name: string }[];
+  conserjeriaBuildings?: { id: string; name: string }[];
+  supportBuildings?: { id: string; name: string }[];
 }
+
+/**
+ * Los tres vinculos entre usuario y edificio:
+ *  - executive:  ejecutivo responsable (uno por edificio)
+ *  - conserjeria: conserje titular (uno por edificio)
+ *  - support:    apoyo, solo da alcance de Egresos y no desplaza a nadie
+ */
+type BuildingLink = "executive" | "conserjeria" | "support";
+
+const BUILDING_LINKS: Record<BuildingLink, { title: string; description: string; endpoint: string }> = {
+  executive: {
+    title: "Edificios a cargo",
+    description: "Queda como ejecutivo responsable. Recibe los tickets del edificio.",
+    endpoint: "buildings",
+  },
+  conserjeria: {
+    title: "Conserje titular",
+    description: "Cada edificio tiene un solo conserje titular: al asignarlo se reemplaza al anterior.",
+    endpoint: "conserjeria-buildings",
+  },
+  support: {
+    title: "Edificios de apoyo (solo egresos)",
+    description: "Permite cargar egresos sin ser conserje ni ejecutivo, sin desplazar a los titulares.",
+    endpoint: "support-buildings",
+  },
+};
 
 interface Role {
   id: string;
@@ -79,6 +107,7 @@ export default function AdminUsers() {
   const [showBuildingsDialog, setShowBuildingsDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [selectedBuildings, setSelectedBuildings] = useState<string[]>([]);
+  const [buildingLink, setBuildingLink] = useState<BuildingLink>("executive");
   
   const [formData, setFormData] = useState({
     email: "",
@@ -155,13 +184,21 @@ export default function AdminUsers() {
   });
 
   const assignBuildingsMutation = useMutation({
-    mutationFn: ({ id, buildingIds }: { id: string; buildingIds: string[] }) =>
-      apiRequest("PATCH", `/api/admin/users/${id}/buildings`, { buildingIds }),
-    onSuccess: () => {
+    mutationFn: async ({ id, buildingIds, link }: { id: string; buildingIds: string[]; link: BuildingLink }) => {
+      const res = await apiRequest("PATCH", `/api/admin/users/${id}/${BUILDING_LINKS[link].endpoint}`, { buildingIds });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       setShowBuildingsDialog(false);
       setSelectedUser(null);
-      toast({ title: "Edificios asignados exitosamente" });
+      const desplazados: string[] = data?.desplazados ?? [];
+      toast({
+        title: "Edificios asignados exitosamente",
+        description: desplazados.length
+          ? `Se reemplazó al conserje anterior en: ${desplazados.join(", ")}`
+          : undefined,
+      });
     },
     onError: (error: any) => {
       toast({ title: "Error al asignar edificios", description: error.message, variant: "destructive" });
@@ -194,9 +231,14 @@ export default function AdminUsers() {
     setShowEditDialog(true);
   };
 
-  const openBuildingsDialog = (user: AdminUser) => {
+  const openBuildingsDialog = (user: AdminUser, link: BuildingLink = "executive") => {
+    const current =
+      link === "conserjeria" ? user.conserjeriaBuildings
+      : link === "support" ? user.supportBuildings
+      : user.assignedBuildings;
     setSelectedUser(user);
-    setSelectedBuildings(user.assignedBuildings.map(b => b.id));
+    setBuildingLink(link);
+    setSelectedBuildings((current ?? []).map(b => b.id));
     setShowBuildingsDialog(true);
   };
 
@@ -594,9 +636,9 @@ export default function AdminUsers() {
       <Dialog open={showBuildingsDialog} onOpenChange={setShowBuildingsDialog}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Asignar Edificios</DialogTitle>
+            <DialogTitle>{BUILDING_LINKS[buildingLink].title}</DialogTitle>
             <DialogDescription>
-              Selecciona los edificios para {selectedUser?.firstName} {selectedUser?.lastName}
+              {selectedUser?.firstName} {selectedUser?.lastName} — {BUILDING_LINKS[buildingLink].description}
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="max-h-[300px] pr-4">
@@ -627,7 +669,7 @@ export default function AdminUsers() {
               Cancelar
             </Button>
             <Button 
-              onClick={() => selectedUser && assignBuildingsMutation.mutate({ id: selectedUser.id, buildingIds: selectedBuildings })}
+              onClick={() => selectedUser && assignBuildingsMutation.mutate({ id: selectedUser.id, buildingIds: selectedBuildings, link: buildingLink })}
               disabled={assignBuildingsMutation.isPending}
               data-testid="button-submit-assign-buildings"
             >
@@ -651,7 +693,7 @@ function UserTable({
   onEdit: (user: AdminUser) => void;
   onDelete: (user: AdminUser) => void;
   onToggleActive: (user: AdminUser) => void;
-  onAssignBuildings: (user: AdminUser) => void;
+  onAssignBuildings: (user: AdminUser, link: BuildingLink) => void;
 }) {
   if (users.length === 0) {
     return (
@@ -715,16 +757,51 @@ function UserTable({
                   </td>
                   <td className="p-4">
                     {["ejecutivo_operaciones", "ejecutivo_apoyo", "conserjeria"].includes(user.profile?.role || "") ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm">{user.assignedBuildings.length} edificio(s)</span>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          onClick={() => onAssignBuildings(user)}
-                          data-testid={`button-assign-buildings-${user.id}`}
-                        >
-                          <Building2 className="h-3 w-3" />
-                        </Button>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm w-32">{user.assignedBuildings.length} a cargo</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            title="Edificios a cargo (ejecutivo responsable)"
+                            onClick={() => onAssignBuildings(user, "executive")}
+                            data-testid={`button-assign-buildings-${user.id}`}
+                          >
+                            <Building2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+
+                        {user.profile?.role === "conserjeria" && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm w-32">
+                              {(user.conserjeriaBuildings?.length ?? 0)} como titular
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              title="Conserje titular"
+                              onClick={() => onAssignBuildings(user, "conserjeria")}
+                              data-testid={`button-assign-conserjeria-${user.id}`}
+                            >
+                              <UserCheck className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm w-32">
+                            {(user.supportBuildings?.length ?? 0)} de apoyo
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            title="Edificios de apoyo (solo egresos)"
+                            onClick={() => onAssignBuildings(user, "support")}
+                            data-testid={`button-assign-support-${user.id}`}
+                          >
+                            <Shield className="h-3 w-3" />
+                          </Button>
+                        </div>
                       </div>
                     ) : (
                       <span className="text-sm text-muted-foreground">N/A</span>

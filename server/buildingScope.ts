@@ -1,4 +1,7 @@
+import { eq } from "drizzle-orm";
 import { storage } from "./storage";
+import { db } from "./db";
+import { buildingSupportUsers } from "@shared/schema";
 import { DEFAULT_PERMISSIONS } from "@shared/modulePermissions";
 import type { UserProfile } from "@shared/schema";
 
@@ -77,4 +80,55 @@ export async function canUserReachBuilding(
   if (await hasAllBuildingsScope(profile)) return true;
   const assigned = await getAssignedBuildingIds(userId);
   return assigned.has(buildingId);
+}
+
+/**
+ * Edificios donde el usuario figura como apoyo (building_support_users).
+ *
+ * Se aisla en su propia funcion porque el apoyo NO otorga alcance general: hoy
+ * solo cuenta para Egresos. Si algun dia se quisiera extender a tickets o
+ * visitas, bastaria con sumarlo en getAssignedBuildingIds().
+ */
+export async function getSupportBuildingIds(userId: string): Promise<Set<string>> {
+  try {
+    const rows = await db
+      .select({ buildingId: buildingSupportUsers.buildingId })
+      .from(buildingSupportUsers)
+      .where(eq(buildingSupportUsers.userId, userId));
+    return new Set(rows.map((r) => r.buildingId));
+  } catch (error) {
+    // La tabla puede no existir todavia en la ventana entre el deploy y la
+    // migracion. Degradar a "sin apoyos" mantiene Egresos operativo en vez de
+    // tumbar la pantalla entera.
+    console.error("Error leyendo building_support_users:", error);
+    return new Set();
+  }
+}
+
+/**
+ * Alcance de edificios para el modulo de Egresos: los edificios asignados mas
+ * los de apoyo. Es el unico lugar donde el apoyo cuenta.
+ */
+export async function getExpenseBuildingIds(
+  userId: string,
+  profile: UserProfile | null | undefined,
+): Promise<Set<string> | null> {
+  // null = sin restriccion (alcanza todos los edificios).
+  if (await hasAllBuildingsScope(profile)) return null;
+
+  const assigned = await getAssignedBuildingIds(userId);
+  const support = await getSupportBuildingIds(userId);
+  support.forEach((id) => assigned.add(id));
+  return assigned;
+}
+
+/** true si el usuario puede operar egresos sobre ese edificio. */
+export async function canReachBuildingForExpenses(
+  userId: string,
+  profile: UserProfile | null | undefined,
+  buildingId: string | null | undefined,
+): Promise<boolean> {
+  if (!buildingId) return false;
+  const allowed = await getExpenseBuildingIds(userId, profile);
+  return allowed === null || allowed.has(buildingId);
 }
