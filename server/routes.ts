@@ -13,6 +13,8 @@ import {
   hasAllBuildingsScope,
   getEffectiveBuildingScope,
   getAssignedBuildingIds,
+  getOwnedBuildingIds,
+  canManageBuilding,
   canUserReachBuilding,
   getSupportBuildingIds,
 } from "./buildingScope";
@@ -200,7 +202,8 @@ function canExportFinancial(profile: UserProfile | null | undefined): boolean {
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
-// Helper to check if user can access a building (based on buildingScope)
+// Gobierna las ALTAS (tickets, visitas, incidentes). Exige edificio propio: un
+// conserje de apoyo ve y ejecuta lo que le asignan, pero no origina trabajo.
 async function canAccessBuilding(userId: string, buildingId: string, profile: UserProfile | null | undefined): Promise<boolean> {
   if (isManagerRole(profile)) return true;
   // ejecutivo_apoyo es rol de soporte transversal: asiste a TODOS los
@@ -209,8 +212,8 @@ async function canAccessBuilding(userId: string, buildingId: string, profile: Us
   if (profile?.role === "ejecutivo_apoyo") return true;
   if (await hasAllBuildingsScope(profile)) return true;
 
-  const assigned = await getAssignedBuildingIds(userId);
-  return assigned.has(buildingId);
+  const owned = await getOwnedBuildingIds(userId);
+  return owned.has(buildingId);
 }
 
 // Helper to check if user can view/edit entity based on assignment
@@ -236,11 +239,9 @@ async function canAccessEntity(
   if (entity.assignedExecutiveId === userId) return true;
   if (entity.createdBy === userId) return true;
 
-  // User is assigned to the building
-  const building = await storage.getBuilding(entity.buildingId);
-  if (building?.assignedExecutiveId === userId) return true;
-
-  return false;
+  // Alcance por edificio, apoyos incluidos: ver y trabajar si el edificio es suyo.
+  const assigned = await getAssignedBuildingIds(userId);
+  return assigned.has(entity.buildingId);
 }
 
 // Helper to remove cost fields from request body for non-managers
@@ -2265,11 +2266,19 @@ export async function registerRoutes(
       }
       
       if (isConserjeriaRole(profile)) {
-        const allowedFields = ["documentKey", "notes"];
+        // Conserjeria ejecuta las tareas que le calendarizan: avanza el estado
+        // del ticket y deja evidencia. Cerrarlo sigue siendo de gerencia (mas
+        // abajo) y no puede tocar costos, asignaciones ni datos del ticket.
+        const allowedFields = ["documentKey", "notes", "status"];
         const bodyKeys = Object.keys(req.body);
         const hasDisallowed = bodyKeys.some(k => !allowedFields.includes(k));
         if (hasDisallowed) {
-          return res.status(403).json({ error: "Conserjería solo puede agregar evidencia o comentarios" });
+          return res.status(403).json({ error: "Conserjería solo puede avanzar el estado, agregar evidencia o comentarios" });
+        }
+        // Y solo sobre tickets a su alcance: los suyos o los de sus edificios.
+        const puedeTrabajarlo = await canAccessEntity(req.user!.id, profile, existingTicket);
+        if (!puedeTrabajarlo) {
+          return res.status(403).json({ error: "No tienes permiso para trabajar este ticket" });
         }
       }
 
@@ -2534,7 +2543,14 @@ export async function registerRoutes(
       if (!ticket) {
         return res.status(404).json({ error: "Ticket no encontrado" });
       }
-      
+
+      // Escalar tambien reparte trabajo: mismo criterio que derivar.
+      const escProfile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(escProfile) &&
+          !(await canManageBuilding(req.user!.id, escProfile, ticket.buildingId))) {
+        return res.status(403).json({ error: "No tienes permiso para escalar tickets de este edificio" });
+      }
+
       const { reason, targetUserId } = req.body;
       
       let targetProfile;
@@ -2607,7 +2623,16 @@ export async function registerRoutes(
       if (!ticket) {
         return res.status(404).json({ error: "Ticket no encontrado" });
       }
-      
+
+      // Derivar es originar trabajo para otro: exige ser responsable del
+      // edificio. Un conserje de apoyo ejecuta, no reparte. Antes este endpoint
+      // no validaba nada y cualquier usuario autenticado podia reasignar.
+      const derivaProfile = await storage.getUserProfile(req.user!.id);
+      if (!isManagerRole(derivaProfile) &&
+          !(await canManageBuilding(req.user!.id, derivaProfile, ticket.buildingId))) {
+        return res.status(403).json({ error: "No tienes permiso para derivar tickets de este edificio" });
+      }
+
       const { assigneeId, reason } = req.body;
       
       if (!assigneeId) {
@@ -3364,6 +3389,17 @@ export async function registerRoutes(
 
   app.post("/api/tickets/:ticketId/photos", isAuthenticated, async (req, res) => {
     try {
+      // Subir avances es parte de ejecutar la tarea, asi que los edificios de
+      // apoyo cuentan. Antes el endpoint no validaba nada.
+      const fotoTicket = await storage.getTicket(req.params.ticketId);
+      if (!fotoTicket) {
+        return res.status(404).json({ error: "Ticket no encontrado" });
+      }
+      const fotoProfile = await storage.getUserProfile(req.user!.id);
+      if (!(await canAccessEntity(req.user!.id, fotoProfile, fotoTicket))) {
+        return res.status(403).json({ error: "No tienes permiso para subir fotos a este ticket" });
+      }
+
       const data = insertTicketPhotoSchema.parse({
         ...req.body,
         ticketId: req.params.ticketId,

@@ -49,29 +49,52 @@ export async function hasAllBuildingsScope(
 /**
  * Edificios que un usuario tiene asignados cuando su alcance es "assigned".
  *
- * Un edificio se considera asignado por tres vias, y todas cuentan:
+ * Un edificio se considera asignado por tres vias:
  *  - `assigned_executive_id`: el ejecutivo responsable del edificio.
  *  - `conserjeria_user_id`: el conserje titular del edificio.
  *  - `building_support_users`: los conserjes de apoyo.
+ *
+ * Las dos primeras son "propias" (getOwnedBuildingIds) y habilitan originar
+ * trabajo. El apoyo solo suma ver y ejecutar.
  *
  * Antes cada llamador miraba una sola columna, asi que un conserje asignado por
  * la via de ejecutivo no tenia ningun edificio y un ejecutivo vinculado como
  * conserje tampoco. Devolver la union deja que un mismo usuario cubra varios
  * edificios sin duplicar cuentas.
  */
-export async function getAssignedBuildingIds(userId: string): Promise<Set<string>> {
+export async function getOwnedBuildingIds(userId: string): Promise<Set<string>> {
   const buildings = await storage.getBuildings();
-  const ids = new Set(
+  return new Set(
     buildings
       .filter((b) => b.assignedExecutiveId === userId || b.conserjeriaUserId === userId)
       .map((b) => b.id),
   );
-  // El apoyo tambien cuenta: un conserje de apoyo trabaja en el edificio, carga
-  // sus egresos y recibe los tickets que le calendarizan ahi. Lo unico que no
-  // es, es el conserje titular.
+}
+
+export async function getAssignedBuildingIds(userId: string): Promise<Set<string>> {
+  const ids = await getOwnedBuildingIds(userId);
+  // El apoyo suma alcance de lectura y trabajo, no de origen: el conserje de
+  // apoyo ve y ejecuta los tickets que le calendarizan, pero no crea trabajo
+  // nuevo ni deriva. Eso queda en getOwnedBuildingIds().
   const support = await getSupportBuildingIds(userId);
   support.forEach((id) => ids.add(id));
   return ids;
+}
+
+/**
+ * true si el usuario puede ORIGINAR trabajo en el edificio: crear tickets,
+ * visitas o incidentes, y derivar tickets. Requiere ser el responsable del
+ * edificio (titular o ejecutivo); el apoyo no alcanza.
+ */
+export async function canManageBuilding(
+  userId: string,
+  profile: UserProfile | null | undefined,
+  buildingId: string | null | undefined,
+): Promise<boolean> {
+  if (!buildingId) return false;
+  if (await hasAllBuildingsScope(profile)) return true;
+  const owned = await getOwnedBuildingIds(userId);
+  return owned.has(buildingId);
 }
 
 /**
