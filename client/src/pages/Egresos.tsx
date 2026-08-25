@@ -152,7 +152,15 @@ const expenseFormSchema = z.object({
 }, {
   message: "Debe ingresar el motivo de postergación cuando el estado es Postergado",
   path: ["postponementReason"],
-});
+})
+  .refine((data) => !!data.chargeMonth && data.chargeMonth !== "", {
+    message: "Seleccione el mes del período",
+    path: ["chargeMonth"],
+  })
+  .refine((data) => !!data.chargeYear && data.chargeYear !== "", {
+    message: "Seleccione el año del período",
+    path: ["chargeYear"],
+  });
 
 type ExpenseFormValues = z.infer<typeof expenseFormSchema>;
 

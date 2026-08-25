@@ -8037,6 +8037,30 @@ export async function registerRoutes(
     }
   });
 
+  /**
+   * El periodo (mes + año de cargo) es obligatorio y debe viajar completo.
+   *
+   * getExpenses() filtra por (mes AND año) o por (ambos nulos AND fecha de pago
+   * en el rango). Un egreso a medias —mes sin año o al reves— no entra en
+   * ninguna de las dos ramas y queda invisible en TODA combinacion de filtros,
+   * pero el control de duplicados si lo encuentra: guardado y no consultable.
+   * Paso en produccion con la factura 227 de Kandinsky.
+   */
+  function validarPeriodo(month: unknown, year: unknown): string | null {
+    const m = month === null || month === undefined || month === "" ? null : Number(month);
+    const y = year === null || year === undefined || year === "" ? null : Number(year);
+    if (m === null || y === null) {
+      return "Debe indicar el mes y el año del período del egreso";
+    }
+    if (!Number.isInteger(m) || m < 1 || m > 12) {
+      return "El mes del período debe estar entre 1 y 12";
+    }
+    if (!Number.isInteger(y) || y < 2000 || y > 2100) {
+      return "El año del período no es válido";
+    }
+    return null;
+  }
+
   app.post("/api/expenses", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
@@ -8058,6 +8082,11 @@ export async function registerRoutes(
       if (vendorName) {
         const vendor = await storage.findOrCreateVendor(vendorName);
         vendorId = vendor.id;
+      }
+
+      const errorPeriodo = validarPeriodo(req.body.chargeMonth, req.body.chargeYear);
+      if (errorPeriodo) {
+        return res.status(400).json({ error: errorPeriodo });
       }
 
       const docType = req.body.documentType || null;
@@ -8161,6 +8190,16 @@ export async function registerRoutes(
       const existingExpense = await storage.getExpense(req.params.id);
       if (!existingExpense) {
         return res.status(404).json({ error: "Egreso no encontrado" });
+      }
+
+      // Si la edicion toca el periodo, el resultado tiene que quedar completo.
+      if ("chargeMonth" in req.body || "chargeYear" in req.body) {
+        const mesFinal = "chargeMonth" in req.body ? req.body.chargeMonth : (existingExpense as any).chargeMonth;
+        const anioFinal = "chargeYear" in req.body ? req.body.chargeYear : (existingExpense as any).chargeYear;
+        const errorPeriodo = validarPeriodo(mesFinal, anioFinal);
+        if (errorPeriodo) {
+          return res.status(400).json({ error: errorPeriodo });
+        }
       }
 
       {
