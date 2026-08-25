@@ -49,9 +49,10 @@ export async function hasAllBuildingsScope(
 /**
  * Edificios que un usuario tiene asignados cuando su alcance es "assigned".
  *
- * Un edificio se considera asignado por dos vias, y ambas cuentan:
- *  - `assigned_executive_id`: el ejecutivo (o conserje) responsable del edificio.
- *  - `conserjeria_user_id`: la cuenta de conserjeria vinculada al edificio.
+ * Un edificio se considera asignado por tres vias, y todas cuentan:
+ *  - `assigned_executive_id`: el ejecutivo responsable del edificio.
+ *  - `conserjeria_user_id`: el conserje titular del edificio.
+ *  - `building_support_users`: los conserjes de apoyo.
  *
  * Antes cada llamador miraba una sola columna, asi que un conserje asignado por
  * la via de ejecutivo no tenia ningun edificio y un ejecutivo vinculado como
@@ -60,11 +61,17 @@ export async function hasAllBuildingsScope(
  */
 export async function getAssignedBuildingIds(userId: string): Promise<Set<string>> {
   const buildings = await storage.getBuildings();
-  return new Set(
+  const ids = new Set(
     buildings
       .filter((b) => b.assignedExecutiveId === userId || b.conserjeriaUserId === userId)
       .map((b) => b.id),
   );
+  // El apoyo tambien cuenta: un conserje de apoyo trabaja en el edificio, carga
+  // sus egresos y recibe los tickets que le calendarizan ahi. Lo unico que no
+  // es, es el conserje titular.
+  const support = await getSupportBuildingIds(userId);
+  support.forEach((id) => ids.add(id));
+  return ids;
 }
 
 /**
@@ -85,9 +92,9 @@ export async function canUserReachBuilding(
 /**
  * Edificios donde el usuario figura como apoyo (building_support_users).
  *
- * Se aisla en su propia funcion porque el apoyo NO otorga alcance general: hoy
- * solo cuenta para Egresos. Si algun dia se quisiera extender a tickets o
- * visitas, bastaria con sumarlo en getAssignedBuildingIds().
+ * Lo consume getAssignedBuildingIds(), de modo que el apoyo otorga el mismo
+ * alcance que cualquier otra via de asignacion. Que ese alcance se traduzca en
+ * Egresos y Tickets y no en mas cosas lo decide el sistema de modulos del rol.
  */
 export async function getSupportBuildingIds(userId: string): Promise<Set<string>> {
   try {
@@ -103,32 +110,4 @@ export async function getSupportBuildingIds(userId: string): Promise<Set<string>
     console.error("Error leyendo building_support_users:", error);
     return new Set();
   }
-}
-
-/**
- * Alcance de edificios para el modulo de Egresos: los edificios asignados mas
- * los de apoyo. Es el unico lugar donde el apoyo cuenta.
- */
-export async function getExpenseBuildingIds(
-  userId: string,
-  profile: UserProfile | null | undefined,
-): Promise<Set<string> | null> {
-  // null = sin restriccion (alcanza todos los edificios).
-  if (await hasAllBuildingsScope(profile)) return null;
-
-  const assigned = await getAssignedBuildingIds(userId);
-  const support = await getSupportBuildingIds(userId);
-  support.forEach((id) => assigned.add(id));
-  return assigned;
-}
-
-/** true si el usuario puede operar egresos sobre ese edificio. */
-export async function canReachBuildingForExpenses(
-  userId: string,
-  profile: UserProfile | null | undefined,
-  buildingId: string | null | undefined,
-): Promise<boolean> {
-  if (!buildingId) return false;
-  const allowed = await getExpenseBuildingIds(userId, profile);
-  return allowed === null || allowed.has(buildingId);
 }
