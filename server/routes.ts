@@ -1987,18 +1987,15 @@ export async function registerRoutes(
       
       let tickets = await storage.getTickets(filters);
       
-      if (!isManager && !(await hasAllBuildingsScope(profile))) {
-        // Una sola regla para todos los roles acotados, conserjeria incluida.
-        // Antes conserjeria tenia su propia rama que miraba solo
-        // assigned_executive_id y ademas exigia receiverType "personal_edificio";
-        // como ese campo nunca se llena, el filtro descartaba TODOS los tickets
-        // y un conserje no veia ni los que le asignaban.
-        const userBuildingIds = await getAssignedBuildingIds(req.user!.id);
-
+      if (!isManager) {
+        // Un ticket lo ve su asignado, no cualquiera con alcance sobre el
+        // edificio: la lista es la carga de trabajo propia, no la del edificio.
+        // Se conservan los que uno mismo creo para no perder de vista lo que
+        // reporto. Gerencia queda fuera del filtro porque necesita el panorama
+        // completo para gestionar y reasignar.
         tickets = tickets.filter((t) =>
-          t.createdBy === req.user!.id ||
           t.assignedExecutiveId === req.user!.id ||
-          userBuildingIds.has(t.buildingId)
+          t.createdBy === req.user!.id
         );
       }
       
