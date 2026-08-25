@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -187,6 +187,9 @@ export default function Egresos() {
   // Boletas subidas al storage que todavia no se vincularon al egreso: al crear
   // uno nuevo el id recien existe despues de guardar.
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
+  // Espejo de pendingFiles para leer el valor actual desde el callback del
+  // uploader, que no ve el estado de este render.
+  const pendingFilesRef = useRef<PendingFile[]>([]);
   const [editingExpense, setEditingExpense] = useState<ExpenseWithAttachments | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -276,7 +279,7 @@ export default function Egresos() {
 
   /** Registra en el catalogo las boletas ya subidas al storage. */
   async function linkPendingFiles(expenseId: string) {
-    for (const file of pendingFiles) {
+    for (const file of pendingFilesRef.current) {
       await apiRequest("POST", "/api/attachments", {
         entityType: "expense",
         entityId: expenseId,
@@ -405,6 +408,7 @@ export default function Egresos() {
   function closeDialog() {
     setDialogOpen(false);
     setEditingExpense(null);
+    pendingFilesRef.current = [];
     setPendingFiles([]);
     form.reset(defaultFormValues);
     setVendorSearch("");
@@ -1303,7 +1307,9 @@ export default function Egresos() {
 
                 <ObjectUploader
                   maxNumberOfFiles={5}
-                  maxFileSize={10 * 1024 * 1024}
+                  maxFileSize={25 * 1024 * 1024}
+                  // Documento contable: se guarda fiel al original, sin comprimir.
+                  compressImages={false}
                   onGetUploadParameters={async (file) => {
                     const res = await apiRequest("POST", "/api/uploads/request-url", {
                       name: file.name,
@@ -1311,22 +1317,82 @@ export default function Egresos() {
                       contentType: file.type || "application/octet-stream",
                     });
                     const { uploadURL, objectPath } = await res.json();
-                    setPendingFiles((prev) => [
-                      ...prev,
-                      {
-                        objectPath,
-                        fileName: file.name || "boleta",
-                        fileType: file.type || "application/octet-stream",
-                        fileSize: Number(file.size ?? 0),
-                      },
-                    ]);
+                    const subido: PendingFile = {
+                      objectPath,
+                      fileName: file.name || "boleta",
+                      fileType: file.type || "application/octet-stream",
+                      fileSize: Number(file.size ?? 0),
+                    };
+                    pendingFilesRef.current = [...pendingFilesRef.current, subido];
+                    setPendingFiles(pendingFilesRef.current);
                     return { method: "PUT" as const, url: uploadURL };
+                  }}
+                  onComplete={async (result) => {
+                    const subidos = result.successful?.length ?? 0;
+                    const fallidos = result.failed?.length ?? 0;
+                    if (fallidos > 0) {
+                      toast({
+                        title: "No se pudo subir la boleta",
+                        description: `${fallidos} archivo(s) fallaron. Intentá de nuevo.`,
+                        variant: "destructive",
+                      });
+                    }
+                    if (subidos === 0) return;
+
+                    // Si el egreso ya existe, se vincula en el momento para que
+                    // la boleta aparezca sin tener que guardar a mano.
+                    if (editingExpense) {
+                      const recienSubidas = pendingFilesRef.current;
+                      try {
+                        await linkPendingFiles(editingExpense.id);
+                        setEditingExpense((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                attachments: [
+                                  ...(prev.attachments ?? []),
+                                  ...recienSubidas.map((f) => ({
+                                    id: f.objectPath,
+                                    entityType: "expense",
+                                    entityId: prev.id,
+                                    fileName: f.fileName,
+                                    fileUrl: f.objectPath,
+                                    fileType: f.fileType,
+                                    fileSize: f.fileSize,
+                                    uploadedBy: user?.id ?? "",
+                                    createdAt: new Date(),
+                                  })) as Attachment[],
+                                ],
+                              }
+                            : prev,
+                        );
+                        pendingFilesRef.current = [];
+                        setPendingFiles([]);
+                        queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+                        toast({
+                          title: "Boleta cargada con éxito",
+                          description: `${subidos} archivo(s) adjuntado(s) al egreso.`,
+                        });
+                      } catch (error) {
+                        toast({
+                          title: "La boleta se subió pero no quedó adjunta",
+                          description: error instanceof Error ? error.message : "Intentá guardar el egreso.",
+                          variant: "destructive",
+                        });
+                      }
+                      return;
+                    }
+
+                    toast({
+                      title: "Boleta cargada con éxito",
+                      description: "Queda adjunta al guardar el egreso.",
+                    });
                   }}
                   buttonClassName="w-full"
                 >
                   <span className="flex items-center gap-2">
                     <Paperclip className="h-4 w-4" />
-                    Adjuntar boleta (PDF o imagen)
+                    Adjuntar boleta (PDF o imagen, hasta 25 MB)
                   </span>
                 </ObjectUploader>
               </div>

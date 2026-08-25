@@ -368,6 +368,7 @@ export default function VisitInProgress() {
             <ObjectUploader
               maxNumberOfFiles={5}
               maxFileSize={10485760}
+              compressImages
               onGetUploadParameters={async (file) => {
                 const res = await fetch("/api/uploads/request-url", {
                   method: "POST",
@@ -556,6 +557,7 @@ export default function VisitInProgress() {
                       <ObjectUploader
                         maxNumberOfFiles={5}
                         maxFileSize={10485760}
+              compressImages
                         onGetUploadParameters={async (file) => {
                           const res = await fetch("/api/uploads/request-url", {
                             method: "POST",

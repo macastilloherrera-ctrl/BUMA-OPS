@@ -694,6 +694,8 @@ export default function NewTicket() {
                 <ObjectUploader
                   maxNumberOfFiles={5}
                   maxFileSize={10485760}
+                  // Fotos del ticket: se comprimen para bajar el peso.
+                  compressImages
                   onGetUploadParameters={async (file) => {
                     const res = await fetch("/api/uploads/request-url", {
                       method: "POST",

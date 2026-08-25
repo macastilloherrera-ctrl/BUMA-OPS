@@ -2322,6 +2322,9 @@ Equipo BUMA Property Management
               <ObjectUploader
                 maxNumberOfFiles={5}
                 maxFileSize={10485760}
+                // Fotos del ticket: se comprimen. Los documentos de factura y
+                // cotizacion de esta misma pantalla NO, por su valor contable.
+                compressImages
                 onGetUploadParameters={async (file) => {
                   const res = await fetch("/api/uploads/request-url", {
                     method: "POST",
