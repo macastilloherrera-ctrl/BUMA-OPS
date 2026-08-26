@@ -7984,8 +7984,8 @@ export async function registerRoutes(
       const profile = await storage.getUserProfile(req.user!.id);
       const isConserjeria = isConserjeriaRole(profile);
 
-      if (!isConserjeria && !canAccessFinancial(profile)) {
-        return res.status(403).json({ error: "No autorizado para acceder a datos financieros" });
+      if (!(await puedeUsarEgresos(profile))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Egresos" });
       }
 
       const filters: { buildingId?: string; sourceType?: string; paymentStatus?: string; inclusionStatus?: string; month?: number; year?: number } = {};
@@ -7996,25 +7996,20 @@ export async function registerRoutes(
       if (req.query.month) filters.month = parseInt(req.query.month as string);
       if (req.query.year) filters.year = parseInt(req.query.year as string);
 
-      // Conserjeria trabaja el modulo de Egresos completo, acotado a los
-      // edificios que alcanza: los asignados mas los de apoyo.
-      let conserjeriaBuildingIds: Set<string> | null = null;
-      if (isConserjeria && !(await hasAllBuildingsScope(profile))) {
-        conserjeriaBuildingIds = await getAssignedBuildingIds(req.user!.id);
-        if (conserjeriaBuildingIds.size === 0) return res.json([]);
-        if (
-          conserjeriaBuildingIds &&
-          filters.buildingId &&
-          !conserjeriaBuildingIds.has(filters.buildingId)
-        ) {
+      // Alcance de edificios: aplica a cualquier rol acotado, no solo a
+      // conserjeria. Gerencia y los roles con alcance "all" reciben null.
+      const edificiosPermitidos = await alcanceEgresos(req.user!.id, profile);
+      if (edificiosPermitidos) {
+        if (edificiosPermitidos.size === 0) return res.json([]);
+        if (filters.buildingId && !edificiosPermitidos.has(filters.buildingId)) {
           return res.json([]);
         }
       }
 
       let items = await storage.getExpenses(filters);
 
-      if (conserjeriaBuildingIds) {
-        items = items.filter((e: any) => conserjeriaBuildingIds!.has(e.buildingId));
+      if (edificiosPermitidos) {
+        items = items.filter((e: any) => edificiosPermitidos.has(e.buildingId));
       }
 
       // Boletas/comprobantes adjuntos, en una sola consulta para no hacer N+1
@@ -8046,6 +8041,35 @@ export async function registerRoutes(
    * pero el control de duplicados si lo encuentra: guardado y no consultable.
    * Paso en produccion con la factura 227 de Kandinsky.
    */
+  /**
+   * Quien puede trabajar el modulo de Egresos.
+   *
+   * Antes crear estaba reservado a gerentes por una lista de roles fija, y ver
+   * exigia canAccessFinancial(), que es la misma lista. Eso contradecia la
+   * configuracion: roles con el modulo habilitado en Gestion de Permisos
+   * —ejecutivo_operaciones, ejecutivo_apoyo— quedaban afuera igual. Ahora manda
+   * el modulo, y el alcance de edificios acota donde.
+   */
+  async function puedeUsarEgresos(profile: UserProfile | null | undefined): Promise<boolean> {
+    if (!profile) return false;
+    if (isManagerRole(profile)) return true;
+    const modulos = await getUserPermissions(profile.role);
+    return !!modulos?.egresos;
+  }
+
+  /**
+   * Edificios sobre los que el usuario puede operar egresos, o null si alcanza
+   * todos. Gerencia siempre alcanza todo.
+   */
+  async function alcanceEgresos(
+    userId: string,
+    profile: UserProfile | null | undefined,
+  ): Promise<Set<string> | null> {
+    if (isManagerRole(profile)) return null;
+    if (await hasAllBuildingsScope(profile)) return null;
+    return await getAssignedBuildingIds(userId);
+  }
+
   function validarPeriodo(month: unknown, year: unknown): string | null {
     const m = month === null || month === undefined || month === "" ? null : Number(month);
     const y = year === null || year === undefined || year === "" ? null : Number(year);
@@ -8064,15 +8088,15 @@ export async function registerRoutes(
   app.post("/api/expenses", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      const isConserjeria = isConserjeriaRole(profile);
 
-      if (isConserjeria) {
+      if (!(await puedeUsarEgresos(profile))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Egresos" });
+      }
+      if (!isManagerRole(profile)) {
         const canReach = await canUserReachBuilding(req.user!.id, profile, req.body.buildingId);
         if (!canReach) {
-          return res.status(403).json({ error: "Solo puede ingresar egresos de sus edificios asignados" });
+          return res.status(403).json({ error: "Solo puedes ingresar egresos de tus edificios asignados" });
         }
-      } else if (!isManagerRole(profile)) {
-        return res.status(403).json({ error: "Solo gerentes pueden crear egresos" });
       }
 
       let vendorName = req.body.vendorName ? String(req.body.vendorName).toUpperCase().trim() : null;
@@ -8120,7 +8144,9 @@ export async function registerRoutes(
         }
       }
 
-      if (isConserjeria) {
+      // Validar un egreso es acto de gerencia: nadie fuera de ese grupo puede
+      // crearlo ya validado. Antes solo se le impedia a conserjeria.
+      if (!isManagerRole(profile)) {
         expenseData.operationallyValidated = false;
         expenseData.financiallyValidated = false;
       }
@@ -8154,24 +8180,26 @@ export async function registerRoutes(
   app.patch("/api/expenses/:id", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (isConserjeriaRole(profile)) {
-        // Conserjeria edita egresos, pero solo los de sus edificios asignados y
-        // sin poder moverlos a un edificio fuera de su alcance.
+
+      if (!(await puedeUsarEgresos(profile))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Egresos" });
+      }
+      // Los roles acotados editan solo egresos de sus edificios, y no pueden
+      // moverlos fuera de su alcance. Una sola regla para todos ellos.
+      if (!isManagerRole(profile)) {
         const target = await storage.getExpense(req.params.id);
         if (!target) {
           return res.status(404).json({ error: "Egreso no encontrado" });
         }
         if (!(await canUserReachBuilding(req.user!.id, profile, target.buildingId))) {
-          return res.status(403).json({ error: "Solo puede modificar egresos de sus edificios asignados" });
+          return res.status(403).json({ error: "Solo puedes modificar egresos de tus edificios asignados" });
         }
         if (
           req.body.buildingId &&
           !(await canUserReachBuilding(req.user!.id, profile, req.body.buildingId))
         ) {
-          return res.status(403).json({ error: "Solo puede asignar egresos a sus edificios asignados" });
+          return res.status(403).json({ error: "Solo puedes asignar egresos a tus edificios asignados" });
         }
-      } else if (!canAccessFinancial(profile)) {
-        return res.status(403).json({ error: "No autorizado para modificar egresos" });
       }
       const updates: any = { ...req.body };
       
