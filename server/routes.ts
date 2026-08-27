@@ -2266,7 +2266,25 @@ export async function registerRoutes(
         // Conserjeria ejecuta las tareas que le calendarizan: avanza el estado
         // del ticket y deja evidencia. Cerrarlo sigue siendo de gerencia (mas
         // abajo) y no puede tocar costos, asignaciones ni datos del ticket.
-        const allowedFields = ["documentKey", "notes", "status"];
+        // Campos que hacen falta para EJECUTAR la tarea, que es lo que el rol
+        // tiene que poder hacer. La pantalla no manda solo el estado: "Iniciar
+        // Trabajo" envia ademas workStartedAt, y "Marcar Completado" envia
+        // workCompletedAt junto con los datos de la factura del proveedor. Con
+        // la lista anterior —solo documentKey, notes y status— ambos botones
+        // terminaban en 403 aunque el rol tuviera permiso de trabajar el ticket.
+        const allowedFields = [
+          "status",
+          "notes",
+          "documentKey",
+          "workStartedAt",
+          "workCompletedAt",
+          "invoiceStatus",
+          "invoiceProvidedById",
+          "invoiceNumber",
+          "invoiceAmount",
+          "invoiceDocumentKey",
+          "invoiceNote",
+        ];
         const bodyKeys = Object.keys(req.body);
         const hasDisallowed = bodyKeys.some(k => !allowedFields.includes(k));
         if (hasDisallowed) {
