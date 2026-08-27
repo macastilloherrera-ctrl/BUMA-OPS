@@ -8400,15 +8400,28 @@ export async function registerRoutes(
   // Financial Module: Recurring Expense Templates
   // ==========================================
 
+  /** Mismo criterio que Egresos, para el modulo de Consumos Recurrentes. */
+  async function puedeUsarRecurrentes(profile: UserProfile | null | undefined): Promise<boolean> {
+    if (!profile) return false;
+    if (isManagerRole(profile)) return true;
+    const modulos = await getUserPermissions(profile.role);
+    return !!modulos?.consumos_recurrentes;
+  }
+
   app.get("/api/recurring-expense-templates", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile)) {
-        return res.status(403).json({ error: "No autorizado para acceder a datos financieros" });
+      if (!(await puedeUsarRecurrentes(profile))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Consumos Recurrentes" });
       }
       const filters: { buildingId?: string } = {};
       if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
-      const items = await storage.getRecurringExpenseTemplates(filters);
+      let items = await storage.getRecurringExpenseTemplates(filters);
+
+      // Los roles acotados solo ven las plantillas de sus edificios.
+      const alcance = await alcanceEgresos(req.user!.id, profile);
+      if (alcance) items = items.filter((t) => alcance.has(t.buildingId));
+
       res.json(items);
     } catch (error) {
       console.error("Error obteniendo plantillas recurrentes:", error);
@@ -8419,8 +8432,14 @@ export async function registerRoutes(
   app.post("/api/recurring-expense-templates", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!isManagerRole(profile)) {
-        return res.status(403).json({ error: "Solo gerentes pueden crear plantillas recurrentes" });
+      if (!(await puedeUsarRecurrentes(profile))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Consumos Recurrentes" });
+      }
+      if (
+        !isManagerRole(profile) &&
+        !(await canUserReachBuilding(req.user!.id, profile, req.body.buildingId))
+      ) {
+        return res.status(403).json({ error: "Solo puedes crear plantillas de tus edificios asignados" });
       }
       const data = insertRecurringExpenseTemplateSchema.parse({ ...req.body, createdBy: req.user!.id });
       const template = await storage.createRecurringExpenseTemplate(data);
@@ -8437,8 +8456,15 @@ export async function registerRoutes(
   app.patch("/api/recurring-expense-templates/:id", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
+      if (!(await puedeUsarRecurrentes(profile))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Consumos Recurrentes" });
+      }
       if (!isManagerRole(profile)) {
-        return res.status(403).json({ error: "Solo gerentes pueden modificar plantillas recurrentes" });
+        const actual = await storage.getRecurringExpenseTemplate(req.params.id);
+        if (!actual) return res.status(404).json({ error: "Plantilla no encontrada" });
+        if (!(await canUserReachBuilding(req.user!.id, profile, actual.buildingId))) {
+          return res.status(403).json({ error: "Solo puedes modificar plantillas de tus edificios asignados" });
+        }
       }
       const data = insertRecurringExpenseTemplateSchema.partial().parse(req.body);
       const template = await storage.updateRecurringExpenseTemplate(req.params.id, data);
@@ -8458,8 +8484,15 @@ export async function registerRoutes(
   app.delete("/api/recurring-expense-templates/:id", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
+      if (!(await puedeUsarRecurrentes(profile))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Consumos Recurrentes" });
+      }
       if (!isManagerRole(profile)) {
-        return res.status(403).json({ error: "Solo gerentes pueden eliminar plantillas recurrentes" });
+        const actual = await storage.getRecurringExpenseTemplate(req.params.id);
+        if (!actual) return res.status(404).json({ error: "Plantilla no encontrada" });
+        if (!(await canUserReachBuilding(req.user!.id, profile, actual.buildingId))) {
+          return res.status(403).json({ error: "Solo puedes eliminar plantillas de tus edificios asignados" });
+        }
       }
       const deleted = await storage.deleteRecurringExpenseTemplate(req.params.id);
       if (!deleted) {
