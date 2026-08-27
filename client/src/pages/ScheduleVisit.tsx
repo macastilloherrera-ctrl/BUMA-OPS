@@ -54,18 +54,42 @@ export default function ScheduleVisit() {
   const prefilledNotes = searchParams.get("notes") || "";
   const prefilledExecutiveId = searchParams.get("executiveId") || "";
 
-  const { data: userProfile } = useQuery<{ role: string }>({
+  const { data: userProfile, isLoading: cargandoPerfil } = useQuery<{
+    id: string;
+    role: string;
+    buildingScope: "all" | "assigned";
+  }>({
     queryKey: ["/api/me"],
   });
 
   const isManager = userProfile ? ["gerente_general", "gerente_operaciones", "gerente_comercial", "gerente_finanzas"].includes(userProfile.role) : false;
 
-  const { data: allBuildings } = useQuery<Building[]>({
+  // Edificios que el usuario tiene asignados cuando su alcance no es "all".
+  // Los calcula el servidor sumando las tres vias de asignacion.
+  const { data: perfilConEdificios, isLoading: cargandoEdificiosPropios } = useQuery<{
+    assignedBuildings?: string[];
+  }>({
+    queryKey: ["/api/user/profile"],
+  });
+
+  const { data: allBuildings, isLoading: cargandoEdificios } = useQuery<Building[]>({
     queryKey: ["/api/buildings"],
   });
 
-  // Filter buildings for executives - they can only schedule visits in their assigned buildings
-  const buildings = isManager ? allBuildings : allBuildings?.filter(b => b.assignedExecutiveId === (userProfile as any)?.id);
+  // El alcance manda, no la columna assigned_executive_id. Antes esta pantalla
+  // filtraba por b.assignedExecutiveId === yo, de modo que un ejecutivo con
+  // alcance "all" veia el selector VACIO si no figuraba como responsable de
+  // ningun edificio, aunque el sistema de permisos le diera acceso a todos.
+  const alcanzaTodos = isManager || userProfile?.buildingScope === "all";
+  const idsAsignados = perfilConEdificios?.assignedBuildings;
+  const cargando = cargandoPerfil || cargandoEdificios || (!alcanzaTodos && cargandoEdificiosPropios);
+
+  // undefined mientras carga: asi el selector avisa en vez de mostrarse vacio.
+  const buildings = cargando
+    ? undefined
+    : alcanzaTodos
+      ? allBuildings
+      : allBuildings?.filter((b) => idsAsignados?.includes(b.id));
 
   const { data: executives } = useQuery<Array<{ userId: string; displayName: string }>>({
     queryKey: ["/api/users/executives"],
@@ -198,7 +222,15 @@ export default function ScheduleVisit() {
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger data-testid="select-building">
-                            <SelectValue placeholder="Selecciona un edificio" />
+                            <SelectValue
+                              placeholder={
+                                cargando
+                                  ? "Cargando edificios..."
+                                  : buildings && buildings.length === 0
+                                    ? "No tienes edificios asignados"
+                                    : "Selecciona un edificio"
+                              }
+                            />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -209,6 +241,12 @@ export default function ScheduleVisit() {
                           ))}
                         </SelectContent>
                       </Select>
+                      {!cargando && buildings && buildings.length === 0 && (
+                        <p className="text-sm text-destructive" data-testid="text-sin-edificios">
+                          No tienes edificios asignados, por lo que no puedes agendar visitas.
+                          Pedile al administrador que te asigne al menos uno.
+                        </p>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
