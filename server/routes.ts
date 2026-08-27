@@ -96,6 +96,21 @@ async function getUserPermissions(role: string): Promise<Record<string, boolean>
   }
 }
 
+/**
+ * true si el rol tiene habilitado ese modulo en Gestion de Permisos.
+ * Gerencia siempre pasa. Es el reemplazo de las listas de roles escritas a mano
+ * que decidian por su cuenta y contradecian la configuracion.
+ */
+async function tieneModulo(
+  profile: UserProfile | null | undefined,
+  moduleKey: string,
+): Promise<boolean> {
+  if (!profile) return false;
+  if (isManagerRole(profile)) return true;
+  const modulos = await getUserPermissions(profile.role);
+  return !!modulos?.[moduleKey];
+}
+
 function requireModule(...moduleKeys: string[]) {
   return async (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
@@ -6973,8 +6988,8 @@ export async function registerRoutes(
   app.get("/api/incomes", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile)) {
-        return res.status(403).json({ error: "No autorizado para acceder a datos financieros" });
+      if (!(await tieneModulo(profile, "ingresos"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Ingresos" });
       }
       const filters: { buildingId?: string; status?: string; month?: number; year?: number } = {};
       if (req.query.buildingId) filters.buildingId = req.query.buildingId as string;
@@ -6992,8 +7007,8 @@ export async function registerRoutes(
   app.post("/api/incomes", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!isManagerRole(profile)) {
-        return res.status(403).json({ error: "Solo gerentes pueden crear ingresos" });
+      if (!(await tieneModulo(profile, "ingresos"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Ingresos" });
       }
       const incomeData: any = { ...req.body, createdBy: req.user!.id };
       if (incomeData.paymentDate && typeof incomeData.paymentDate === "string") {
@@ -7045,8 +7060,8 @@ export async function registerRoutes(
   app.patch("/api/incomes/:id", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!isManagerRole(profile)) {
-        return res.status(403).json({ error: "Solo gerentes pueden modificar ingresos" });
+      if (!(await tieneModulo(profile, "ingresos"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Ingresos" });
       }
       const existingIncome = await storage.getIncome(req.params.id);
       if (!existingIncome) {
@@ -7135,8 +7150,8 @@ export async function registerRoutes(
   app.delete("/api/incomes/:id", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!isManagerRole(profile)) {
-        return res.status(403).json({ error: "Solo gerentes pueden eliminar ingresos" });
+      if (!(await tieneModulo(profile, "ingresos"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Ingresos" });
       }
       const existing = await storage.getIncome(req.params.id);
       if (existing?.paymentDate) {
@@ -7201,8 +7216,8 @@ export async function registerRoutes(
   app.post("/api/incomes/:id/confirm-duplicate", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!isManagerRole(profile)) {
-        return res.status(403).json({ error: "Solo gerentes pueden resolver duplicados" });
+      if (!(await tieneModulo(profile, "ingresos"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Ingresos" });
       }
       const dup = await storage.getIncome(req.params.id);
       if (!dup) {
@@ -7263,8 +7278,8 @@ export async function registerRoutes(
   app.post("/api/incomes/:id/dismiss-duplicate", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!isManagerRole(profile)) {
-        return res.status(403).json({ error: "Solo gerentes pueden resolver duplicados" });
+      if (!(await tieneModulo(profile, "ingresos"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Ingresos" });
       }
       const dup = await storage.getIncome(req.params.id);
       if (!dup) {
@@ -7314,8 +7329,8 @@ export async function registerRoutes(
   app.post("/api/incomes/:id/confirm-without-bank", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!isManagerRole(profile)) {
-        return res.status(403).json({ error: "Solo gerentes pueden confirmar ingresos a mano" });
+      if (!(await tieneModulo(profile, "ingresos"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Ingresos" });
       }
       const income = await storage.getIncome(req.params.id);
       if (!income) {
@@ -7372,8 +7387,8 @@ export async function registerRoutes(
   app.post("/api/incomes/split", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!isManagerRole(profile)) {
-        return res.status(403).json({ error: "Solo gerentes pueden dividir depósitos" });
+      if (!(await tieneModulo(profile, "ingresos"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Ingresos" });
       }
       const { buildingId, totalAmount, paymentDate, bank, bankOperationId, status, category, notes, splits, chargeMonth, chargeYear } = req.body;
       if (!buildingId || !totalAmount || !paymentDate || !splits || !Array.isArray(splits) || splits.length === 0) {
@@ -8775,8 +8790,8 @@ export async function registerRoutes(
   app.get("/api/bank-transactions", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile)) {
-        return res.status(403).json({ error: "No tiene permisos para acceder a datos financieros" });
+      if (!(await tieneModulo(profile, "conciliacion_bancaria"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Conciliación Bancaria" });
       }
       const buildingId = req.query.buildingId as string | undefined;
       const status = req.query.status as string | undefined;
@@ -8807,8 +8822,8 @@ export async function registerRoutes(
   app.post("/api/bank-transactions/import", isAuthenticated, upload.single("file"), async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
-        return res.status(403).json({ error: "No tiene permisos para importar transacciones" });
+      if (!(await tieneModulo(profile, "conciliacion_bancaria"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Conciliación Bancaria" });
       }
       const file = req.file;
       if (!file) {
@@ -8924,8 +8939,8 @@ export async function registerRoutes(
   app.post("/api/bank-transactions/reconcile", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
-        return res.status(403).json({ error: "No tiene permisos para conciliar transacciones" });
+      if (!(await tieneModulo(profile, "conciliacion_bancaria"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Conciliación Bancaria" });
       }
       const { buildingId, periodMonth, periodYear } = req.body;
       if (!buildingId || !periodMonth || !periodYear) {
@@ -8976,8 +8991,8 @@ export async function registerRoutes(
   app.patch("/api/bank-transactions/:id/assign", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
-        return res.status(403).json({ error: "No tiene permisos para asignar transacciones" });
+      if (!(await tieneModulo(profile, "conciliacion_bancaria"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Conciliación Bancaria" });
       }
       const { id } = req.params;
       const { unit, notes } = req.body;
@@ -9058,8 +9073,8 @@ export async function registerRoutes(
   app.post("/api/bank-transactions/confirm-all-suggested", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
-        return res.status(403).json({ error: "No tiene permisos" });
+      if (!(await tieneModulo(profile, "conciliacion_bancaria"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Conciliación Bancaria" });
       }
       const { buildingId, periodMonth, periodYear, minScore } = req.body;
       if (!buildingId || !periodMonth || !periodYear) {
@@ -9175,8 +9190,8 @@ export async function registerRoutes(
   app.patch("/api/bank-transactions/:id/confirm", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
-        return res.status(403).json({ error: "No tiene permisos para confirmar transacciones" });
+      if (!(await tieneModulo(profile, "conciliacion_bancaria"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Conciliación Bancaria" });
       }
       const { id } = req.params;
       const txn = await storage.getBankTransaction(id);
@@ -9224,8 +9239,8 @@ export async function registerRoutes(
   app.patch("/api/bank-transactions/:id/ignore", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
-        return res.status(403).json({ error: "No tiene permisos para ignorar transacciones" });
+      if (!(await tieneModulo(profile, "conciliacion_bancaria"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Conciliación Bancaria" });
       }
       const { id } = req.params;
       const { reason } = req.body;
@@ -9266,8 +9281,8 @@ export async function registerRoutes(
   app.patch("/api/bank-transactions/:id/reactivate", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
-        return res.status(403).json({ error: "No tiene permisos" });
+      if (!(await tieneModulo(profile, "conciliacion_bancaria"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Conciliación Bancaria" });
       }
       const { id } = req.params;
       const txn = await storage.getBankTransaction(id);
@@ -9325,8 +9340,8 @@ export async function registerRoutes(
   app.post("/api/bank-transactions/:id/create-income", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
-        return res.status(403).json({ error: "No tiene permisos para crear ingresos" });
+      if (!(await tieneModulo(profile, "conciliacion_bancaria"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Conciliación Bancaria" });
       }
       const { id } = req.params;
       const txn = await storage.getBankTransaction(id);
@@ -9450,8 +9465,8 @@ export async function registerRoutes(
   app.post("/api/bank-transactions/:id/split", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile) || !isManagerRole(profile)) {
-        return res.status(403).json({ error: "No tiene permisos para dividir transacciones" });
+      if (!(await tieneModulo(profile, "conciliacion_bancaria"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Conciliación Bancaria" });
       }
       const { id } = req.params;
       const { splits } = req.body;
@@ -9505,8 +9520,8 @@ export async function registerRoutes(
   app.get("/api/bank-transactions/export-stats", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile)) {
-        return res.status(403).json({ error: "No tiene permisos" });
+      if (!(await tieneModulo(profile, "conciliacion_bancaria"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Conciliación Bancaria" });
       }
       const buildingId = req.query.buildingId as string;
       const month = parseInt(req.query.month as string);
@@ -9531,8 +9546,8 @@ export async function registerRoutes(
   app.get("/api/bank-transactions/reconciliation-history", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile)) {
-        return res.status(403).json({ error: "No tiene permisos" });
+      if (!(await tieneModulo(profile, "conciliacion_bancaria"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Conciliación Bancaria" });
       }
       const buildingId = req.query.buildingId as string;
       if (!buildingId) {
@@ -9588,8 +9603,8 @@ export async function registerRoutes(
   app.get("/api/bank-transactions/export", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile)) {
-        return res.status(403).json({ error: "No tiene permisos para exportar datos financieros" });
+      if (!(await tieneModulo(profile, "conciliacion_bancaria"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Conciliación Bancaria" });
       }
       const buildingId = req.query.buildingId as string;
       const month = parseInt(req.query.month as string);
@@ -9782,8 +9797,8 @@ export async function registerRoutes(
   app.get("/api/monthly-closing-cycles/dashboard", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile)) {
-        return res.status(403).json({ error: "Acceso denegado" });
+      if (!(await tieneModulo(profile, "cierre_mensual"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Cierre Mensual" });
       }
 
       const { year } = req.query;
@@ -9810,8 +9825,8 @@ export async function registerRoutes(
   app.get("/api/monthly-closing-cycles", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile)) {
-        return res.status(403).json({ error: "Acceso denegado" });
+      if (!(await tieneModulo(profile, "cierre_mensual"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Cierre Mensual" });
       }
 
       const filters: { buildingId?: string; month?: number; year?: number; status?: string } = {};
@@ -9831,8 +9846,8 @@ export async function registerRoutes(
   app.get("/api/monthly-closing-cycles/:id", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile)) {
-        return res.status(403).json({ error: "Acceso denegado" });
+      if (!(await tieneModulo(profile, "cierre_mensual"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Cierre Mensual" });
       }
 
       const cycle = await storage.getMonthlyClosingCycle(req.params.id);
@@ -9993,8 +10008,8 @@ export async function registerRoutes(
   app.patch("/api/monthly-closing-cycles/:id/checklist/:itemId", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile)) {
-        return res.status(403).json({ error: "Acceso denegado" });
+      if (!(await tieneModulo(profile, "cierre_mensual"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Cierre Mensual" });
       }
 
       const cycle = await storage.getMonthlyClosingCycle(req.params.id);
@@ -10017,8 +10032,8 @@ export async function registerRoutes(
   app.get("/api/monthly-closing-cycles/:id/status-logs", isAuthenticated, async (req, res) => {
     try {
       const profile = await storage.getUserProfile(req.user!.id);
-      if (!canAccessFinancial(profile)) {
-        return res.status(403).json({ error: "Acceso denegado" });
+      if (!(await tieneModulo(profile, "cierre_mensual"))) {
+        return res.status(403).json({ error: "Tu rol no tiene habilitado el módulo de Cierre Mensual" });
       }
 
       const cycle = await storage.getMonthlyClosingCycle(req.params.id);
