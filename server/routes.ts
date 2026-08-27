@@ -2982,16 +2982,16 @@ export async function registerRoutes(
         return canAccessEntity(userId, profile, visit);
       }
       case "expense": {
-        // Boletas/comprobantes de un egreso. Quien alcanza el egreso alcanza su
-        // boleta: gerencia por el lado financiero, y conserjeria dentro de sus
-        // edificios asignados (mismas reglas que /api/expenses).
+        // Boletas/comprobantes de un egreso: exactamente las mismas reglas que
+        // /api/expenses. Manda el MODULO de egresos y el alcance acota donde.
+        // Antes exigia canAccessFinancial(), la lista vieja de gerentes, asi
+        // que un rol con el modulo habilitado —ejecutivo_operaciones,
+        // ejecutivo_apoyo— podia crear el egreso pero no adjuntarle la boleta.
         const expense = await storage.getExpense(entityId);
         if (!expense) return false;
-        if (canAccessFinancial(profile)) return true;
-        if (isConserjeriaRole(profile)) {
-          return canUserReachBuilding(userId, profile, expense.buildingId);
-        }
-        return false;
+        if (!(await puedeUsarEgresos(profile))) return false;
+        if (isManagerRole(profile)) return true;
+        return canUserReachBuilding(userId, profile, expense.buildingId);
       }
       default:
         return false;
