@@ -8761,6 +8761,19 @@ export async function registerRoutes(
         });
       }
 
+      // wsData[0] son los titulos: si no hay ni una fila de datos, el archivo
+      // sale con encabezados y nada mas. Conviene decir por que, porque la causa
+      // casi siempre es el filtro de estado: los formatos contables exportan
+      // solo egresos PAGADOS, y lo normal es tenerlos pendientes.
+      if (wsData.length <= 1) {
+        const totalPeriodo = allExpensesForGeneric.length;
+        const detalle =
+          format === "generico" || totalPeriodo === 0
+            ? `No hay egresos registrados en ${monthName} ${year} para este edificio.`
+            : `Este formato exporta solo egresos pagados. En ${monthName} ${year} hay ${totalPeriodo} egreso(s) en este edificio, pero ninguno está pagado. Marcá los pagos o usá el formato Genérico.`;
+        return res.status(400).json({ error: "No hay datos para exportar", detalle });
+      }
+
       const ws = XLSX.utils.aoa_to_sheet(wsData);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Egresos");

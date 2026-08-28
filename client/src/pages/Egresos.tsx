@@ -465,13 +465,59 @@ export default function Egresos() {
     }
   }
 
-  function handleExport(format: string) {
+  async function handleExport(format: string) {
+    if (selectedBuilding === "all") {
+      toast({
+        title: "Elegí un edificio",
+        description: "La exportación es por edificio y período.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const params = new URLSearchParams();
-    if (selectedBuilding !== "all") params.set("buildingId", selectedBuilding);
+    params.set("buildingId", selectedBuilding);
     if (selectedMonth) params.set("month", selectedMonth);
     if (selectedYear) params.set("year", selectedYear);
     params.set("format", format);
-    window.open(`/api/expenses/export?${params.toString()}`, "_blank");
+
+    try {
+      // Se descarga por fetch y no con window.open para poder mostrar el motivo
+      // cuando no hay nada que exportar. Antes el archivo bajaba igual, con los
+      // titulos y ninguna fila, sin explicar por que.
+      const res = await fetch(`/api/expenses/export?${params.toString()}`, {
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        toast({
+          title: error.error || "No se pudo exportar",
+          description: error.detalle,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const blob = await res.blob();
+      const nombre =
+        res.headers.get("Content-Disposition")?.match(/filename="?([^"]+)"?/)?.[1] ||
+        "egresos.xlsx";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = nombre;
+      a.click();
+      URL.revokeObjectURL(url);
+      queryClient.invalidateQueries({ queryKey: ["/api/expenses"] });
+      toast({ title: "Exportación lista", description: nombre });
+    } catch (error) {
+      toast({
+        title: "No se pudo exportar",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      });
+    }
   }
 
   const formatCurrency = (amount: string | number) => {
