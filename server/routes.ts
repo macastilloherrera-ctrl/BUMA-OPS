@@ -8698,9 +8698,12 @@ export async function registerRoutes(
       if (!building) {
         return res.status(404).json({ error: "Edificio no encontrado" });
       }
-      const paidExpenses = await storage.getExpenses({ buildingId, month, year, paymentStatus: "paid" });
-      const filtered = paidExpenses.filter(e => e.inclusionStatus !== "postponed");
       const allExpensesForGeneric = await storage.getExpenses({ buildingId, month, year });
+      // El Excel va a aprobacion del comite ANTES de que los egresos se paguen,
+      // asi que los formatos contables ya no filtran por estado de pago: llevan
+      // todos los egresos del periodo. Se siguen excluyendo los postergados,
+      // que por definicion pertenecen a otro periodo.
+      const filtered = allExpensesForGeneric.filter(e => e.inclusionStatus !== "postponed");
       const onlyNew = req.query.onlyNew === "true";
       const exportedSourceList = format === "generico" ? allExpensesForGeneric : filtered;
       const expensesToMark = onlyNew
@@ -8768,9 +8771,9 @@ export async function registerRoutes(
       if (wsData.length <= 1) {
         const totalPeriodo = allExpensesForGeneric.length;
         const detalle =
-          format === "generico" || totalPeriodo === 0
+          totalPeriodo === 0
             ? `No hay egresos registrados en ${monthName} ${year} para este edificio.`
-            : `Este formato exporta solo egresos pagados. En ${monthName} ${year} hay ${totalPeriodo} egreso(s) en este edificio, pero ninguno está pagado. Marcá los pagos o usá el formato Genérico.`;
+            : `Los ${totalPeriodo} egreso(s) de ${monthName} ${year} están postergados, así que corresponden a otro período.`;
         return res.status(400).json({ error: "No hay datos para exportar", detalle });
       }
 
